@@ -1,0 +1,94 @@
+@using MMW.Domain.Entities
+@using MMW.Domain.Enums
+@model IReadOnlyList<MarketSnapshot>
+@{
+    ViewData["Title"] = "Thị trường";
+
+    (string css, string label) BiasBadge(MarketBias b) => b switch
+    {
+        MarketBias.Bullish => ("bg-green text-green-fg", "Tăng"),
+        MarketBias.Bearish => ("bg-red text-red-fg", "Giảm"),
+        _ => ("bg-secondary text-secondary-fg", "Trung tính"),
+    };
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Thị trường</h2>
+            <div class="text-secondary mt-1">Tự động quét mỗi 5 phút · phân tích từ indicator</div>
+        </div>
+        <div class="col-auto">
+            <form asp-controller="Market" asp-action="ScanNow" method="post" class="m-0">
+                <button type="submit" class="btn btn-primary">
+                    <i class="ti ti-refresh me-2"></i> Quét ngay
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@if (TempData["Message"] is string msg)
+{
+    <div class="alert alert-info">@msg</div>
+}
+
+<div class="card">
+    @if (Model.Count == 0)
+    {
+        <div class="empty">
+            <p class="empty-title">Chưa có dữ liệu</p>
+            <p class="empty-subtitle text-secondary">
+                Job sẽ tự quét sau ít phút, hoặc bấm "Quét ngay". (Cần truy cập được Binance.)
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Khung</th>
+                        <th class="text-end">Giá</th>
+                        <th class="text-end">RSI</th>
+                        <th class="text-end">EMA20</th>
+                        <th class="text-end">EMA50</th>
+                        <th class="text-end">MACD hist</th>
+                        <th class="text-end">ATR</th>
+                        <th>Thiên hướng</th>
+                        <th>Nhận định</th>
+                        <th class="text-end">Cập nhật</th>
+                        <th class="w-1"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in Model)
+                    {
+                        var (css, label) = BiasBadge(s.Bias);
+                        <tr>
+                            <td><strong>@s.Symbol</strong></td>
+                            <td class="text-secondary">@s.Interval</td>
+                            <td class="text-end">@s.Price.ToString("N4")</td>
+                            <td class="text-end">@(s.Rsi?.ToString("N1") ?? "—")</td>
+                            <td class="text-end">@(s.Ema20?.ToString("N4") ?? "—")</td>
+                            <td class="text-end">@(s.Ema50?.ToString("N4") ?? "—")</td>
+                            <td class="text-end @(s.MacdHistogram < 0 ? "text-red" : s.MacdHistogram > 0 ? "text-green" : "")">
+                                @(s.MacdHistogram?.ToString("N4") ?? "—")
+                            </td>
+                            <td class="text-end">@(s.Atr?.ToString("N4") ?? "—")</td>
+                            <td><span class="badge @css">@label</span></td>
+                            <td class="text-secondary small">@s.Notes</td>
+                            <td class="text-end text-secondary small">@s.UpdatedAt.ToLocalTime().ToString("HH:mm:ss")</td>
+                            <td>
+                                <a asp-controller="Market" asp-action="History" asp-route-symbol="@s.Symbol"
+                                   class="btn btn-sm">Lịch sử</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

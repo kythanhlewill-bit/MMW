@@ -1,0 +1,95 @@
+@using MMW.Domain.Entities
+@model IReadOnlyList<WatchItem>
+@{
+    ViewData["Title"] = "Watchlist";
+    var intervals = new[] { "5m", "15m", "1h", "4h", "1d" };
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col"><h2 class="page-title">Watchlist</h2></div>
+    </div>
+</div>
+
+@if (TempData["Message"] is string msg)
+{
+    <div class="alert alert-success">@msg</div>
+}
+@if (TempData["Error"] is string err)
+{
+    <div class="alert alert-danger">@err</div>
+}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form asp-controller="Watchlist" asp-action="Create" method="post" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">Symbol</label>
+                <input name="symbol" class="form-control" placeholder="BTCUSDT" style="text-transform:uppercase" />
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Khung</label>
+                <select name="interval" class="form-select">
+                    @foreach (var i in intervals)
+                    {
+                        <option value="@i" selected="@(i == "1h")">@i</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary"><i class="ti ti-plus me-1"></i> Thêm</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    @if (Model.Count == 0)
+    {
+        <div class="empty"><p class="empty-title">Watchlist trống</p></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th><th>Khung</th><th>Trạng thái</th><th class="w-1"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var w in Model)
+                    {
+                        <tr>
+                            <td><strong>@w.Symbol</strong></td>
+                            <td class="text-secondary">@w.Interval</td>
+                            <td>
+                                @if (w.IsActive)
+                                {
+                                    <span class="badge bg-green text-green-fg">Đang quét</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary text-secondary-fg">Tắt</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <form asp-action="Toggle" method="post" class="m-0">
+                                        <input type="hidden" name="id" value="@w.Id" />
+                                        <button type="submit" class="btn btn-sm">@(w.IsActive ? "Tắt" : "Bật")</button>
+                                    </form>
+                                    <form asp-action="Delete" method="post" class="m-0"
+                                          onsubmit="return confirm('Xoá @w.Symbol (@w.Interval)?');">
+                                        <input type="hidden" name="id" value="@w.Id" />
+                                        <button type="submit" class="btn btn-sm btn-ghost-danger">Xoá</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

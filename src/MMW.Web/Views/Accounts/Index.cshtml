@@ -1,0 +1,83 @@
+@model List<MMW.Domain.Entities.TradingAccount>
+@{
+    ViewData["Title"] = "Quản lý tài khoản";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col"><h2 class="page-title">Quản lý tài khoản</h2></div>
+        <div class="col-auto">
+            <a asp-action="Create" class="btn btn-primary"><i class="ti ti-plus me-1"></i> Thêm tài khoản</a>
+        </div>
+    </div>
+</div>
+
+@if (TempData["Message"] is string msg)
+{
+    <div class="alert alert-success">@msg</div>
+}
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr>
+                    <th>Tên</th>
+                    <th>Sàn</th>
+                    <th>Tiền tệ</th>
+                    <th>Số dư</th>
+                    <th>API Key</th>
+                    <th>Trạng thái</th>
+                    <th class="w-1"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in Model)
+                {
+                    <tr>
+                        <td><strong>@a.Name</strong></td>
+                        <td>@a.Broker</td>
+                        <td>@a.Currency</td>
+                        <td>@a.CurrentBalance.ToString("N2")</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(a.ApiKey))
+                            {
+                                <span class="badge bg-green-lt">Đã cấu hình</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary-lt">Chưa có</span>
+                            }
+                        </td>
+                        <td>
+                            @if (a.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactive</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="btn-list flex-nowrap">
+                                <a asp-action="Edit" asp-route-id="@a.Id" class="btn btn-sm">Sửa</a>
+                                <form asp-action="Toggle" asp-route-id="@a.Id" method="post" class="d-inline">
+                                    <button type="submit" class="btn btn-sm @(a.IsActive ? "btn-warning" : "btn-success")">
+                                        @(a.IsActive ? "Tắt" : "Bật")
+                                    </button>
+                                </form>
+                                @if (!string.IsNullOrWhiteSpace(a.ApiKey))
+                                {
+                                    <form asp-action="SyncNow" asp-route-id="@a.Id" method="post" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-info">Sync</button>
+                                    </form>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

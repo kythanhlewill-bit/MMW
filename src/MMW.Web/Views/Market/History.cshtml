@@ -1,0 +1,64 @@
+@using MMW.Domain.Enums
+@model MMW.Web.Models.IndicatorHistoryViewModel
+@{
+    ViewData["Title"] = "Lịch sử chỉ số";
+
+    (string css, string label) BiasBadge(MarketBias b) => b switch
+    {
+        MarketBias.Bullish => ("bg-green text-green-fg", "Tăng"),
+        MarketBias.Bearish => ("bg-red text-red-fg", "Giảm"),
+        _ => ("bg-secondary text-secondary-fg", "Trung tính"),
+    };
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Lịch sử chỉ số @(Model.Symbol is null ? "" : $"· {Model.Symbol}")</h2>
+            <div class="text-secondary mt-1">@Model.Records.Count bản ghi gần nhất</div>
+        </div>
+        <div class="col-auto">
+            <a asp-controller="Market" asp-action="Index" class="btn">← Thị trường</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    @if (Model.Records.Count == 0)
+    {
+        <div class="empty"><p class="empty-title">Chưa có lịch sử</p></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Thời điểm</th><th>Symbol</th><th>Khung</th>
+                        <th class="text-end">Giá</th><th class="text-end">RSI</th>
+                        <th class="text-end">EMA20</th><th class="text-end">EMA50</th>
+                        <th class="text-end">MACD hist</th><th class="text-end">ATR</th><th>Thiên hướng</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.Records)
+                    {
+                        var (css, label) = BiasBadge(r.Bias);
+                        <tr>
+                            <td class="text-secondary small">@r.ScannedAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td><strong>@r.Symbol</strong></td>
+                            <td class="text-secondary">@r.Interval</td>
+                            <td class="text-end">@r.Price.ToString("N4")</td>
+                            <td class="text-end">@(r.Rsi?.ToString("N1") ?? "—")</td>
+                            <td class="text-end">@(r.Ema20?.ToString("N4") ?? "—")</td>
+                            <td class="text-end">@(r.Ema50?.ToString("N4") ?? "—")</td>
+                            <td class="text-end @(r.MacdHistogram < 0 ? "text-red" : r.MacdHistogram > 0 ? "text-green" : "")">@(r.MacdHistogram?.ToString("N4") ?? "—")</td>
+                            <td class="text-end">@(r.Atr?.ToString("N4") ?? "—")</td>
+                            <td><span class="badge @css">@label</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

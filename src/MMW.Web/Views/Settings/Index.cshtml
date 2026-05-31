@@ -1,0 +1,74 @@
+@model MMW.Web.Models.SettingsViewModel
+@{
+    ViewData["Title"] = "Cài đặt";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col"><h2 class="page-title">Cài đặt</h2></div>
+    </div>
+</div>
+
+@if (TempData["Message"] is string msg)
+{
+    <div class="alert alert-success">@msg</div>
+}
+
+<div class="row row-cards">
+    <div class="col-lg-6">
+        <form asp-action="SaveGeneral" method="post" class="card">
+            <div class="card-header"><h3 class="card-title">Cấu hình chung</h3></div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label" asp-for="General.DefaultTradingAccountId"></label>
+                    <select asp-for="General.DefaultTradingAccountId" class="form-select">
+                        <option value="">— Tài khoản active đầu tiên —</option>
+                        @foreach (var a in Model.Accounts)
+                        {
+                            <option value="@a.Id">@a.Name (@a.Currency)</option>
+                        }
+                    </select>
+                    <small class="text-secondary">Dùng khi tạo lệnh từ đề xuất.</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-check form-switch">
+                        <input asp-for="General.ConfirmBeforeCreateTrade" class="form-check-input" type="checkbox" />
+                        <span class="form-check-label">Xác nhận trước khi tạo lệnh</span>
+                    </label>
+                </div>
+
+                <div class="mb-2">
+                    <label class="form-label" asp-for="General.MinSignalScore"></label>
+                    <input asp-for="General.MinSignalScore" class="form-control" type="number" min="1" max="10" />
+                    <small class="text-secondary">Tín hiệu phải đạt điểm này mới sinh đề xuất (1–2 là hợp lý).</small>
+                </div>
+            </div>
+            <div class="card-footer text-end">
+                <button type="submit" class="btn btn-primary">Lưu</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Cấu hình rủi ro theo tài khoản</h3></div>
+            @if (Model.Accounts.Count == 0)
+            {
+                <div class="card-body text-secondary">Chưa có tài khoản.</div>
+            }
+            else
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var a in Model.Accounts)
+                    {
+                        <a asp-action="Account" asp-route-id="@a.Id" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <span><strong>@a.Name</strong> <span class="text-secondary">@a.Currency · @a.Broker</span></span>
+                            <span class="text-secondary">Chỉnh →</span>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>

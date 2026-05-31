@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="vi" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>@ViewData["Title"] - MMW</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/core@1.0.0/dist/css/tabler.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/icons-webfont@3.17.0/dist/tabler-icons.min.css" />
+    <style>
+        .page-center { min-height: 100vh; }
+        .brand-mark { font-weight: 700; letter-spacing: .04em; font-size: 2rem; color: #4dabf7; }
+    </style>
+</head>
+<body class="d-flex flex-column bg-dark">
+    <div class="page page-center">
+        <div class="container container-tight py-4">
+            @RenderBody()
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@@tabler/core@1.0.0/dist/js/tabler.min.js"></script>
+</body>
+</html>

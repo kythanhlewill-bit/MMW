@@ -1,0 +1,97 @@
+@model IReadOnlyList<MMW.Application.Models.TradeDto>
+@{
+    ViewData["Title"] = "Nhật ký lệnh";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Nhật ký lệnh</h2>
+        </div>
+    </div>
+</div>
+
+@if (TempData["Message"] is string msg)
+{
+    <div class="alert alert-success">@msg</div>
+}
+
+<div class="card">
+    @if (Model.Count == 0)
+    {
+        <div class="empty">
+            <div class="empty-icon"><i class="ti ti-clipboard-list" style="font-size:2.5rem"></i></div>
+            <p class="empty-title">Chưa có lệnh nào</p>
+            <p class="empty-subtitle text-secondary">
+                Khi bạn thêm lệnh, hệ thống sẽ tự chấm rủi ro và phát hiện hành vi.
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Tài khoản</th>
+                        <th>Symbol</th>
+                        <th>Hướng</th>
+                        <th>Trạng thái</th>
+                        <th class="text-end">Giá vào</th>
+                        <th class="text-end">SL</th>
+                        <th class="text-end">TP</th>
+                        <th class="text-end">Risk %</th>
+                        <th class="text-end">R:R</th>
+                        <th class="text-end">PnL</th>
+                        <th>Kết quả</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in Model)
+                    {
+                        <tr>
+                            <td class="text-secondary">@(t.AccountName ?? "—")</td>
+                            <td><strong>@t.Symbol</strong></td>
+                            <td>
+                                @if (t.Direction == MMW.Domain.Enums.TradeDirection.Long)
+                                {
+                                    <span class="badge bg-green text-green-fg">Long</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-red text-red-fg">Short</span>
+                                }
+                            </td>
+                            <td><span class="text-secondary">@t.Status</span></td>
+                            <td class="text-end">@t.EntryPrice.ToString("N4")</td>
+                            <td class="text-end">@(t.StopLoss?.ToString("N4") ?? "—")</td>
+                            <td class="text-end">@(t.TakeProfit?.ToString("N4") ?? "—")</td>
+                            <td class="text-end">@(t.RiskPercent?.ToString("N2") ?? "—")</td>
+                            <td class="text-end">@(t.PlannedRiskReward?.ToString("N2") ?? "—")</td>
+                            <td class="text-end @(t.RealizedPnl < 0 ? "text-red" : t.RealizedPnl > 0 ? "text-green" : "")">
+                                @(t.RealizedPnl?.ToString("N2") ?? "—")
+                            </td>
+                            <td>
+                                @switch (t.Outcome)
+                                {
+                                    case MMW.Domain.Enums.TradeOutcome.Win:
+                                        <span class="badge bg-green-lt">Win</span>
+                                        break;
+                                    case MMW.Domain.Enums.TradeOutcome.Loss:
+                                        <span class="badge bg-red-lt">Loss</span>
+                                        break;
+                                    case MMW.Domain.Enums.TradeOutcome.BreakEven:
+                                        <span class="badge bg-secondary-lt">BE</span>
+                                        break;
+                                    default:
+                                        <span class="text-secondary">—</span>
+                                        break;
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

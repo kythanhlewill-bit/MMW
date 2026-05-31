@@ -1,0 +1,123 @@
+@model MMW.Web.Models.DashboardViewModel
+@{
+    ViewData["Title"] = "Tổng quan";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Tổng quan</h2>
+        </div>
+        <div class="col-auto">
+            <form method="get" class="d-flex align-items-center gap-2">
+                <select name="accountId" class="form-select form-select-sm" style="min-width:200px" onchange="this.form.submit()">
+                    @foreach (var a in Model.Accounts)
+                    {
+                        <option value="@a.Id" selected="@(a.Id == Model.SelectedAccountId)">@a.Name (@a.Currency)</option>
+                    }
+                </select>
+            </form>
+        </div>
+    </div>
+</div>
+
+@if (Model.AccountName is null)
+{
+    <div class="alert alert-info">Chưa có tài khoản giao dịch. <a asp-controller="Accounts" asp-action="Create">Tạo tài khoản</a></div>
+}
+else
+{
+    <div class="row row-deck row-cards">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Số dư</div>
+                    <div class="h1 mb-0 mt-2">@Model.Balance.ToString("N2") <span class="text-secondary h3">@Model.Currency</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Tổng PnL</div>
+                    <div class="h1 mb-0 mt-2 @(Model.TotalPnl < 0 ? "text-red" : Model.TotalPnl > 0 ? "text-green" : "")">
+                        @Model.TotalPnl.ToString("N2") <span class="text-secondary h3">@Model.Currency</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Lệnh đang mở</div>
+                    <div class="h1 mb-0 mt-2 text-blue">@Model.OpenTrades</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Cảnh báo</div>
+                    <div class="h1 mb-0 mt-2">
+                        <span class="text-orange">@Model.TotalFlags</span>
+                        @if (Model.CriticalFlags > 0)
+                        {
+                            <span class="badge bg-red text-red-fg ms-2">@Model.CriticalFlags nghiêm trọng</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row row-deck row-cards mt-3">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Tổng lệnh</div>
+                    <div class="h2 mb-0 mt-2">@Model.TotalTrades</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Đã đóng</div>
+                    <div class="h2 mb-0 mt-2">@Model.ClosedTrades</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Thắng</div>
+                    <div class="h2 mb-0 mt-2 text-green">@Model.WinTrades</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="subheader">Thua</div>
+                    <div class="h2 mb-0 mt-2 text-red">@Model.LossTrades</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (Model.ClosedTrades > 0)
+    {
+        var winRate = Model.ClosedTrades > 0 ? (double)Model.WinTrades / Model.ClosedTrades * 100 : 0;
+        <div class="card mt-3">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <h3 class="card-title mb-0 me-3">Win Rate</h3>
+                    <span class="h2 mb-0 @(winRate >= 50 ? "text-green" : "text-red")">@winRate.ToString("N1")%</span>
+                </div>
+                <div class="progress progress-sm">
+                    <div class="progress-bar bg-green" style="width: @winRate.ToString("N1", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+                </div>
+            </div>
+        </div>
+    }
+}

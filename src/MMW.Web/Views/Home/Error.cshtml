@@ -1,0 +1,15 @@
+@{
+    ViewData["Title"] = "Lỗi";
+    Layout = "_LayoutAuth";
+}
+
+<div class="empty">
+    <div class="empty-header">500</div>
+    <p class="empty-title">Đã có lỗi xảy ra</p>
+    <p class="empty-subtitle text-secondary">Vui lòng thử lại sau.</p>
+    <div class="empty-action">
+        <a asp-controller="Home" asp-action="Index" class="btn btn-primary">
+            <i class="ti ti-arrow-left me-2"></i> Về trang chủ
+        </a>
+    </div>
+</div>

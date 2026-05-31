@@ -1,0 +1,59 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using MMW.Domain.Entities;
+using MMW.Domain.Enums;
+using MMW.Shared.Interfaces;
+using MMW.Web.Models;
+
+namespace MMW.Web.Controllers;
+
+public class HomeController : Controller
+{
+    private readonly IBaseRepository<TradingAccount> _accounts;
+    private readonly IBaseRepository<Trade> _trades;
+    private readonly IBaseRepository<Flag> _flags;
+
+    public HomeController(
+        IBaseRepository<TradingAccount> accounts,
+        IBaseRepository<Trade> trades,
+        IBaseRepository<Flag> flags)
+    {
+        _accounts = accounts;
+        _trades = trades;
+        _flags = flags;
+    }
+
+    public async Task<IActionResult> Index(long? accountId)
+    {
+        var allAccounts = (await _accounts.GetAllAsync()).OrderBy(a => a.Name).ToList();
+        var account = accountId.HasValue
+            ? allAccounts.FirstOrDefault(a => a.Id == accountId.Value)
+            : allAccounts.FirstOrDefault(a => a.IsActive);
+
+        var vm = new DashboardViewModel { Accounts = allAccounts, SelectedAccountId = account?.Id };
+
+        if (account is not null)
+        {
+            vm.AccountName = account.Name;
+            vm.Currency = account.Currency;
+            vm.Balance = account.CurrentBalance;
+            vm.TotalTrades = await _trades.CountAsync(t => t.TradingAccountId == account.Id);
+            vm.OpenTrades = await _trades.CountAsync(t => t.TradingAccountId == account.Id && t.Status == TradeStatus.Open);
+            vm.ClosedTrades = await _trades.CountAsync(t => t.TradingAccountId == account.Id && t.Status == TradeStatus.Closed);
+            vm.WinTrades = await _trades.CountAsync(t => t.TradingAccountId == account.Id && t.Outcome == TradeOutcome.Win);
+            vm.LossTrades = await _trades.CountAsync(t => t.TradingAccountId == account.Id && t.Outcome == TradeOutcome.Loss);
+
+            var closedTrades = await _trades.FindListAsync(t => t.TradingAccountId == account.Id && t.RealizedPnl != null);
+            vm.TotalPnl = closedTrades.Sum(t => t.RealizedPnl ?? 0);
+
+            vm.TotalFlags = await _flags.CountAsync(f => f.TradingAccountId == account.Id);
+            vm.CriticalFlags = await _flags.CountAsync(f => f.TradingAccountId == account.Id && f.Severity == FlagSeverity.Critical);
+        }
+
+        return View(vm);
+    }
+
+    [AllowAnonymous]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult Error() => View();
+}

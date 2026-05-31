@@ -1,0 +1,49 @@
+@model MMW.Web.Models.LoginViewModel
+@{
+    ViewData["Title"] = "Đăng nhập";
+    Layout = "_LayoutAuth";
+}
+
+<div class="text-center mb-4">
+    <span class="brand-mark">⚡ MMW</span>
+    <div class="text-secondary mt-1">Trading Assistant</div>
+</div>
+
+<form class="card card-md" method="post" asp-controller="Account" asp-action="Login">
+    <div class="card-body">
+        <h2 class="h2 text-center mb-4">Đăng nhập vào tài khoản</h2>
+
+        <input type="hidden" asp-for="ReturnUrl" />
+
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+        <div class="mb-3">
+            <label class="form-label" asp-for="Username"></label>
+            <input asp-for="Username" class="form-control" placeholder="admin" autofocus />
+            <span asp-validation-for="Username" class="text-danger small"></span>
+        </div>
+
+        <div class="mb-2">
+            <label class="form-label" asp-for="Password"></label>
+            <input asp-for="Password" class="form-control" placeholder="Mật khẩu của bạn" />
+            <span asp-validation-for="Password" class="text-danger small"></span>
+        </div>
+
+        <div class="mb-2">
+            <label class="form-check">
+                <input type="checkbox" asp-for="RememberMe" class="form-check-input" />
+                <span class="form-check-label">Ghi nhớ đăng nhập</span>
+            </label>
+        </div>
+
+        <div class="form-footer">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="ti ti-login me-2"></i> Đăng nhập
+            </button>
+        </div>
+    </div>
+</form>
+
+<div class="text-center text-secondary mt-3 small">
+    Mặc định: <code>admin</code> / <code>Admin@@123</code> — hãy đổi sau khi đăng nhập.
+</div>
