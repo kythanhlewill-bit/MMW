@@ -1,0 +1,97 @@
+@using MMW.Domain.Enums
+@model MMW.Web.Models.CloseTradeForm
+@{
+    ViewData["Title"] = "Đóng lệnh";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col"><h2 class="page-title">Đóng lệnh · @Model.Symbol</h2></div>
+        <div class="col-auto"><a asp-action="Index" class="btn">← Nhật ký lệnh</a></div>
+    </div>
+</div>
+
+<form asp-action="Close" method="post" class="card">
+    <input type="hidden" asp-for="TradeId" />
+    <input type="hidden" asp-for="Symbol" />
+    <input type="hidden" asp-for="Direction" />
+    <input type="hidden" asp-for="EntryPrice" />
+    <input type="hidden" asp-for="Quantity" />
+
+    <div class="card-body">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+        <div class="row g-3 mb-2">
+            <div class="col-md-3">
+                <div class="text-secondary small">Hướng</div>
+                <div>
+                    @if (Model.Direction == TradeDirection.Long)
+                    {
+                        <span class="badge bg-green text-green-fg">Long</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-red text-red-fg">Short</span>
+                    }
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-secondary small">Giá vào</div>
+                <div class="h3 mb-0">@Model.EntryPrice.ToString("N4")</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-secondary small">Khối lượng</div>
+                <div class="h3 mb-0">@Model.Quantity.ToString("N4")</div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" asp-for="ExitPrice"></label>
+                <div class="input-group">
+                    <input asp-for="ExitPrice" id="exitPrice" class="form-control" type="number" step="any" />
+                    <button type="button" class="btn" id="btnPrice"><i class="ti ti-refresh"></i> Giá hiện tại</button>
+                </div>
+                <span asp-validation-for="ExitPrice" class="text-danger small"></span>
+                <div id="pnlPreview" class="mt-2 small"></div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" asp-for="EmotionAfter"></label>
+                <select asp-for="EmotionAfter" class="form-select" asp-items="Html.GetEnumSelectList<EmotionState>()"></select>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <button type="submit" class="btn btn-primary">Đóng lệnh</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        var entry = @Model.EntryPrice;
+        var qty = @Model.Quantity;
+        var isLong = '@Model.Direction' === 'Long';
+
+        function updatePnl() {
+            var exit = parseFloat(document.getElementById('exitPrice').value);
+            var box = document.getElementById('pnlPreview');
+            if (isNaN(exit)) { box.innerHTML = ''; return; }
+            var pnl = (isLong ? (exit - entry) : (entry - exit)) * qty;
+            var cls = pnl < 0 ? 'text-red' : 'text-green';
+            box.innerHTML = 'PnL dự kiến: <span class="' + cls + '">' + pnl.toFixed(2) + '</span>';
+        }
+        document.getElementById('exitPrice').addEventListener('input', updatePnl);
+        updatePnl();
+
+        document.getElementById('btnPrice').addEventListener('click', async function () {
+            this.disabled = true;
+            try {
+                var res = await fetch('@Url.Action("Price", "Trades")?symbol=@Model.Symbol');
+                var data = await res.json();
+                if (data.ok) { document.getElementById('exitPrice').value = data.price; updatePnl(); }
+                else alert('Không lấy được giá.');
+            } catch { alert('Lỗi khi lấy giá.'); }
+            this.disabled = false;
+        });
+    </script>
+}

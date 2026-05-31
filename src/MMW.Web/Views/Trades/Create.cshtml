@@ -1,0 +1,171 @@
+@using MMW.Domain.Enums
+@model MMW.Web.Models.CreateTradeViewModel
+@{
+    var isEdit = Model.Form.Id > 0;
+    ViewData["Title"] = isEdit ? "Sửa lệnh" : "Ghi nhận lệnh";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col"><h2 class="page-title">@ViewData["Title"]</h2></div>
+        <div class="col-auto"><a asp-action="Index" class="btn">← Nhật ký lệnh</a></div>
+    </div>
+</div>
+
+@if (Model.FromHint is not null)
+{
+    <div class="alert alert-info">
+        <i class="ti ti-bulb me-1"></i> Điền sẵn từ <strong>@Model.FromHint</strong> — kiểm tra & chỉnh trước khi lưu.
+    </div>
+}
+
+<form asp-action="@(isEdit ? "Edit" : "Create")" method="post" class="card">
+    <input type="hidden" asp-for="Form.Id" />
+    <div class="card-body">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label" asp-for="Form.TradingAccountId"></label>
+                <select asp-for="Form.TradingAccountId" class="form-select">
+                    @foreach (var a in Model.Accounts)
+                    {
+                        <option value="@a.Id">@a.Name (@a.Currency)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" asp-for="Form.Symbol"></label>
+                <div class="input-group">
+                    <input asp-for="Form.Symbol" id="symbol" class="form-control" list="symbolList"
+                           placeholder="BTCUSDT" style="text-transform:uppercase" autocomplete="off" />
+                    <button type="button" class="btn" id="btnPrice"><i class="ti ti-refresh"></i> Lấy giá</button>
+                </div>
+                <datalist id="symbolList">
+                    @foreach (var sym in Model.Symbols)
+                    {
+                        <option value="@sym"></option>
+                    }
+                </datalist>
+                <span asp-validation-for="Form.Symbol" class="text-danger small"></span>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" asp-for="Form.Direction"></label>
+                <select asp-for="Form.Direction" class="form-select" asp-items="Html.GetEnumSelectList<TradeDirection>()"></select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" asp-for="Form.OrderType"></label>
+                <select asp-for="Form.OrderType" class="form-select" asp-items="Html.GetEnumSelectList<OrderType>()"></select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" asp-for="Form.Status"></label>
+                <select asp-for="Form.Status" class="form-select">
+                    <option value="@((int)TradeStatus.Open)">Open</option>
+                    <option value="@((int)TradeStatus.Planned)">Planned</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.EntryPrice"></label>
+                <input asp-for="Form.EntryPrice" id="entryPrice" class="form-control" type="number" step="any" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.StopLoss"></label>
+                <input asp-for="Form.StopLoss" id="stopLoss" class="form-control" type="number" step="any" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.TakeProfit"></label>
+                <input asp-for="Form.TakeProfit" class="form-control" type="number" step="any" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.Quantity"></label>
+                <div class="input-group">
+                    <input asp-for="Form.Quantity" id="quantity" class="form-control" type="number" step="any" />
+                    <button type="button" class="btn" id="btnAutoSize" title="Tính theo % rủi ro"><i class="ti ti-calculator"></i></button>
+                </div>
+                <div id="riskInfo" class="form-hint mt-1"></div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.Leverage"></label>
+                <input asp-for="Form.Leverage" class="form-control" type="number" step="any" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.Fee"></label>
+                <input asp-for="Form.Fee" class="form-control" type="number" step="any" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.EmotionBefore"></label>
+                <select asp-for="Form.EmotionBefore" class="form-select" asp-items="Html.GetEnumSelectList<EmotionState>()"></select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" asp-for="Form.StrategyId"></label>
+                <select asp-for="Form.StrategyId" class="form-select">
+                    <option value="">— Không —</option>
+                    @foreach (var s in Model.Strategies)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label" asp-for="Form.Note"></label>
+                <textarea asp-for="Form.Note" class="form-control" rows="2" placeholder="Lý do vào lệnh, điều kiện thị trường..."></textarea>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <button type="submit" class="btn btn-primary">@(isEdit ? "Cập nhật" : "Lưu lệnh")</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        // Dữ liệu rủi ro theo tài khoản (id -> {balance, risk%}).
+        var accountRisk = {
+            @Html.Raw(string.Join(",", Model.AccountRisks.Select(r =>
+                $"\"{r.Id}\":{{balance:{r.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture)},risk:{r.MaxRiskPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")))
+        };
+
+        var accSel = document.getElementById('Form_TradingAccountId');
+        var entryEl = document.getElementById('entryPrice');
+        var slEl = document.getElementById('stopLoss');
+        var qtyEl = document.getElementById('quantity');
+        var infoEl = document.getElementById('riskInfo');
+
+        function computeQty(apply) {
+            var acc = accountRisk[accSel.value];
+            var entry = parseFloat(entryEl.value);
+            var sl = parseFloat(slEl.value);
+            if (!acc || isNaN(entry) || isNaN(sl) || entry === sl) { infoEl.textContent = ''; return; }
+            var dist = Math.abs(entry - sl);
+            var riskAmt = acc.balance * acc.risk / 100;
+            var qty = riskAmt / dist;
+            infoEl.innerHTML = 'Gợi ý: <strong>' + qty.toFixed(8) + '</strong> · rủi ro ' + riskAmt.toFixed(2)
+                + ' (' + acc.risk + '% của ' + acc.balance.toFixed(2) + ')';
+            if (apply) qtyEl.value = qty.toFixed(8);
+        }
+
+        // Auto tính lại khi đổi tài khoản / giá vào / stop loss.
+        [accSel, entryEl, slEl].forEach(function (el) {
+            el.addEventListener('change', function () { computeQty(true); });
+            el.addEventListener('input', function () { computeQty(false); });
+        });
+        document.getElementById('btnAutoSize').addEventListener('click', function () { computeQty(true); });
+        computeQty(false); // hiển thị gợi ý ban đầu, không ghi đè
+
+        document.getElementById('btnPrice').addEventListener('click', async function () {
+            var sym = document.getElementById('symbol').value.trim();
+            if (!sym) return;
+            this.disabled = true;
+            try {
+                var res = await fetch('@Url.Action("Price", "Trades")?symbol=' + encodeURIComponent(sym));
+                var data = await res.json();
+                if (data.ok) { entryEl.value = data.price; computeQty(true); }
+                else alert('Không lấy được giá (kiểm tra symbol / kết nối Binance).');
+            } catch { alert('Lỗi khi lấy giá.'); }
+            this.disabled = false;
+        });
+    </script>
+}

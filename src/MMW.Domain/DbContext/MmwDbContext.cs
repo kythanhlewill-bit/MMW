@@ -26,6 +26,7 @@ public partial class MmwDbContext : Microsoft.EntityFrameworkCore.DbContext
     public virtual DbSet<IndicatorRecord> IndicatorRecords => Set<IndicatorRecord>();
     public virtual DbSet<TradeSignal> TradeSignals => Set<TradeSignal>();
     public virtual DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public virtual DbSet<TradeAnalysis> TradeAnalyses => Set<TradeAnalysis>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

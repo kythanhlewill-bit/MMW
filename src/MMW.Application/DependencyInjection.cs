@@ -61,6 +61,9 @@ public static class DependencyInjection
         // Trade result sync (auto-fetch PnL từ sàn)
         services.AddScoped<ITradeResultSyncService, TradeResultSyncService>();
 
+        // Trade advisor (phân tích lệnh mở + lời khuyên)
+        services.AddScoped<ITradeAdvisorService, TradeAdvisorService>();
+
         return services;
     }
 }

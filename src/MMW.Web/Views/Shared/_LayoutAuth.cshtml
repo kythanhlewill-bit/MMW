@@ -1,18 +1,23 @@
 <!DOCTYPE html>
-<html lang="vi" data-bs-theme="dark">
+<html lang="vi" data-bs-theme="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light" />
     <title>@ViewData["Title"] - MMW</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/core@1.0.0/dist/css/tabler.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/icons-webfont@3.17.0/dist/tabler-icons.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" />
     <style>
         .page-center { min-height: 100vh; }
-        .brand-mark { font-weight: 700; letter-spacing: .04em; font-size: 2rem; color: #4dabf7; }
+        .brand-mark {
+            font-weight: 800; letter-spacing: .04em; font-size: 2.2rem;
+            background: linear-gradient(135deg, #7c5cff 0%, #58a6ff 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
     </style>
 </head>
-<body class="d-flex flex-column bg-dark">
+<body class="d-flex flex-column">
     <div class="page page-center">
         <div class="container container-tight py-4">
             @RenderBody()

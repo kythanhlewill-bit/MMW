@@ -23,6 +23,7 @@ public class Trade : BaseEntity
     public TradeDirection Direction { get; set; }
     public TradeStatus Status { get; set; } = TradeStatus.Planned;
     public TradeSource Source { get; set; } = TradeSource.Manual;
+    public OrderType OrderType { get; set; } = OrderType.Market;
 
     // --- Giá & khối lượng ---
     [Precision(18, 8)] public decimal EntryPrice { get; set; }

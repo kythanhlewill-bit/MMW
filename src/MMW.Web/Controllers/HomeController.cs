@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MMW.Application.Interfaces;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -12,23 +13,37 @@ public class HomeController : Controller
     private readonly IBaseRepository<TradingAccount> _accounts;
     private readonly IBaseRepository<Trade> _trades;
     private readonly IBaseRepository<Flag> _flags;
+    private readonly ISettingsService _settings;
 
     public HomeController(
         IBaseRepository<TradingAccount> accounts,
         IBaseRepository<Trade> trades,
-        IBaseRepository<Flag> flags)
+        IBaseRepository<Flag> flags,
+        ISettingsService settings)
     {
         _accounts = accounts;
         _trades = trades;
         _flags = flags;
+        _settings = settings;
     }
 
     public async Task<IActionResult> Index(long? accountId)
     {
         var allAccounts = (await _accounts.GetAllAsync()).OrderBy(a => a.Name).ToList();
-        var account = accountId.HasValue
-            ? allAccounts.FirstOrDefault(a => a.Id == accountId.Value)
-            : allAccounts.FirstOrDefault(a => a.IsActive);
+
+        TradingAccount? account;
+        if (accountId.HasValue)
+        {
+            account = allAccounts.FirstOrDefault(a => a.Id == accountId.Value);
+        }
+        else
+        {
+            var appSetting = await _settings.GetAppSettingAsync();
+            account = appSetting.DefaultTradingAccountId.HasValue
+                ? allAccounts.FirstOrDefault(a => a.Id == appSetting.DefaultTradingAccountId.Value)
+                : null;
+            account ??= allAccounts.FirstOrDefault(a => a.IsActive);
+        }
 
         var vm = new DashboardViewModel { Accounts = allAccounts, SelectedAccountId = account?.Id };
 

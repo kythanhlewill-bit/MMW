@@ -32,6 +32,14 @@ public enum TradeSource
     Api = 3,
 }
 
+/// <summary>Loại lệnh đặt.</summary>
+public enum OrderType
+{
+    Market = 1,
+    Limit = 2,
+    StopLimit = 3,
+}
+
 public enum TradeOutcome
 {
     Win = 1,

@@ -4,6 +4,7 @@ using MMW.Domain.DbContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MMW.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MmwDbContext))]
-    partial class MmwDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260531070058_AddTradeAnalysis")]
+    partial class AddTradeAnalysis
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -435,9 +438,6 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("OpenedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("OrderType")
-                        .HasColumnType("int");
-
                     b.Property<int?>("Outcome")
                         .HasColumnType("int");
 
@@ -525,9 +525,6 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
-
-                    b.Property<bool>("AiEnhanced")
-                        .HasColumnType("bit");
 
                     b.Property<DateTime>("AnalyzedAt")
                         .HasColumnType("datetime2");

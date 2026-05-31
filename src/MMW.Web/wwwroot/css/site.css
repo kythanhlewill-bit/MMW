@@ -1,1 +1,269 @@
-/* Custom overrides cho theme Tabler. Để trống — thêm style riêng của MMW tại đây. */
+/* ============================================================
+   MMW — Light Glassmorphism (Capi-style)
+   Nền pastel sáng + bong bóng màu, thẻ kính TRẮNG mờ, chữ tối.
+   ============================================================ */
+
+:root {
+    --mmw-accent-1: #7c5cff;   /* tím */
+    --mmw-accent-2: #6366f1;   /* indigo */
+    --mmw-accent-3: #58a6ff;   /* xanh */
+    --mmw-accent-pink: #ec4899;
+    --mmw-gradient: linear-gradient(135deg, #7c5cff 0%, #58a6ff 100%);
+    --mmw-gradient-pink: linear-gradient(135deg, #a06bff 0%, #ec4899 100%);
+
+    --mmw-card-bg: rgba(255, 255, 255, 0.55);
+    --mmw-card-bg-hover: rgba(255, 255, 255, 0.72);
+    --mmw-card-border: rgba(255, 255, 255, 0.65);
+    --mmw-card-blur: 22px;
+
+    --mmw-radius: 22px;
+    --mmw-radius-sm: 13px;
+
+    --mmw-text: #2c2a45;
+    --mmw-text-muted: #6b7280;
+    --mmw-shadow: 0 10px 34px rgba(80, 70, 160, 0.16);
+    --mmw-shadow-hover: 0 16px 44px rgba(80, 70, 160, 0.24);
+}
+
+/* --- Nền pastel + bong bóng màu trôi --- */
+html, body { min-height: 100%; }
+
+body {
+    background: linear-gradient(135deg, #cfeafd 0%, #d9d2fb 42%, #fbd0ec 100%) !important;
+    background-attachment: fixed !important;
+    color: var(--mmw-text) !important;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+}
+
+body::before,
+body::after {
+    content: "";
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.5;
+    z-index: 0;
+    pointer-events: none;
+}
+
+body::before {
+    width: 420px; height: 420px;
+    background: radial-gradient(circle at 30% 30%, #b89cff, transparent 70%);
+    top: -120px; left: -90px;
+    animation: mmwFloatA 20s ease-in-out infinite;
+}
+
+body::after {
+    width: 480px; height: 480px;
+    background: radial-gradient(circle at 70% 70%, #ff9ed8, transparent 70%);
+    bottom: -160px; right: -110px;
+    animation: mmwFloatB 24s ease-in-out infinite;
+}
+
+@keyframes mmwFloatA { 0%,100% { transform: translate(0,0); } 50% { transform: translate(50px,40px); } }
+@keyframes mmwFloatB { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-40px,-30px); } }
+
+.page, .page-wrapper, .page-body { position: relative; z-index: 1; background: transparent !important; }
+
+/* --- Navbar kính trắng --- */
+.navbar,
+.navbar-expand-md {
+    background: rgba(255, 255, 255, 0.45) !important;
+    backdrop-filter: blur(18px) saturate(1.4);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.5) !important;
+    box-shadow: 0 4px 22px rgba(80, 70, 160, 0.08);
+}
+
+.navbar .navbar-brand-text {
+    background: var(--mmw-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 800 !important;
+}
+
+.navbar .nav-link {
+    color: #4b5563 !important;
+    border-radius: var(--mmw-radius-sm);
+    margin: 0 2px;
+    padding: .45rem .85rem !important;
+    transition: all 0.2s ease;
+}
+
+.navbar .nav-link:hover {
+    color: var(--mmw-accent-1) !important;
+    background: rgba(124, 92, 255, 0.10);
+}
+
+.navbar .nav-link.active {
+    color: var(--mmw-accent-1) !important;
+    background: rgba(124, 92, 255, 0.16);
+}
+
+/* --- Thẻ kính --- */
+.card,
+.empty {
+    background: var(--mmw-card-bg) !important;
+    backdrop-filter: blur(var(--mmw-card-blur)) saturate(1.5);
+    -webkit-backdrop-filter: blur(var(--mmw-card-blur)) saturate(1.5);
+    border: 1px solid var(--mmw-card-border) !important;
+    border-radius: var(--mmw-radius) !important;
+    box-shadow: var(--mmw-shadow);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.row-cards .card:hover {
+    transform: translateY(-4px);
+    background: var(--mmw-card-bg-hover) !important;
+    box-shadow: var(--mmw-shadow-hover);
+}
+
+.card-header { background: transparent !important; border-bottom: 1px solid rgba(120, 110, 180, 0.12) !important; }
+.card-footer { background: transparent !important; border-top: 1px solid rgba(120, 110, 180, 0.12) !important; }
+.card-title { color: var(--mmw-text) !important; font-weight: 700; }
+
+/* --- Tiêu đề trang: chữ gradient --- */
+.page-title {
+    background: var(--mmw-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 800;
+}
+
+/* --- Số liệu lớn (dashboard) --- */
+.card h1, .card .h1, .card .h2, .h1 { color: var(--mmw-text) !important; font-weight: 800; }
+.subheader { color: var(--mmw-text-muted) !important; }
+
+/* --- Bảng --- */
+.table { --tblr-table-bg: transparent; color: var(--mmw-text); }
+
+.table thead th {
+    background: rgba(124, 92, 255, 0.06) !important;
+    color: #7c5cff !important;
+    border-bottom: 1px solid rgba(120, 110, 180, 0.14) !important;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.70rem;
+    letter-spacing: 0.05em;
+}
+
+.table td { border-color: rgba(120, 110, 180, 0.10) !important; color: var(--mmw-text); }
+.table tbody tr { transition: background 0.15s ease; }
+.table tbody tr:hover td { background: rgba(124, 92, 255, 0.05) !important; }
+.table-danger, tr.table-danger { background: rgba(239, 68, 68, 0.08) !important; }
+.table-warning, tr.table-warning { background: rgba(245, 158, 11, 0.08) !important; }
+
+/* --- Badge bo tròn --- */
+.badge { border-radius: 999px; font-weight: 600; padding: 0.32em 0.7em; }
+
+/* --- Nút --- */
+.btn {
+    border-radius: var(--mmw-radius-sm);
+    font-weight: 600;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.btn-primary {
+    background: var(--mmw-gradient) !important;
+    border: none !important;
+    box-shadow: 0 6px 18px rgba(124, 92, 255, 0.35);
+    color: #fff !important;
+}
+
+.btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 9px 24px rgba(124, 92, 255, 0.45); }
+
+.btn-outline-primary { border-color: var(--mmw-accent-1) !important; color: var(--mmw-accent-1) !important; }
+.btn-outline-primary:hover { background: rgba(124, 92, 255, 0.12) !important; color: var(--mmw-accent-1) !important; }
+.btn-ghost-primary { color: var(--mmw-accent-1) !important; }
+
+.btn-default, .btn:not([class*="btn-"]) {
+    background: rgba(255, 255, 255, 0.6) !important;
+    border: 1px solid rgba(120, 110, 180, 0.18) !important;
+    color: var(--mmw-text) !important;
+}
+
+/* --- Form kính --- */
+.form-control,
+.form-select {
+    background: rgba(255, 255, 255, 0.6) !important;
+    border: 1px solid rgba(120, 110, 180, 0.2) !important;
+    border-radius: var(--mmw-radius-sm) !important;
+    color: var(--mmw-text) !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.form-control::placeholder { color: #9aa0ac; }
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--mmw-accent-1) !important;
+    box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18) !important;
+    background: rgba(255, 255, 255, 0.85) !important;
+}
+
+.form-label { color: var(--mmw-text-muted); font-weight: 600; font-size: 0.82rem; }
+.form-check-input { background-color: rgba(255,255,255,0.7); border-color: rgba(120,110,180,0.3); }
+.form-check-input:checked { background-color: var(--mmw-accent-1) !important; border-color: var(--mmw-accent-1) !important; }
+.form-check-label { color: var(--mmw-text); }
+
+/* --- Alerts --- */
+.alert { border-radius: var(--mmw-radius-sm); border: 1px solid; backdrop-filter: blur(8px); }
+.alert-success { background: rgba(34, 197, 94, 0.12) !important; border-color: rgba(34,197,94,0.3) !important; color: #15803d !important; }
+.alert-info { background: rgba(59, 130, 246, 0.12) !important; border-color: rgba(59,130,246,0.3) !important; color: #1d4ed8 !important; }
+.alert-warning { background: rgba(245, 158, 11, 0.14) !important; border-color: rgba(245,158,11,0.3) !important; color: #b45309 !important; }
+.alert-danger { background: rgba(239, 68, 68, 0.12) !important; border-color: rgba(239,68,68,0.3) !important; color: #b91c1c !important; }
+
+/* --- Progress --- */
+.progress { background: rgba(124, 92, 255, 0.12); border-radius: 999px; overflow: hidden; }
+.progress-bar { background: var(--mmw-gradient-pink) !important; border-radius: 999px; }
+
+/* --- Màu PnL trên nền sáng --- */
+.text-green { color: #16a34a !important; }
+.text-red { color: #dc2626 !important; }
+.text-blue { color: #2563eb !important; }
+.text-orange { color: #ea580c !important; }
+.text-secondary { color: var(--mmw-text-muted) !important; }
+.text-muted { color: rgba(107, 114, 128, 0.75) !important; }
+
+/* --- Dropdown kính --- */
+.dropdown-menu {
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, 0.7) !important;
+    border-radius: var(--mmw-radius-sm) !important;
+    box-shadow: var(--mmw-shadow);
+}
+.dropdown-item { color: var(--mmw-text) !important; border-radius: 9px; }
+.dropdown-item:hover { background: rgba(124, 92, 255, 0.12) !important; color: var(--mmw-accent-1) !important; }
+
+/* --- Empty state --- */
+.empty-icon { color: var(--mmw-accent-1); opacity: 0.7; }
+.empty-title { color: var(--mmw-text) !important; }
+.empty-subtitle { color: var(--mmw-text-muted) !important; }
+
+/* --- Avatar --- */
+.avatar { background: var(--mmw-gradient) !important; color: #fff !important; box-shadow: 0 4px 12px rgba(124,92,255,0.3); }
+
+/* --- List group (Settings) --- */
+.list-group-item { background: transparent !important; border-color: rgba(120,110,180,0.12) !important; color: var(--mmw-text) !important; }
+.list-group-item-action:hover { background: rgba(124, 92, 255, 0.07) !important; }
+
+/* --- Footer --- */
+.footer { color: var(--mmw-text-muted); border-top: 1px solid rgba(120,110,180,0.12); }
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(124, 92, 255, 0.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(124, 92, 255, 0.5); }
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+    :root { --mmw-radius: 18px; --mmw-radius-sm: 11px; --mmw-card-blur: 16px; }
+    .card { margin-bottom: 0.75rem; }
+}

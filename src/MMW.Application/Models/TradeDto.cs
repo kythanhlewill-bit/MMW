@@ -13,6 +13,7 @@ public class TradeDto
     public TradeDirection Direction { get; set; }
     public TradeStatus Status { get; set; }
     public TradeSource Source { get; set; }
+    public OrderType OrderType { get; set; }
 
     public decimal EntryPrice { get; set; }
     public decimal? ExitPrice { get; set; }

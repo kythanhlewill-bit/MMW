@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
 using MMW.Domain.DbContext;
+using MMW.Infrastructure.Ai;
 using MMW.Infrastructure.Exchanges.Binance;
 using MMW.Infrastructure.Repositories;
 using MMW.Shared.Interfaces;
@@ -54,6 +56,18 @@ public static class DependencyInjection
         // Factory cho multi-account (mỗi account có API key riêng).
         services.AddHttpClient("BinanceApi");
         services.AddScoped<IExchangeAccountProviderFactory, BinanceAccountProviderFactory>();
+
+        // --- AI / LLM ---
+        services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.Section));
+        services.AddHttpClient<ILlmService, MiniMaxLlmService>((sp, client) =>
+        {
+            var opt = sp.GetRequiredService<IOptions<LlmOptions>>().Value;
+            if (!string.IsNullOrWhiteSpace(opt.BaseUrl))
+                client.BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/");
+            if (!string.IsNullOrWhiteSpace(opt.ApiKey))
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opt.ApiKey);
+            client.Timeout = TimeSpan.FromSeconds(opt.TimeoutSeconds > 0 ? opt.TimeoutSeconds : 30);
+        });
 
         return services;
     }

@@ -86,4 +86,10 @@ RecurringJob.AddOrUpdate<ITradeResultSyncService>(
     job => job.SyncAllAccountsAsync(CancellationToken.None),
     "*/2 * * * *");
 
+// Job phân tích lệnh đang mở: mỗi 3 phút.
+RecurringJob.AddOrUpdate<ITradeAdvisorService>(
+    "trade-advisor",
+    job => job.AnalyzeOpenTradesAsync(CancellationToken.None),
+    "*/1 * * * *");
+
 app.Run();
