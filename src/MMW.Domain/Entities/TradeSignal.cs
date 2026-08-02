@@ -5,7 +5,7 @@ using MMW.Domain.Enums;
 namespace MMW.Domain.Entities;
 
 /// <summary>
-/// Đề xuất lệnh sinh tự động từ phân tích mỗi lần quét (deterministic). Lưu lịch sử toàn bộ.
+/// Đề xuất lệnh sinh tự động từ AI mỗi lần quét. Lưu lịch sử toàn bộ.
 /// Đây CHỈ là gợi ý — không phải lệnh thật trong journal.
 /// </summary>
 public class TradeSignal : BaseEntity

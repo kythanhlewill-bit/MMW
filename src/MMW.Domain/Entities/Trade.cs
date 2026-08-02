@@ -17,6 +17,12 @@ public class Trade : BaseEntity
     public long? StrategyId { get; set; }
     public Strategy? Strategy { get; set; }
 
+    /// <summary>
+    /// Phiếu chấm điểm đã sinh ra lệnh này. Null với lệnh nhập tay hoặc lệnh từ đường AI cũ.
+    /// Liên kết ngược này là thứ cho phép hỏi "lệnh thua hôm qua điểm bao nhiêu, tiêu chí nào yếu".
+    /// </summary>
+    public long? EntryScorecardId { get; set; }
+
     [Required, MaxLength(30)]
     public string Symbol { get; set; } = null!;
 
@@ -31,7 +37,7 @@ public class Trade : BaseEntity
     [Precision(18, 8)] public decimal? StopLoss { get; set; }
     [Precision(18, 8)] public decimal? TakeProfit { get; set; }
     [Precision(18, 8)] public decimal Quantity { get; set; }
-    [Precision(9, 4)] public decimal? Leverage { get; set; }
+    [Precision(9, 4)] public decimal? Leverage { get; set; } = 20m;
     [Precision(18, 8)] public decimal Fee { get; set; }
     [Precision(18, 8)] public decimal? RealizedPnl { get; set; }
 
@@ -63,6 +69,17 @@ public class Trade : BaseEntity
     [MaxLength(500)] public string? ImageUrl { get; set; }
     /// <summary>Mã lệnh từ sàn khi import (chống trùng).</summary>
     [MaxLength(100)] public string? ExternalId { get; set; }
+
+    // --- Live trading (đặt lệnh thật lên sàn) ---
+    /// <summary>True nếu lệnh đã được gửi thật lên sàn (không chỉ ghi nhật ký).</summary>
+    public bool IsLive { get; set; }
+    public LiveOrderStatus LiveStatus { get; set; } = LiveOrderStatus.None;
+    /// <summary>orderId entry do sàn trả về.</summary>
+    [MaxLength(100)] public string? ExchangeOrderId { get; set; }
+    /// <summary>clientOrderId tự sinh để chống đặt trùng (idempotency).</summary>
+    [MaxLength(100)] public string? ExchangeClientOrderId { get; set; }
+    /// <summary>Ghi chú trạng thái live (lý do block / message lỗi).</summary>
+    [MaxLength(500)] public string? LiveNote { get; set; }
 
     // Navigation
     public ICollection<TradeTag> Tags { get; set; } = new List<TradeTag>();

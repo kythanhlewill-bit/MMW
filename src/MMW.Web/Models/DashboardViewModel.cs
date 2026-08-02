@@ -8,6 +8,8 @@ public class DashboardViewModel
     public string? AccountName { get; set; }
     public string Currency { get; set; } = "USDT";
     public decimal Balance { get; set; }
+    public decimal? LiveBalance { get; set; }
+    public string? LiveBalanceFetchError { get; set; }
 
     public int TotalTrades { get; set; }
     public int OpenTrades { get; set; }

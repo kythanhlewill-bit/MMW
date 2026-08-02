@@ -1,0 +1,551 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text.Json.Serialization;
+using System.Text.Json;
+using MMW.Application.MarketData;
+using MMW.Application.MarketData.Models;
+using MMW.Domain.Entities;
+using MMW.Shared.Interfaces;
+
+namespace MMW.Infrastructure.Exchanges.Binance;
+
+/// <summary>
+/// Đặt lệnh USDT-M Futures bằng API key có quyền trading (ký HMAC-SHA256, POST).
+/// Tự làm tròn khối lượng/giá về precision (stepSize/tickSize) của từng symbol để tránh lỗi -1111.
+/// </summary>
+public class BinanceFuturesOrderProvider : IExchangeOrderProvider
+{
+    private readonly HttpClient _http;
+    private readonly string _apiKey;
+    private readonly string _apiSecret;
+    private readonly IBaseRepository<ExchangeApiAuditRecord> _apiAudits;
+    private readonly IUnitOfWork _unitOfWork;
+
+    private static readonly JsonSerializerOptions AuditJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    // Precision theo symbol ít đổi → cache tĩnh dùng chung mọi instance.
+    private static readonly ConcurrentDictionary<string, SymbolFilter> FilterCache = new();
+
+    // Position Mode (Hedge vs One-way) gắn theo TÀI KHOẢN → cache theo instance (mỗi instance 1 API key).
+    private bool? _isHedgeMode;
+    private readonly SemaphoreSlim _hedgeGate = new(1, 1);
+
+    public BinanceFuturesOrderProvider(
+        HttpClient http,
+        string apiKey,
+        string apiSecret,
+        IBaseRepository<ExchangeApiAuditRecord> apiAudits,
+        IUnitOfWork unitOfWork)
+    {
+        _http = http;
+        _apiKey = apiKey;
+        _apiSecret = apiSecret;
+        _apiAudits = apiAudits;
+        _unitOfWork = unitOfWork;
+    }
+
+    public async Task<ExchangeOrderResult> PlaceFuturesOrderAsync(FuturesOrderRequest req, CancellationToken cancellationToken = default)
+    {
+        var symbol = req.Symbol.ToUpperInvariant();
+        var filter = await GetFiltersAsync(symbol, cancellationToken);
+        var hedge = await IsHedgeModeAsync(cancellationToken);
+
+        var p = new List<KeyValuePair<string, string>>
+        {
+            new("symbol", symbol),
+            new("side", req.Side == OrderSide.Buy ? "BUY" : "SELL"),
+            new("type", MapType(req.Kind)),
+        };
+
+        // Hedge Mode: bắt buộc positionSide LONG/SHORT. One-way: KHÔNG gửi (mặc định BOTH).
+        if (hedge)
+        {
+            var posSide = req.PositionSide switch
+            {
+                FuturesPositionSide.Long => "LONG",
+                FuturesPositionSide.Short => "SHORT",
+                // Chưa chỉ định rõ phía: suy từ side (chỉ đúng cho lệnh MỞ, không phải lệnh đóng).
+                _ => req.Side == OrderSide.Buy ? "LONG" : "SHORT",
+            };
+            p.Add(new("positionSide", posSide));
+        }
+
+        if (req.Kind == FuturesOrderKind.Limit)
+        {
+            p.Add(new("timeInForce", req.TimeInForce));
+            if (req.Price is decimal price) p.Add(new("price", FmtPrice(price, filter)));
+        }
+
+        if (req.StopPrice is decimal stop) p.Add(new("stopPrice", FmtPrice(stop, filter)));
+
+        if (req.ClosePosition)
+        {
+            p.Add(new("closePosition", "true"));
+        }
+        else if (req.Quantity is decimal qty)
+        {
+            var snapped = SnapQuantity(qty, filter);
+            if (snapped <= 0m)
+                throw new InvalidOperationException(
+                    $"Khối lượng {qty} sau khi làm tròn theo stepSize {filter?.StepSize} = 0 (nhỏ hơn mức tối thiểu của {symbol}).");
+            p.Add(new("quantity", FmtWithDecimals(snapped, filter?.QtyDecimals ?? 8)));
+        }
+
+        // reduceOnly KHÔNG hợp lệ ở Hedge Mode (positionSide đã đủ phân biệt). Chỉ gửi ở One-way.
+        if (!hedge && req.ReduceOnly && !req.ClosePosition)
+            p.Add(new("reduceOnly", "true"));
+
+        if (!string.IsNullOrWhiteSpace(req.NewClientOrderId))
+            p.Add(new("newClientOrderId", req.NewClientOrderId!));
+
+        using var doc = await SignedSendAsync(HttpMethod.Post, "/fapi/v1/order", p, cancellationToken);
+        var root = doc.RootElement;
+        var orderId = root.TryGetProperty("orderId", out var oid) ? oid.GetRawText().Trim('"') : "";
+        var clientId = root.TryGetProperty("clientOrderId", out var cid) ? cid.GetString() : null;
+        var status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "";
+        return new ExchangeOrderResult(orderId, clientId, status);
+    }
+
+    public async Task SetLeverageAsync(string symbol, int leverage, CancellationToken cancellationToken = default)
+    {
+        var p = new List<KeyValuePair<string, string>>
+        {
+            new("symbol", symbol.ToUpperInvariant()),
+            new("leverage", leverage.ToString(CultureInfo.InvariantCulture)),
+        };
+        using var _ = await SignedSendAsync(HttpMethod.Post, "/fapi/v1/leverage", p, cancellationToken);
+    }
+
+    public async Task CancelOrderAsync(string symbol, string orderId, CancellationToken cancellationToken = default)
+    {
+        var p = new List<KeyValuePair<string, string>>
+        {
+            new("symbol", symbol.ToUpperInvariant()),
+            new("orderId", orderId),
+        };
+        using var _ = await SignedSendAsync(HttpMethod.Delete, "/fapi/v1/order", p, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ExchangePosition>> GetOpenPositionsAsync(string? symbol = null, CancellationToken cancellationToken = default)
+    {
+        var p = new List<KeyValuePair<string, string>>();
+        if (!string.IsNullOrWhiteSpace(symbol)) p.Add(new("symbol", symbol.ToUpperInvariant()));
+
+        using var doc = await SignedSendAsync(HttpMethod.Get, "/fapi/v2/positionRisk", p, cancellationToken);
+        var list = new List<ExchangePosition>();
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                var amt = ParseDec(e.TryGetProperty("positionAmt", out var pa) ? pa.GetString() : "0");
+                if (amt == 0m) continue;
+                var sym = e.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+                var entry = ParseDec(e.TryGetProperty("entryPrice", out var ep) ? ep.GetString() : "0");
+                DateTime? updatedAtUtc = null;
+                if (e.TryGetProperty("updateTime", out var updateTime)
+                    && updateTime.TryGetInt64(out var updateTimeMs)
+                    && updateTimeMs > 0)
+                {
+                    updatedAtUtc = DateTimeOffset.FromUnixTimeMilliseconds(updateTimeMs).UtcDateTime;
+                }
+
+                list.Add(new ExchangePosition(sym, amt, entry, updatedAtUtc));
+            }
+        }
+        return list;
+    }
+
+    public async Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenOrdersAsync(string? symbol = null, CancellationToken cancellationToken = default)
+    {
+        var p = new List<KeyValuePair<string, string>>();
+        if (!string.IsNullOrWhiteSpace(symbol)) p.Add(new("symbol", symbol.ToUpperInvariant()));
+
+        using var doc = await SignedSendAsync(HttpMethod.Get, "/fapi/v1/openOrders", p, cancellationToken);
+        var list = new List<ExchangeOpenOrder>();
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+
+        foreach (var e in doc.RootElement.EnumerateArray())
+        {
+            string Str(string name) => e.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
+            decimal Dec(string name) => e.TryGetProperty(name, out var v) ? ParseDec(v.GetString()) : 0m;
+            bool Bool(string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+
+            var side = string.Equals(Str("side"), "BUY", StringComparison.OrdinalIgnoreCase) ? OrderSide.Buy : OrderSide.Sell;
+            var timeMs = e.TryGetProperty("time", out var t) && t.TryGetInt64(out var ms) ? ms : 0L;
+
+            list.Add(new ExchangeOpenOrder(
+                Str("symbol"),
+                e.TryGetProperty("orderId", out var oid) ? oid.GetRawText().Trim('"') : "",
+                Str("clientOrderId"),
+                side,
+                Str("type"),
+                Str("positionSide"),
+                Dec("price"),
+                Dec("stopPrice"),
+                Dec("origQty"),
+                Dec("executedQty"),
+                Bool("reduceOnly"),
+                Bool("closePosition"),
+                DateTimeOffset.FromUnixTimeMilliseconds(timeMs).UtcDateTime));
+        }
+        return list;
+    }
+
+    public async Task CancelAllOpenOrdersAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        var p = new List<KeyValuePair<string, string>> { new("symbol", symbol.ToUpperInvariant()) };
+        using var _ = await SignedSendAsync(HttpMethod.Delete, "/fapi/v1/allOpenOrders", p, cancellationToken);
+    }
+
+    public async Task ClosePositionAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        // Hedge Mode có thể tồn tại đồng thời cả Long lẫn Short cùng symbol → đóng từng phía.
+        var positions = await GetOpenPositionsAsync(symbol, cancellationToken);
+        foreach (var pos in positions.Where(x =>
+                     string.Equals(x.Symbol, symbol, StringComparison.OrdinalIgnoreCase) && x.PositionAmt != 0m))
+        {
+            await PlaceFuturesOrderAsync(new FuturesOrderRequest
+            {
+                Symbol = symbol,
+                Side = pos.PositionAmt > 0m ? OrderSide.Sell : OrderSide.Buy, // đóng Long bằng Sell và ngược lại
+                Kind = FuturesOrderKind.Market,
+                Quantity = Math.Abs(pos.PositionAmt),
+                PositionSide = pos.PositionAmt > 0m ? FuturesPositionSide.Long : FuturesPositionSide.Short,
+                ReduceOnly = true,
+            }, cancellationToken);
+        }
+    }
+
+    public async Task<decimal> NormalizeQuantityAsync(string symbol, decimal desiredQty, CancellationToken cancellationToken = default)
+    {
+        var filter = await GetFiltersAsync(symbol.ToUpperInvariant(), cancellationToken);
+        var snapped = SnapQuantity(desiredQty, filter);
+        // Ép lên min sàn nếu nhỏ hơn (caller sẽ chấm lại rule với qty này).
+        if (filter is { MinQty: > 0m } && snapped < filter.MinQty)
+            snapped = filter.MinQty;
+        return snapped;
+    }
+
+    public async Task<decimal> NormalizeQuantityForNotionalAsync(
+        string symbol,
+        decimal desiredQty,
+        decimal entryPrice,
+        decimal minNotionalUsdt,
+        CancellationToken cancellationToken = default)
+    {
+        var filter = await GetFiltersAsync(symbol.ToUpperInvariant(), cancellationToken);
+        var snapped = SnapQuantity(desiredQty, filter);
+        if (filter is { MinQty: > 0m } && snapped < filter.MinQty)
+            snapped = filter.MinQty;
+
+        if (entryPrice <= 0m || minNotionalUsdt <= 0m)
+            return snapped;
+
+        var minQtyByNotional = minNotionalUsdt / entryPrice;
+        var snappedMinQty = SnapQuantityUp(minQtyByNotional, filter);
+        if (filter is { MinQty: > 0m } && snappedMinQty < filter.MinQty)
+            snappedMinQty = filter.MinQty;
+
+        return snapped < snappedMinQty ? snappedMinQty : snapped;
+    }
+
+    /// <summary>
+    /// Tài khoản đang ở Hedge Mode (dualSidePosition=true) hay One-way? Hỏi sàn 1 lần rồi cache theo instance.
+    /// Lỗi mạng → coi như One-way (an toàn, giữ hành vi cũ).
+    /// </summary>
+    private async Task<bool> IsHedgeModeAsync(CancellationToken ct)
+    {
+        if (_isHedgeMode is bool cached) return cached;
+
+        await _hedgeGate.WaitAsync(ct);
+        try
+        {
+            if (_isHedgeMode is bool c) return c;
+            try
+            {
+                using var doc = await SignedSendAsync(
+                    HttpMethod.Get, "/fapi/v1/positionSide/dual", new List<KeyValuePair<string, string>>(), ct);
+                _isHedgeMode = doc.RootElement.TryGetProperty("dualSidePosition", out var d) && d.GetBoolean();
+            }
+            catch
+            {
+                _isHedgeMode = false; // không xác định được → mặc định One-way
+            }
+            return _isHedgeMode.Value;
+        }
+        finally
+        {
+            _hedgeGate.Release();
+        }
+    }
+
+    // --- Precision (stepSize / tickSize / minQty) ---
+
+    private sealed record SymbolFilter(decimal StepSize, int QtyDecimals, decimal TickSize, int PriceDecimals, decimal MinQty);
+
+    private async Task<SymbolFilter?> GetFiltersAsync(string symbol, CancellationToken ct)
+    {
+        if (FilterCache.TryGetValue(symbol, out var cached)) return cached;
+        try
+        {
+            using var resp = await _http.GetAsync($"/fapi/v1/exchangeInfo?symbol={symbol}", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("symbols", out var symbols) || symbols.GetArrayLength() == 0)
+                return null;
+
+            decimal step = 0m, tick = 0m, minQty = 0m;
+            foreach (var f in symbols[0].GetProperty("filters").EnumerateArray())
+            {
+                var type = f.GetProperty("filterType").GetString();
+                if (type == "LOT_SIZE")
+                {
+                    if (f.TryGetProperty("stepSize", out var ss)) step = ParseDec(ss.GetString());
+                    if (f.TryGetProperty("minQty", out var mq)) minQty = ParseDec(mq.GetString());
+                }
+                else if (type == "PRICE_FILTER" && f.TryGetProperty("tickSize", out var ts))
+                {
+                    tick = ParseDec(ts.GetString());
+                }
+            }
+
+            var filter = new SymbolFilter(step, DecimalsOf(step), tick, DecimalsOf(tick), minQty);
+            FilterCache[symbol] = filter;
+            return filter;
+        }
+        catch
+        {
+            return null; // không lấy được filter → fallback định dạng chung (best effort)
+        }
+    }
+
+    /// <summary>Làm tròn XUỐNG khối lượng về bội số stepSize (không vượt rủi ro dự kiến).</summary>
+    private static decimal SnapQuantity(decimal qty, SymbolFilter? f)
+    {
+        if (f is not { StepSize: > 0m }) return qty;
+        var snapped = Math.Floor(qty / f.StepSize) * f.StepSize;
+        return Math.Round(snapped, f.QtyDecimals, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>Làm tròn LÊN khối lượng về bội số stepSize để đạt min notional.</summary>
+    private static decimal SnapQuantityUp(decimal qty, SymbolFilter? f)
+    {
+        if (f is not { StepSize: > 0m }) return qty;
+        var snapped = Math.Ceiling(qty / f.StepSize) * f.StepSize;
+        return Math.Round(snapped, f.QtyDecimals, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>Làm tròn giá về bội số tickSize (gần nhất).</summary>
+    private static decimal SnapPrice(decimal price, SymbolFilter? f)
+    {
+        if (f is not { TickSize: > 0m }) return price;
+        var snapped = Math.Round(price / f.TickSize, MidpointRounding.AwayFromZero) * f.TickSize;
+        return Math.Round(snapped, f.PriceDecimals, MidpointRounding.AwayFromZero);
+    }
+
+    private static string FmtPrice(decimal price, SymbolFilter? f) =>
+        f is { TickSize: > 0m } ? FmtWithDecimals(SnapPrice(price, f), f.PriceDecimals) : FmtGeneral(price);
+
+    private static string FmtWithDecimals(decimal v, int decimals) =>
+        v.ToString("F" + Math.Clamp(decimals, 0, 18), CultureInfo.InvariantCulture);
+
+    private static string FmtGeneral(decimal d) => d.ToString("0.############", CultureInfo.InvariantCulture);
+
+    private static decimal ParseDec(string? s) =>
+        decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+
+    /// <summary>Số chữ số thập phân của step/tick (vd 0.001 → 3, 0.10 → 1, 1 → 0).</summary>
+    private static int DecimalsOf(decimal step)
+    {
+        if (step <= 0m) return 0;
+        var s = step.ToString(CultureInfo.InvariantCulture);
+        var dot = s.IndexOf('.');
+        if (dot < 0) return 0;
+        return s.TrimEnd('0').Length - dot - 1;
+    }
+
+    private async Task<JsonDocument> SignedSendAsync(
+        HttpMethod method, string path, List<KeyValuePair<string, string>> p, CancellationToken ct)
+    {
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        p.Add(new("recvWindow", "5000"));
+        p.Add(new("timestamp", timestamp.ToString(CultureInfo.InvariantCulture)));
+
+        var query = string.Join("&", p.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
+        var signature = BinanceSigner.Sign(query, _apiSecret);
+        var url = $"{path}?{query}&signature={signature}";
+
+        using var request = new HttpRequestMessage(method, url);
+        request.Headers.Add("X-MBX-APIKEY", _apiKey);
+
+        var requestedAt = DateTime.UtcNow;
+        try
+        {
+            using var response = await _http.SendAsync(request, ct);
+            var respondedAt = DateTime.UtcNow;
+            var body = await response.Content.ReadAsStringAsync(ct);
+
+            await AuditAsync(method, path, p, response, body, requestedAt, respondedAt, ct);
+
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Binance order lỗi ({(int)response.StatusCode}): {body}");
+
+            return JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            await AuditFailureAsync(method, path, p, requestedAt, DateTime.UtcNow, ex, ct);
+            throw;
+        }
+    }
+
+    private async Task AuditAsync(
+        HttpMethod method,
+        string path,
+        IReadOnlyList<KeyValuePair<string, string>> parameters,
+        HttpResponseMessage response,
+        string body,
+        DateTime requestedAt,
+        DateTime respondedAt,
+        CancellationToken ct)
+    {
+        try
+        {
+            var parameterMap = parameters
+                .GroupBy(p => p.Key)
+                .ToDictionary(
+                    g => g.Key,
+                    g => Redact(g.Key, g.Last().Value),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var symbol = parameterMap.TryGetValue("symbol", out var s) ? s : null;
+            var clientOrderId = parameterMap.TryGetValue("newClientOrderId", out var cid) ? cid : null;
+
+            await _apiAudits.AddAsync(new ExchangeApiAuditRecord
+            {
+                Exchange = "Binance",
+                Symbol = symbol,
+                Method = method.Method,
+                Path = path,
+                ClientOrderId = clientOrderId,
+                RequestedAtUtc = requestedAt,
+                RespondedAtUtc = respondedAt,
+                DurationMs = (int)Math.Max(0, (respondedAt - requestedAt).TotalMilliseconds),
+                StatusCode = (int)response.StatusCode,
+                Succeeded = response.IsSuccessStatusCode,
+                RequestJson = JsonSerializer.Serialize(new
+                {
+                    baseUrl = _http.BaseAddress?.ToString(),
+                    path,
+                    method = method.Method,
+                    parameters = parameterMap,
+                    headers = new
+                    {
+                        xMbxApiKey = MaskKey(_apiKey),
+                    },
+                }, AuditJsonOptions),
+                ResponseJson = Truncate(body, 4000),
+                Error = response.IsSuccessStatusCode ? null : Truncate(body, 500),
+            });
+
+            await _unitOfWork.CommitAsync(ct);
+        }
+        catch
+        {
+            // Audit không được làm hỏng luồng đặt lệnh thật.
+        }
+    }
+
+    private async Task AuditFailureAsync(
+        HttpMethod method,
+        string path,
+        IReadOnlyList<KeyValuePair<string, string>> parameters,
+        DateTime requestedAt,
+        DateTime failedAt,
+        Exception ex,
+        CancellationToken ct)
+    {
+        try
+        {
+            var parameterMap = parameters
+                .GroupBy(p => p.Key)
+                .ToDictionary(
+                    g => g.Key,
+                    g => Redact(g.Key, g.Last().Value),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var symbol = parameterMap.TryGetValue("symbol", out var s) ? s : null;
+            var clientOrderId = parameterMap.TryGetValue("newClientOrderId", out var cid) ? cid : null;
+
+            await _apiAudits.AddAsync(new ExchangeApiAuditRecord
+            {
+                Exchange = "Binance",
+                Symbol = symbol,
+                Method = method.Method,
+                Path = path,
+                ClientOrderId = clientOrderId,
+                RequestedAtUtc = requestedAt,
+                RespondedAtUtc = failedAt,
+                DurationMs = (int)Math.Max(0, (failedAt - requestedAt).TotalMilliseconds),
+                Succeeded = false,
+                RequestJson = JsonSerializer.Serialize(new
+                {
+                    baseUrl = _http.BaseAddress?.ToString(),
+                    path,
+                    method = method.Method,
+                    parameters = parameterMap,
+                    headers = new
+                    {
+                        xMbxApiKey = MaskKey(_apiKey),
+                    },
+                }, AuditJsonOptions),
+                Error = Truncate(ex.Message, 500),
+            });
+
+            await _unitOfWork.CommitAsync(ct);
+        }
+        catch
+        {
+            // Audit không được làm hỏng luồng đặt lệnh thật.
+        }
+    }
+
+    private static string Redact(string key, string value)
+    {
+        if (key.Equals("signature", StringComparison.OrdinalIgnoreCase))
+            return "***redacted***";
+        if (key.Contains("secret", StringComparison.OrdinalIgnoreCase) || key.Contains("apiKey", StringComparison.OrdinalIgnoreCase))
+            return "***redacted***";
+        return value;
+    }
+
+    private static string MaskKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        if (value.Length <= 8)
+            return "***";
+        return value[..4] + "***" + value[^4..];
+    }
+
+    private static string Truncate(string? value, int max)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= max)
+            return value ?? "";
+        return value[..max];
+    }
+
+    private static string MapType(FuturesOrderKind kind) => kind switch
+    {
+        FuturesOrderKind.Market => "MARKET",
+        FuturesOrderKind.Limit => "LIMIT",
+        FuturesOrderKind.StopMarket => "STOP_MARKET",
+        FuturesOrderKind.TakeProfitMarket => "TAKE_PROFIT_MARKET",
+        _ => "MARKET",
+    };
+}

@@ -20,7 +20,7 @@ public class TradeDto
     public decimal? StopLoss { get; set; }
     public decimal? TakeProfit { get; set; }
     public decimal Quantity { get; set; }
-    public decimal? Leverage { get; set; }
+    public decimal? Leverage { get; set; } = 20m;
     public decimal Fee { get; set; }
     public decimal? RealizedPnl { get; set; }
 
@@ -39,4 +39,9 @@ public class TradeDto
     public string? Note { get; set; }
     public string? ImageUrl { get; set; }
     public string? ExternalId { get; set; }
+
+    // --- Live trading ---
+    public bool IsLive { get; set; }
+    public LiveOrderStatus LiveStatus { get; set; }
+    public string? LiveNote { get; set; }
 }

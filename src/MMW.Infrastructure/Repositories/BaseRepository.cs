@@ -81,7 +81,38 @@ public class BaseRepository<TEntity> : IBaseRepository<TEntity> where TEntity : 
 
     public void Remove(TEntity entity) => _dbSet.Remove(entity);
 
-    public void RemoveRange(IEnumerable<TEntity> entities) => _dbSet.RemoveRange(entities);
+    public void RemoveRange(IEnumerable<TEntity> entities)
+    {
+        foreach (var entity in entities)
+        {
+            var entry = _dbContext.Entry(entity);
+            if (entry.State != EntityState.Detached)
+            {
+                entry.State = EntityState.Deleted;
+            }
+            else
+            {
+                // Nếu entity là detached (từ AsNoTracking), kiểm tra xem đã có
+                // instance cùng key đang được tracked chưa để tránh identity conflict.
+                var pk = entry.Metadata.FindPrimaryKey()!;
+                var keyValues = pk.Properties
+                    .Select(p => entry.Property(p.Name).CurrentValue)
+                    .ToArray();
+                var trackedEntry = _dbContext.ChangeTracker.Entries<TEntity>()
+                    .FirstOrDefault(e =>
+                    {
+                        var trackedKeys = pk.Properties
+                            .Select(p => e.Property(p.Name).CurrentValue)
+                            .ToArray();
+                        return keyValues.SequenceEqual(trackedKeys);
+                    });
+                if (trackedEntry != null)
+                    trackedEntry.State = EntityState.Deleted;
+                else
+                    _dbSet.Remove(entity);
+            }
+        }
+    }
 
     public async Task RemoveAsync(object id)
     {

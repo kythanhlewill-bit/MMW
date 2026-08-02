@@ -40,6 +40,25 @@ public enum OrderType
     StopLimit = 3,
 }
 
+/// <summary>Trạng thái gửi lệnh THẬT lên sàn (live trading).</summary>
+public enum LiveOrderStatus
+{
+    /// <summary>Chưa gửi (lệnh chỉ ghi nhật ký, không live).</summary>
+    None = 0,
+    /// <summary>Đã gửi lên sàn, chờ khớp.</summary>
+    Submitted = 1,
+    /// <summary>Đã khớp.</summary>
+    Filled = 2,
+    /// <summary>Bị chặn trước khi gửi (vi phạm rule/cap).</summary>
+    Blocked = 3,
+    /// <summary>Lỗi khi gửi lên sàn.</summary>
+    Error = 4,
+    /// <summary>Đã huỷ.</summary>
+    Canceled = 5,
+    /// <summary>Entry đã vào sàn nhưng SL/TP đặt lỗi — đang chờ job retry đặt lại.</summary>
+    SltpPending = 6,
+}
+
 public enum TradeOutcome
 {
     Win = 1,
@@ -110,4 +129,130 @@ public enum FlagType
     Tilt = 202,
     LossStreak = 203,
     OversizedAfterLoss = 204,
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Deterministic Intraday Trading Engine — 3xx
+// ─────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Mức tác động của một sự kiện vĩ mô. Đặt ở Domain vì thực thể <c>ScheduledEvent</c> dùng nó;
+/// trước đây nằm ở <c>MMW.Application.Models</c>, nơi Domain không với tới được.
+/// </summary>
+public enum MacroEventImpact
+{
+    Low = 1,
+    Medium = 2,
+    High = 3,
+    Critical = 4,
+}
+
+/// <summary>Trạng thái thị trường của một ngày, do tầng kế hoạch ngày phân loại.</summary>
+public enum DayRegime
+{
+    TrendUp = 1,
+    TrendDown = 2,
+    Range = 3,
+    HighVolatility = 4,
+    EventDay = 5,
+}
+
+/// <summary>Vùng biến động theo percentile 90 ngày của ATR(14) D1 chia giá.</summary>
+public enum VolatilityRegime
+{
+    /// <summary>Percentile &lt; 25.</summary>
+    Low = 1,
+    /// <summary>Percentile 25–75.</summary>
+    Normal = 2,
+    /// <summary>Percentile 75–90.</summary>
+    High = 3,
+    /// <summary>Percentile &gt; 90.</summary>
+    Extreme = 4,
+}
+
+/// <summary>Chiều được phép vào lệnh trong ngày. Ngày trend chỉ cho một chiều thuận trend.</summary>
+public enum AllowedDirections
+{
+    None = 0,
+    LongOnly = 1,
+    ShortOnly = 2,
+    Both = 3,
+}
+
+/// <summary>Loại sự kiện trên cuốn lịch nội bộ.</summary>
+public enum ScheduledEventKind
+{
+    Cpi = 1,
+    Ppi = 2,
+    Nfp = 3,
+    FomcStatement = 4,
+    FomcPressConference = 5,
+    Pce = 6,
+    Gdp = 7,
+    JoblessClaims = 8,
+
+    /// <summary>Đáo hạn quyền chọn Deribit, thứ Sáu 08:00 UTC.</summary>
+    OptionsExpiry = 20,
+    /// <summary>Thanh toán phí vốn, 00:00/08:00/16:00 UTC.</summary>
+    FundingSettlement = 21,
+    /// <summary>Khoảng trống CME cuối tuần.</summary>
+    WeekendGap = 22,
+
+    /// <summary>Tin sốc đột xuất do lớp bối cảnh AI chấm severity cao.</summary>
+    AiDetectedShock = 90,
+}
+
+/// <summary>Nguồn gốc một sự kiện: nạp tay, sinh bằng công thức, hay do AI phát hiện.</summary>
+public enum ScheduledEventOrigin
+{
+    /// <summary>Nạp tay từ lịch công bố của BLS/Fed.</summary>
+    Seeded = 1,
+    /// <summary>Sinh bằng công thức lịch, không cần nguồn ngoài.</summary>
+    Derived = 2,
+    /// <summary>Do lớp bối cảnh AI phát hiện. KHÔNG BAO GIỜ dùng cho sự kiện có ngày giờ cố định.</summary>
+    AiDetected = 3,
+}
+
+/// <summary>Nhóm tiêu chí chấm điểm.</summary>
+public enum ScoreGroup
+{
+    Technical = 1,
+    Market = 2,
+    Liquidity = 3,
+    /// <summary>Nhóm kỷ luật CHỈ TRỪ điểm, không bao giờ cộng.</summary>
+    Discipline = 4,
+}
+
+/// <summary>Kết cục của một phiếu chấm điểm.</summary>
+public enum ScorecardOutcome
+{
+    Entered = 1,
+    BelowThreshold = 2,
+    Vetoed = 3,
+}
+
+/// <summary>Loại bản ghi bối cảnh do AI sinh.</summary>
+public enum MarketContextKind
+{
+    DailyBrief = 1,
+    NewsItem = 2,
+}
+
+/// <summary>
+/// Lý do từ chối vào lệnh. Là enum chứ không phải chuỗi tự do vì nó sẽ được đếm và xếp hạng:
+/// "3 tháng qua lý do từ chối phổ biến nhất là gì" là câu hỏi trader sẽ hỏi.
+/// </summary>
+public enum VetoReason
+{
+    NoDailyPlan = 300,
+    DirectionNotAllowed = 301,
+    HtfMisaligned = 302,
+    InBlackoutWindow = 303,
+    LossStreakStop = 304,
+    DailyLossStop = 305,
+    RevengeWindow = 306,
+    Oversized = 307,
+    MaxTradesReached = 308,
+    InsufficientData = 309,
+    DuplicateCandle = 310,
 }

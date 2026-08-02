@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using MMW.Domain.Entities;
+using MMW.Domain.Enums;
 
 namespace MMW.Web.Models;
 
@@ -11,9 +12,15 @@ public class SettingsGeneralForm
     [Display(Name = "Xác nhận trước khi tạo lệnh")]
     public bool ConfirmBeforeCreateTrade { get; set; } = true;
 
+    [Display(Name = "Tự tạo lệnh từ đề xuất đã qua AI")]
+    public bool AutoCreateTradeFromSignal { get; set; }
+
     [Display(Name = "Điểm tối thiểu sinh đề xuất")]
     [Range(1, 10)]
     public int MinSignalScore { get; set; } = 2;
+
+    [Display(Name = "Cho phép đặt lệnh dù vi phạm rule rủi ro")]
+    public bool AllowOverrideRisk { get; set; }
 }
 
 public class SettingsViewModel
@@ -50,4 +57,23 @@ public class RiskSettingForm
 
     [Display(Name = "% tăng size coi là tilt")]
     public decimal TiltSizeIncreasePercent { get; set; }
+}
+
+public class NotificationSettingsForm
+{
+    [Display(Name = "Email nhận thông báo")]
+    [EmailAddress]
+    public string? Email { get; set; }
+
+    public List<NotificationPreferenceForm> Preferences { get; set; } = new();
+}
+
+public class NotificationPreferenceForm
+{
+    public NotificationType Type { get; set; }
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public bool InAppEnabled { get; set; }
+    public bool EmailEnabled { get; set; }
+    public NotificationSeverity MinSeverity { get; set; }
 }

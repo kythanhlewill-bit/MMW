@@ -9,11 +9,20 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <title>@ViewData["Title"] - MMW</title>
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('mmw-theme') || 'light';
+                document.documentElement.setAttribute('data-bs-theme', t);
+            } catch (e) { }
+        })();
+    </script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/core@1.0.0/dist/css/tabler.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/icons-webfont@3.17.0/dist/tabler-icons.min.css" />
-    <link rel="stylesheet" href="~/css/site.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
     <div class="page">
@@ -26,6 +35,26 @@
                     <span class="navbar-brand-text">⚡ MMW</span>
                 </a>
                 <div class="navbar-nav flex-row order-md-last">
+                    <div class="nav-item me-2">
+                        <a href="#" class="nav-link px-2" id="themeToggle" aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">
+                            <i class="ti ti-moon fs-2" id="themeToggleIcon"></i>
+                        </a>
+                    </div>
+                    <div class="nav-item dropdown me-2">
+                        <a href="#" class="nav-link px-2 position-relative" data-bs-toggle="dropdown" aria-label="Thông báo">
+                            <i class="ti ti-bell fs-2"></i>
+                            <span id="notificationBadge" class="notification-badge position-absolute top-0 start-100 translate-middle" style="display:none">0</span>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow" style="width: 360px">
+                            <div class="dropdown-header d-flex justify-content-between align-items-center">
+                                <span>Thông báo</span>
+                                <a asp-controller="Notifications" asp-action="Index" class="small">Xem tất cả</a>
+                            </div>
+                            <div id="notificationMenu" class="list-group list-group-flush">
+                                <div class="list-group-item text-secondary small">Đang tải...</div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="nav-item dropdown">
                         <a href="#" class="nav-link d-flex lh-1 p-0 px-2" data-bs-toggle="dropdown">
                             <span class="avatar avatar-sm bg-blue-lt">@displayName.Substring(0, 1).ToUpper()</span>
@@ -74,6 +103,12 @@
                                     <span class="nav-link-title">Đề xuất lệnh</span>
                                 </a>
                             </li>
+                            <li class="nav-item @Active("Audit")">
+                                <a class="nav-link" asp-controller="Audit" asp-action="Index">
+                                    <span class="nav-link-icon"><i class="ti ti-history"></i></span>
+                                    <span class="nav-link-title">Audit</span>
+                                </a>
+                            </li>
                             <li class="nav-item @Active("Watchlist")">
                                 <a class="nav-link" asp-controller="Watchlist" asp-action="Index">
                                     <span class="nav-link-icon"><i class="ti ti-eye"></i></span>
@@ -110,7 +145,160 @@
             </footer>
         </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@@tabler/core@1.0.0/dist/js/tabler.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+    <script>
+        // --- Theme sáng/tối (lưu localStorage) ---
+        (function () {
+            var icon = document.getElementById('themeToggleIcon');
+            var toggle = document.getElementById('themeToggle');
+
+            function currentTheme() {
+                return document.documentElement.getAttribute('data-bs-theme') || 'light';
+            }
+            function syncIcon() {
+                if (!icon) return;
+                var dark = currentTheme() === 'dark';
+                icon.className = (dark ? 'ti ti-sun' : 'ti ti-moon') + ' fs-2';
+            }
+            window.mmwSetTheme = function (t) {
+                document.documentElement.setAttribute('data-bs-theme', t);
+                try { localStorage.setItem('mmw-theme', t); } catch (e) { }
+                syncIcon();
+                document.dispatchEvent(new CustomEvent('mmw-theme-changed', { detail: { theme: t } }));
+            };
+            if (toggle) {
+                toggle.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    window.mmwSetTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+                });
+            }
+            syncIcon();
+        })();
+    </script>
+    <script>
+        (function () {
+            window.MMW = window.MMW || {};
+
+            window.MMW.initSelect2 = function (root) {
+                if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2) return;
+
+                var $root = root ? $(root) : $(document);
+                $root.find('select.form-select:not(.select2-hidden-accessible):not(.trade-create-native-select):not([data-select2-skip="true"])')
+                    .each(function () {
+                        var $select = $(this);
+                        var $modal = $select.closest('.modal');
+                        var optionCount = $select.find('option').length;
+
+                        $select.select2({
+                            theme: 'mmw',
+                            width: '100%',
+                            dropdownParent: $modal.length ? $modal : $(document.body),
+                            minimumResultsForSearch: optionCount >= 8 ? 0 : Infinity
+                        });
+                    });
+            };
+
+            function bootstrapSelect2() {
+                window.MMW.initSelect2(document);
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', bootstrapSelect2);
+            } else {
+                bootstrapSelect2();
+            }
+
+            document.addEventListener('shown.bs.modal', function (event) {
+                window.MMW.initSelect2(event.target);
+            });
+        })();
+    </script>
+    <script>
+        (function () {
+            var badge = document.getElementById('notificationBadge');
+            var menu = document.getElementById('notificationMenu');
+
+            function htmlEscape(value) {
+                return String(value || '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", '&#039;');
+            }
+
+            function setCount(count) {
+                if (!badge) return;
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.style.display = count > 0 ? '' : 'none';
+            }
+
+            function renderItems(items) {
+                if (!menu) return;
+                if (!items || !items.length) {
+                    menu.innerHTML = '<div class="list-group-item text-secondary small">Không có thông báo.</div>';
+                    return;
+                }
+                menu.innerHTML = items.slice(0, 8).map(function (n) {
+                    var unread = n.isRead ? '' : ' bg-blue-lt';
+                    var symbol = n.relatedSymbol ? ' · ' + htmlEscape(n.relatedSymbol) : '';
+                    return '<a class="list-group-item list-group-item-action' + unread + '" href="/Notifications">' +
+                        '<div class="fw-semibold text-truncate">' + htmlEscape(n.title) + '</div>' +
+                        '<div class="small text-secondary text-truncate">' + htmlEscape(n.message) + '</div>' +
+                        '<div class="small text-secondary">' + htmlEscape(n.severity) + symbol + '</div>' +
+                    '</a>';
+                }).join('');
+            }
+
+            async function loadNotifications() {
+                try {
+                    var res = await fetch('/Notifications/Unread');
+                    if (!res.ok) return;
+                    var data = await res.json();
+                    setCount(data.count || 0);
+                    renderItems(data.items || []);
+                } catch { }
+            }
+
+            function showToast(notification) {
+                var wrapper = document.createElement('div');
+                wrapper.className = 'toast-container position-fixed top-0 end-0 p-3';
+                wrapper.style.zIndex = '1080';
+                wrapper.innerHTML =
+                    '<div class="toast show" role="alert">' +
+                    '<div class="toast-header">' +
+                    '<i class="ti ti-bell me-2"></i>' +
+                    '<strong class="me-auto">' + htmlEscape(notification.title) + '</strong>' +
+                    '<button type="button" class="btn-close" data-bs-dismiss="toast"></button>' +
+                    '</div>' +
+                    '<div class="toast-body">' + htmlEscape(notification.message) + '</div>' +
+                    '</div>';
+                document.body.appendChild(wrapper);
+                setTimeout(function () { wrapper.remove(); }, 7000);
+            }
+
+            loadNotifications();
+
+            if (window.signalR) {
+                var connection = new signalR.HubConnectionBuilder()
+                    .withUrl('/hubs/notifications')
+                    .withAutomaticReconnect()
+                    .build();
+
+                connection.on('notificationReceived', function (payload) {
+                    if (!payload) return;
+                    setCount(payload.unreadCount || 0);
+                    loadNotifications();
+                    if (payload.notification) showToast(payload.notification);
+                });
+
+                connection.start().catch(function () { });
+            }
+        })();
+    </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

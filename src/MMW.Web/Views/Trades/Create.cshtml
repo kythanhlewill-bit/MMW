@@ -2,149 +2,378 @@
 @model MMW.Web.Models.CreateTradeViewModel
 @{
     var isEdit = Model.Form.Id > 0;
+    var selectedSymbol = (Model.Form.Symbol ?? string.Empty).Trim().ToUpperInvariant();
     ViewData["Title"] = isEdit ? "Sửa lệnh" : "Ghi nhận lệnh";
 }
 
-<div class="page-header d-print-none mb-3">
-    <div class="row align-items-center">
-        <div class="col"><h2 class="page-title">@ViewData["Title"]</h2></div>
-        <div class="col-auto"><a asp-action="Index" class="btn">← Nhật ký lệnh</a></div>
+<div class="trade-create-shell">
+    <div class="trade-create-hero">
+        <div>
+            <div class="trade-create-kicker">Trading journal order ticket</div>
+            <h2 class="trade-create-title">@ViewData["Title"]</h2>
+            <div class="trade-create-subtitle">Spot/Futures journal · Risk-first execution</div>
+        </div>
+        <a asp-action="Index" class="btn trade-create-back">
+            <i class="ti ti-arrow-left"></i> Nhật ký lệnh
+        </a>
     </div>
-</div>
 
 @if (Model.FromHint is not null)
 {
-    <div class="alert alert-info">
+    <div class="alert alert-info trade-create-hint">
         <i class="ti ti-bulb me-1"></i> Điền sẵn từ <strong>@Model.FromHint</strong> — kiểm tra & chỉnh trước khi lưu.
     </div>
 }
 
-<form asp-action="@(isEdit ? "Edit" : "Create")" method="post" class="card">
+<form asp-action="@(isEdit ? "Edit" : "Create")" method="post" class="trade-create-form" id="tradeForm">
     <input type="hidden" asp-for="Form.Id" />
-    <div class="card-body">
-        <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div>
 
-        <div class="row g-3">
-            <div class="col-md-4">
-                <label class="form-label" asp-for="Form.TradingAccountId"></label>
-                <select asp-for="Form.TradingAccountId" class="form-select">
+    <div class="trade-create-grid">
+        <section class="trade-create-panel trade-create-order-panel">
+            <div class="trade-create-panel-head">
+                <div>
+                    <span class="trade-create-panel-kicker">Order entry</span>
+                    <h3>Thiết lập lệnh</h3>
+                </div>
+                <span class="trade-create-market-badge">USDT-M</span>
+            </div>
+
+            <div class="trade-create-symbol-card">
+                <label class="trade-create-label" asp-for="Form.Symbol"></label>
+                <div class="trade-create-symbol-row">
+                    <select asp-for="Form.Symbol" id="symbol" class="form-select trade-create-symbol-input trade-create-symbol-select"
+                            data-placeholder="Tìm symbol futures..." data-selected-symbol="@selectedSymbol">
+                        @if (string.IsNullOrWhiteSpace(selectedSymbol))
+                        {
+                            <option value=""></option>
+                        }
+                        else
+                        {
+                            <option value="@selectedSymbol" selected>@selectedSymbol</option>
+                        }
+                        @foreach (var sym in Model.Symbols.Where(s => !string.Equals(s, selectedSymbol, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            <option value="@sym">@sym</option>
+                        }
+                    </select>
+                    <button type="button" class="btn trade-create-price-btn" id="btnPrice">
+                        <i class="ti ti-refresh"></i> Lấy giá
+                    </button>
+                </div>
+                <span asp-validation-for="Form.Symbol" class="text-danger small"></span>
+            </div>
+
+            <div class="trade-create-side-block">
+                <label class="trade-create-label" asp-for="Form.Direction"></label>
+                <div class="trade-side-toggle" role="group" aria-label="Chọn hướng lệnh">
+                    <button type="button"
+                            class="trade-side-btn trade-side-long @(Model.Form.Direction == TradeDirection.Long ? "is-active" : "")"
+                            data-direction-value="@((int)TradeDirection.Long)">
+                        <span>Long</span>
+                        <small>Buy / kỳ vọng tăng</small>
+                    </button>
+                    <button type="button"
+                            class="trade-side-btn trade-side-short @(Model.Form.Direction == TradeDirection.Short ? "is-active" : "")"
+                            data-direction-value="@((int)TradeDirection.Short)">
+                        <span>Short</span>
+                        <small>Sell / kỳ vọng giảm</small>
+                    </button>
+                </div>
+                <select asp-for="Form.Direction" class="trade-create-native-select" asp-items="Html.GetEnumSelectList<TradeDirection>()" aria-hidden="true"></select>
+            </div>
+
+            <div class="trade-create-two-col">
+                <div>
+                    <label class="trade-create-label" asp-for="Form.OrderType"></label>
+                    <select asp-for="Form.OrderType" class="form-select trade-create-control" asp-items="Html.GetEnumSelectList<OrderType>()"></select>
+                </div>
+                <div>
+                    <label class="trade-create-label" asp-for="Form.Status"></label>
+                    <select asp-for="Form.Status" class="form-select trade-create-control">
+                        <option value="@((int)TradeStatus.Open)">Open</option>
+                        <option value="@((int)TradeStatus.Planned)">Planned</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="trade-create-price-grid">
+                <div class="trade-create-field trade-create-field-main">
+                    <label class="trade-create-label" asp-for="Form.EntryPrice"></label>
+                    <input asp-for="Form.EntryPrice" id="entryPrice" class="form-control trade-create-number" type="number" step="any" />
+                </div>
+                <div class="trade-create-field">
+                    <label class="trade-create-label" asp-for="Form.StopLoss"></label>
+                    <input asp-for="Form.StopLoss" id="stopLoss" class="form-control trade-create-number" type="number" step="any" />
+                </div>
+                <div class="trade-create-field">
+                    <label class="trade-create-label" asp-for="Form.TakeProfit"></label>
+                    <input asp-for="Form.TakeProfit" id="takeProfit" class="form-control trade-create-number" type="number" step="any" />
+                </div>
+            </div>
+
+            <div class="trade-create-leverage">
+                <div class="trade-create-leverage-head">
+                    <label class="trade-create-label" asp-for="Form.Leverage"></label>
+                    <span class="trade-create-leverage-value" id="leverageValue">x@(((int)(Model.Form.Leverage ?? 1)))</span>
+                </div>
+                <input type="range" id="leverageRange" class="form-range trade-create-leverage-range"
+                       min="1" max="125" step="1" value="@(((int)(Model.Form.Leverage ?? 1)))" />
+                <input asp-for="Form.Leverage" id="leverage" type="hidden" />
+                <div class="trade-create-leverage-scale">
+                    <span>x1</span><span>x25</span><span>x50</span><span>x75</span><span>x100</span><span>x125</span>
+                </div>
+            </div>
+
+            <div class="trade-create-levels-actions">
+                <button type="button" class="btn trade-create-suggest-btn" id="btnSuggestLevels">
+                    <i class="ti ti-target-arrow"></i> Gợi ý SL/TP
+                </button>
+                <span class="trade-create-levels-note">SL theo % rủi ro · TP theo R:R tài khoản</span>
+            </div>
+
+            <div class="trade-create-qty-card">
+                <div>
+                    <label class="trade-create-label" asp-for="Form.Quantity"></label>
+                    <input asp-for="Form.Quantity" id="quantity" class="form-control trade-create-number" type="number" step="any" />
+                </div>
+                <button type="button" class="btn trade-create-auto-btn" id="btnAutoSize" title="Tính theo % rủi ro">
+                    <i class="ti ti-calculator"></i>
+                    Auto size
+                </button>
+            </div>
+
+            <div id="riskInfo" class="trade-create-risk-hint"></div>
+
+            <div id="pnlBoard" class="trade-create-pnl">
+                <div class="trade-create-pnl-row trade-create-pnl-tp">
+                    <span>Nếu chạm TP</span>
+                    <strong id="pnlTpValue">--</strong>
+                </div>
+                <div class="trade-create-pnl-row trade-create-pnl-sl">
+                    <span>Nếu chạm SL</span>
+                    <strong id="pnlSlValue">--</strong>
+                </div>
+            </div>
+        </section>
+
+        <aside class="trade-create-panel trade-create-side-panel">
+            <div class="trade-create-panel-head">
+                <div>
+                    <span class="trade-create-panel-kicker">Account & risk</span>
+                    <h3>Kiểm soát rủi ro</h3>
+                </div>
+            </div>
+
+            <div>
+                <label class="trade-create-label" asp-for="Form.TradingAccountId"></label>
+                <select asp-for="Form.TradingAccountId" class="form-select trade-create-control">
                     @foreach (var a in Model.Accounts)
                     {
                         <option value="@a.Id">@a.Name (@a.Currency)</option>
                     }
                 </select>
             </div>
-            <div class="col-md-4">
-                <label class="form-label" asp-for="Form.Symbol"></label>
-                <div class="input-group">
-                    <input asp-for="Form.Symbol" id="symbol" class="form-control" list="symbolList"
-                           placeholder="BTCUSDT" style="text-transform:uppercase" autocomplete="off" />
-                    <button type="button" class="btn" id="btnPrice"><i class="ti ti-refresh"></i> Lấy giá</button>
+
+            <div class="trade-create-risk-board">
+                <div class="trade-create-risk-tile">
+                    <span>Risk amount</span>
+                    <strong id="riskAmountValue">--</strong>
                 </div>
-                <datalist id="symbolList">
-                    @foreach (var sym in Model.Symbols)
-                    {
-                        <option value="@sym"></option>
-                    }
-                </datalist>
-                <span asp-validation-for="Form.Symbol" class="text-danger small"></span>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label" asp-for="Form.Direction"></label>
-                <select asp-for="Form.Direction" class="form-select" asp-items="Html.GetEnumSelectList<TradeDirection>()"></select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label" asp-for="Form.OrderType"></label>
-                <select asp-for="Form.OrderType" class="form-select" asp-items="Html.GetEnumSelectList<OrderType>()"></select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label" asp-for="Form.Status"></label>
-                <select asp-for="Form.Status" class="form-select">
-                    <option value="@((int)TradeStatus.Open)">Open</option>
-                    <option value="@((int)TradeStatus.Planned)">Planned</option>
-                </select>
-            </div>
-
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.EntryPrice"></label>
-                <input asp-for="Form.EntryPrice" id="entryPrice" class="form-control" type="number" step="any" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.StopLoss"></label>
-                <input asp-for="Form.StopLoss" id="stopLoss" class="form-control" type="number" step="any" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.TakeProfit"></label>
-                <input asp-for="Form.TakeProfit" class="form-control" type="number" step="any" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.Quantity"></label>
-                <div class="input-group">
-                    <input asp-for="Form.Quantity" id="quantity" class="form-control" type="number" step="any" />
-                    <button type="button" class="btn" id="btnAutoSize" title="Tính theo % rủi ro"><i class="ti ti-calculator"></i></button>
+                <div class="trade-create-risk-tile">
+                    <span>Risk %</span>
+                    <strong id="riskPercentValue">--</strong>
                 </div>
-                <div id="riskInfo" class="form-hint mt-1"></div>
+                <div class="trade-create-risk-tile">
+                    <span>Stop distance</span>
+                    <strong id="stopDistanceValue">--</strong>
+                </div>
+                <div class="trade-create-risk-tile">
+                    <span>R:R</span>
+                    <strong id="rrValue">--</strong>
+                </div>
             </div>
 
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.Leverage"></label>
-                <input asp-for="Form.Leverage" class="form-control" type="number" step="any" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.Fee"></label>
-                <input asp-for="Form.Fee" class="form-control" type="number" step="any" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.EmotionBefore"></label>
-                <select asp-for="Form.EmotionBefore" class="form-select" asp-items="Html.GetEnumSelectList<EmotionState>()"></select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" asp-for="Form.StrategyId"></label>
-                <select asp-for="Form.StrategyId" class="form-select">
-                    <option value="">— Không —</option>
-                    @foreach (var s in Model.Strategies)
-                    {
-                        <option value="@s.Id">@s.Name</option>
-                    }
-                </select>
+            <div>
+                <label class="trade-create-label" asp-for="Form.Fee"></label>
+                <input asp-for="Form.Fee" id="fee" class="form-control trade-create-control" type="number" step="any" />
             </div>
 
-            <div class="col-12">
-                <label class="form-label" asp-for="Form.Note"></label>
-                <textarea asp-for="Form.Note" class="form-control" rows="2" placeholder="Lý do vào lệnh, điều kiện thị trường..."></textarea>
+            <div class="trade-create-two-col">
+                <div>
+                    <label class="trade-create-label" asp-for="Form.EmotionBefore"></label>
+                    <select asp-for="Form.EmotionBefore" class="form-select trade-create-control" asp-items="Html.GetEnumSelectList<EmotionState>()"></select>
+                </div>
+                <div>
+                    <label class="trade-create-label" asp-for="Form.StrategyId"></label>
+                    <select asp-for="Form.StrategyId" class="form-select trade-create-control">
+                        <option value="">— Không —</option>
+                        @foreach (var s in Model.Strategies)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="trade-create-position-summary">
+                <div>
+                    <span>Notional</span>
+                    <strong id="positionNotionalValue">--</strong>
+                </div>
+                <div>
+                    <span>AI preflight</span>
+                    <strong>Required</strong>
+                </div>
+            </div>
+        </aside>
+
+        <section class="trade-create-panel trade-create-note-panel">
+            <label class="trade-create-label" asp-for="Form.Note"></label>
+            <textarea asp-for="Form.Note" class="form-control trade-create-note" rows="3" placeholder="Lý do vào lệnh, cấu trúc setup, vùng hủy kèo, tin tức cần tránh..."></textarea>
+        </section>
+    </div>
+
+    <div class="trade-create-actions">
+        <div class="trade-create-action-copy">
+            <span>AI preflight · RR · SL/TP · Risk % · Market bias</span>
+        </div>
+        <div class="trade-create-action-buttons">
+            <a asp-action="Index" class="btn trade-create-cancel">Hủy</a>
+            <button type="submit" class="btn trade-create-submit-plain" id="btnSaveDirect" formnovalidate>
+                <i class="ti ti-device-floppy me-1"></i> @(isEdit ? "Lưu ngay (không AI)" : "Lưu ngay (không AI)")
+            </button>
+            <button type="submit" class="btn btn-primary trade-create-submit" id="btnSaveTrade">
+                <i class="ti ti-sparkles me-1"></i> @(isEdit ? "AI phân tích & cập nhật" : "AI phân tích & lưu")
+            </button>
+        </div>
+    </div>
+</form>
+</div>
+
+<div class="modal modal-blur fade" id="aiReviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="ti ti-sparkles me-1"></i> AI review trước khi lưu
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body">
+                <div id="aiReviewBody"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" data-bs-dismiss="modal">Quay lại chỉnh</button>
+                <button type="button" class="btn btn-warning" id="btnSaveWithAi" style="display:none">Lưu theo SL/TP của AI</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmAiSave">Tiếp tục lưu</button>
             </div>
         </div>
     </div>
-    <div class="card-footer text-end">
-        <button type="submit" class="btn btn-primary">@(isEdit ? "Cập nhật" : "Lưu lệnh")</button>
-    </div>
-</form>
+</div>
 
 @section Scripts {
     <script>
         // Dữ liệu rủi ro theo tài khoản (id -> {balance, risk%}).
         var accountRisk = {
             @Html.Raw(string.Join(",", Model.AccountRisks.Select(r =>
-                $"\"{r.Id}\":{{balance:{r.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture)},risk:{r.MaxRiskPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")))
+                $"\"{r.Id}\":{{balance:{r.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture)},risk:{r.MaxRiskPercent.ToString(System.Globalization.CultureInfo.InvariantCulture)},rr:{r.Rr.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}")))
         };
 
         var accSel = document.getElementById('Form_TradingAccountId');
+        var symbolEl = document.getElementById('symbol');
+        var directionEl = document.getElementById('Form_Direction');
         var entryEl = document.getElementById('entryPrice');
         var slEl = document.getElementById('stopLoss');
+        var tpEl = document.getElementById('takeProfit');
         var qtyEl = document.getElementById('quantity');
+        var leverageEl = document.getElementById('leverage');
+        var leverageRange = document.getElementById('leverageRange');
+        var leverageValueEl = document.getElementById('leverageValue');
+        var feeEl = document.getElementById('fee');
+        var pnlTpEl = document.getElementById('pnlTpValue');
+        var pnlSlEl = document.getElementById('pnlSlValue');
+        var suggestBtn = document.getElementById('btnSuggestLevels');
+        var LONG_VALUE = '@((int)TradeDirection.Long)';
         var infoEl = document.getElementById('riskInfo');
+        var riskAmountEl = document.getElementById('riskAmountValue');
+        var riskPercentEl = document.getElementById('riskPercentValue');
+        var stopDistanceEl = document.getElementById('stopDistanceValue');
+        var rrEl = document.getElementById('rrValue');
+        var positionNotionalEl = document.getElementById('positionNotionalValue');
+        var formEl = document.getElementById('tradeForm');
+        var saveBtn = document.getElementById('btnSaveTrade');
+        var saveDirectBtn = document.getElementById('btnSaveDirect');
+        var aiReviewBody = document.getElementById('aiReviewBody');
+        var aiReviewModalEl = document.getElementById('aiReviewModal');
+
+        // Modal phải là child trực tiếp của body, nếu không backdrop của Bootstrap
+        // có thể nằm trên modal do page-wrapper tạo stacking context.
+        if (aiReviewModalEl.parentElement !== document.body) {
+            document.body.appendChild(aiReviewModalEl);
+        }
+
+        var aiReviewModal = bootstrap.Modal.getOrCreateInstance(aiReviewModalEl);
+        var confirmAiSaveBtn = document.getElementById('btnConfirmAiSave');
+        var saveWithAiBtn = document.getElementById('btnSaveWithAi');
+        var aiSuggestedSl = null, aiSuggestedTp = null;
+        var aiConfirmedSubmit = false;
+
+        // Bước giá (tickSize) của symbol hiện tại + cờ "SL/TP do người dùng/AI tự đặt"
+        // (để thanh đòn bẩy không ghi đè giá trị đã chỉnh tay).
+        var currentTick = { size: null, decimals: null };
+        var slTpManual = false;
+
+        initSymbolSearch();
+        aiReviewModalEl.addEventListener('hidden.bs.modal', cleanupModalBackdrops);
+
+        document.querySelectorAll('.trade-side-btn').forEach(function (button) {
+            button.addEventListener('click', function () {
+                directionEl.value = button.dataset.directionValue;
+                directionEl.dispatchEvent(new Event('change', { bubbles: true }));
+                syncDirectionButtons();
+            });
+        });
+        syncDirectionButtons();
 
         function computeQty(apply) {
             var acc = accountRisk[accSel.value];
             var entry = parseFloat(entryEl.value);
             var sl = parseFloat(slEl.value);
-            if (!acc || isNaN(entry) || isNaN(sl) || entry === sl) { infoEl.textContent = ''; return; }
+            var tp = parseFloat(tpEl.value);
+            var qty = parseFloat(qtyEl.value);
+            var leverage = parseFloat(leverageEl.value);
+            var hasRiskInput = acc && !isNaN(entry) && !isNaN(sl) && entry !== sl;
+
+            if (!hasRiskInput) {
+                infoEl.textContent = '';
+                setText(riskAmountEl, '--');
+                setText(riskPercentEl, acc ? acc.risk.toFixed(2) + '%' : '--');
+                setText(stopDistanceEl, '--');
+                setText(rrEl, '--');
+                updateNotional(entry, qty, leverage);
+                computePnl();
+                return;
+            }
+
             var dist = Math.abs(entry - sl);
             var riskAmt = acc.balance * acc.risk / 100;
-            var qty = riskAmt / dist;
-            infoEl.innerHTML = 'Gợi ý: <strong>' + qty.toFixed(8) + '</strong> · rủi ro ' + riskAmt.toFixed(2)
-                + ' (' + acc.risk + '% của ' + acc.balance.toFixed(2) + ')';
-            if (apply) qtyEl.value = qty.toFixed(8);
+            var suggestedQty = riskAmt / dist;
+            if (apply) {
+                qtyEl.value = suggestedQty.toFixed(8);
+                qty = suggestedQty;
+            }
+
+            var rr = !isNaN(tp) && tp !== entry ? Math.abs(tp - entry) / dist : null;
+            infoEl.innerHTML = 'Gợi ý: <strong>' + suggestedQty.toFixed(8) + '</strong> · rủi ro ' + formatMoney(riskAmt)
+                + ' (' + acc.risk.toFixed(2) + '% của ' + formatMoney(acc.balance) + ')';
+
+            setText(riskAmountEl, formatMoney(riskAmt));
+            setText(riskPercentEl, acc.risk.toFixed(2) + '%');
+            setText(stopDistanceEl, formatNumber(dist, 4));
+            setText(rrEl, rr === null ? '--' : rr.toFixed(2));
+            updateNotional(entry, qty, leverage);
+            computePnl();
         }
 
         // Auto tính lại khi đổi tài khoản / giá vào / stop loss.
@@ -152,20 +381,460 @@
             el.addEventListener('change', function () { computeQty(true); });
             el.addEventListener('input', function () { computeQty(false); });
         });
+        [tpEl, qtyEl, feeEl].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener('change', function () { computeQty(false); });
+            el.addEventListener('input', function () { computeQty(false); });
+        });
+        directionEl.addEventListener('change', function () { computeQty(false); });
+
+        // Người dùng tự gõ SL/TP → đánh dấu manual để đòn bẩy không ghi đè.
+        [slEl, tpEl].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener('input', function () { slTpManual = true; });
+        });
+
+        // Làm tròn giá theo tickSize khi rời ô (blur).
+        [entryEl, slEl, tpEl].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener('blur', function () {
+                var v = parseFloat(el.value);
+                if (!isNaN(v)) el.value = roundToTick(v);
+            });
+        });
+
+        // Slider đòn bẩy → đồng bộ input ẩn + nhãn, tính lại risk/PnL, và gợi ý lại SL/TP
+        // (trừ khi SL/TP đã chỉnh tay). SL/TP dự tính theo % margin nên đòn bẩy đổi thì mức giá đổi.
+        if (leverageRange) {
+            leverageEl.value = leverageRange.value;
+            leverageRange.addEventListener('input', function () {
+                leverageEl.value = leverageRange.value;
+                if (leverageValueEl) leverageValueEl.textContent = 'x' + leverageRange.value;
+                if (!slTpManual) suggestLevelsByRisk(true); // silent: không alert khi thiếu dữ liệu
+                computeQty(false);
+            });
+        }
+
         document.getElementById('btnAutoSize').addEventListener('click', function () { computeQty(true); });
+
+        // Gợi ý SL/TP: ưu tiên hỏi AI (preflight) → fill; nếu AI không trả thì fallback theo % rủi ro.
+        if (suggestBtn) {
+            suggestBtn.addEventListener('click', async function () {
+                var entry = parseFloat(entryEl.value);
+                if (isNaN(entry) || entry <= 0) { alert('Cần có Giá vào để gợi ý SL/TP.'); return; }
+
+                var original = suggestBtn.innerHTML;
+                suggestBtn.disabled = true;
+                suggestBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>AI...';
+                var filled = false;
+                try {
+                    var res = await fetch('@Url.Action("SuggestLevels", "Trades")', {
+                        method: 'POST',
+                        body: new FormData(formEl),
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    var data = await res.json();
+                    if (data.ok && (data.stopLoss != null || data.takeProfit != null)) {
+                        await ensureTick(symbolEl.value);
+                        if (data.stopLoss != null) slEl.value = roundToTick(parseFloat(data.stopLoss));
+                        if (data.takeProfit != null) tpEl.value = roundToTick(parseFloat(data.takeProfit));
+                        slTpManual = true; // AI đặt → đòn bẩy không ghi đè
+                        computeQty(false);
+                        filled = true;
+                    }
+                } catch { }
+                suggestBtn.disabled = false;
+                suggestBtn.innerHTML = original;
+                if (!filled) suggestLevelsByRisk();
+            });
+        }
+
+        // Gợi ý SL/TP theo % MARGIN (vốn ký quỹ = notional/đòn bẩy) + R:R tài khoản.
+        // slDist = entry × risk% / (100 × đòn bẩy) → đòn bẩy càng cao, SL/TP càng SÁT entry
+        // (giữ lỗ ở mức ~risk% của ký quỹ). Đây là mức GIÁ dự tính khi lệnh chạm SL/TP.
+        // silent=true: gọi tự động khi kéo đòn bẩy, không hiện alert nếu thiếu dữ liệu.
+        function suggestLevelsByRisk(silent) {
+            var acc = accountRisk[accSel.value];
+            var entry = parseFloat(entryEl.value);
+            var leverage = parseFloat(leverageEl.value);
+            if (!acc || isNaN(entry) || entry <= 0) {
+                if (!silent) alert('Cần Tài khoản + Giá vào để gợi ý SL/TP theo rủi ro.');
+                return;
+            }
+            if (isNaN(leverage) || leverage <= 0) leverage = 1;
+
+            var slDist = entry * (acc.risk / 100) / leverage;
+            var rr = acc.rr && acc.rr > 0 ? acc.rr : 2;
+            var isLong = directionEl.value === LONG_VALUE;
+            var sl = isLong ? entry - slDist : entry + slDist;
+            var tp = isLong ? entry + rr * slDist : entry - rr * slDist;
+            slEl.value = sl > 0 ? roundToTick(sl) : '';
+            tpEl.value = tp > 0 ? roundToTick(tp) : '';
+            slTpManual = false; // đây là giá trị tự tính → cho phép đòn bẩy cập nhật tiếp
+            computeQty(false);
+        }
+
+        // Nếu form đã có SL/TP sẵn (vd điền từ đề xuất) thì coi như giá trị chủ ý.
+        if ((slEl.value && parseFloat(slEl.value) > 0) || (tpEl.value && parseFloat(tpEl.value) > 0))
+            slTpManual = true;
+        ensureTick(symbolEl.value); // nạp tickSize cho symbol đang chọn (nếu có)
         computeQty(false); // hiển thị gợi ý ban đầu, không ghi đè
 
-        document.getElementById('btnPrice').addEventListener('click', async function () {
-            var sym = document.getElementById('symbol').value.trim();
+        async function fetchAndFillPrice(sym, alertOnFail) {
+            sym = (sym || '').trim();
             if (!sym) return;
-            this.disabled = true;
             try {
                 var res = await fetch('@Url.Action("Price", "Trades")?symbol=' + encodeURIComponent(sym));
                 var data = await res.json();
-                if (data.ok) { entryEl.value = data.price; computeQty(true); }
-                else alert('Không lấy được giá (kiểm tra symbol / kết nối Binance).');
-            } catch { alert('Lỗi khi lấy giá.'); }
+                if (data.ok) {
+                    applyTick(data.tickSize, data.priceDecimals);
+                    var px = parseFloat(data.price);
+                    entryEl.value = isNaN(px) ? data.price : roundToTick(px);
+                    roundLevelInputs();
+                    computeQty(true);
+                }
+                else if (alertOnFail) alert('Không lấy được giá (kiểm tra symbol / kết nối Binance).');
+            } catch { if (alertOnFail) alert('Lỗi khi lấy giá.'); }
+        }
+
+        document.getElementById('btnPrice').addEventListener('click', async function () {
+            this.disabled = true;
+            await fetchAndFillPrice(symbolEl.value, true);
             this.disabled = false;
         });
+
+        function syncDirectionButtons() {
+            document.querySelectorAll('.trade-side-btn').forEach(function (button) {
+                button.classList.toggle('is-active', button.dataset.directionValue === directionEl.value);
+            });
+        }
+
+        function updateNotional(entry, qty, leverage) {
+            if (isNaN(entry) || isNaN(qty) || entry <= 0 || qty <= 0) {
+                setText(positionNotionalEl, '--');
+                return;
+            }
+
+            var notional = entry * qty;
+            if (!isNaN(leverage) && leverage > 0) {
+                setText(positionNotionalEl, formatMoney(notional) + ' / ' + leverage.toFixed(0) + 'x');
+                return;
+            }
+
+            setText(positionNotionalEl, formatMoney(notional));
+        }
+
+        // Lãi/lỗ ước tính tại TP & SL (số tiền + ROE% theo đòn bẩy), làm tròn 2 số.
+        function computePnl() {
+            if (!pnlTpEl || !pnlSlEl) return;
+            var entry = parseFloat(entryEl.value);
+            var qty = parseFloat(qtyEl.value);
+            var tp = parseFloat(tpEl.value);
+            var sl = parseFloat(slEl.value);
+            var fee = feeEl ? parseFloat(feeEl.value) : NaN;
+            if (isNaN(fee)) fee = 0;
+            var leverage = parseFloat(leverageEl.value);
+            var isLong = directionEl.value === LONG_VALUE;
+            var margin = (!isNaN(leverage) && leverage > 0 && !isNaN(entry) && !isNaN(qty))
+                ? (entry * qty / leverage) : NaN;
+
+            renderPnl(pnlTpEl, entry, qty, tp, fee, isLong, margin);
+            renderPnl(pnlSlEl, entry, qty, sl, fee, isLong, margin);
+        }
+
+        function renderPnl(el, entry, qty, target, fee, isLong, margin) {
+            if (isNaN(entry) || isNaN(qty) || isNaN(target) || qty <= 0) {
+                el.textContent = '--';
+                el.classList.remove('is-profit', 'is-loss');
+                return;
+            }
+            var pnl = (isLong ? (target - entry) : (entry - target)) * qty - fee;
+            var text = (pnl >= 0 ? '+' : '') + formatMoney(pnl) + ' USDT';
+            if (!isNaN(margin) && margin > 0) {
+                var roe = pnl / margin * 100;
+                text += ' · ROE ' + (roe >= 0 ? '+' : '') + roe.toFixed(2) + '%';
+            }
+            el.textContent = text;
+            el.classList.toggle('is-profit', pnl >= 0);
+            el.classList.toggle('is-loss', pnl < 0);
+        }
+
+        // Số chữ số thập phân hợp lý cho giá theo độ lớn (fallback khi không có tickSize).
+        function priceDecimals(price) {
+            var p = Math.abs(price);
+            if (p >= 1) return 2;
+            if (p >= 0.01) return 4;
+            return 6;
+        }
+
+        // Lưu tickSize của symbol để làm tròn giá nhập đúng quy tắc sàn.
+        function applyTick(size, decimals) {
+            var s = parseFloat(size);
+            currentTick.size = (!isNaN(s) && s > 0) ? s : null;
+            currentTick.decimals = (decimals !== null && decimals !== undefined) ? decimals : null;
+        }
+
+        // Làm tròn 1 giá theo tickSize (nếu có), nếu không thì theo độ lớn giá. Trả về chuỗi đã format.
+        function roundToTick(value) {
+            if (isNaN(value)) return '';
+            if (currentTick.size && currentTick.size > 0) {
+                var rounded = Math.round(value / currentTick.size) * currentTick.size;
+                var dp = currentTick.decimals != null ? currentTick.decimals : priceDecimals(rounded);
+                return rounded.toFixed(dp);
+            }
+            return value.toFixed(priceDecimals(value));
+        }
+
+        // Làm tròn lại 3 ô giá theo tick hiện tại.
+        function roundLevelInputs() {
+            [entryEl, slEl, tpEl].forEach(function (el) {
+                if (!el) return;
+                var v = parseFloat(el.value);
+                if (!isNaN(v)) el.value = roundToTick(v);
+            });
+        }
+
+        // Nếu chưa biết tickSize (vd chọn symbol nhưng chưa lấy giá) thì hỏi riêng.
+        async function ensureTick(sym) {
+            if (currentTick.size || !sym) return;
+            try {
+                var res = await fetch('@Url.Action("PriceFilter", "Trades")?symbol=' + encodeURIComponent(sym));
+                var data = await res.json();
+                if (data.ok) applyTick(data.tickSize, data.priceDecimals);
+            } catch { }
+        }
+
+        function setText(el, value) {
+            if (el) el.textContent = value;
+        }
+
+        function formatNumber(value, maximumFractionDigits) {
+            return Number(value).toLocaleString(undefined, {
+                maximumFractionDigits: maximumFractionDigits
+            });
+        }
+
+        function formatMoney(value) {
+            return Number(value).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+
+        formEl.addEventListener('submit', async function (event) {
+            if (aiConfirmedSubmit) return;
+
+            event.preventDefault();
+            saveBtn.disabled = true;
+            var originalHtml = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Đang phân tích...';
+
+            try {
+                var res = await fetch('@Url.Action("AnalyzeBeforeSave", "Trades")', {
+                    method: 'POST',
+                    body: new FormData(formEl),
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+
+                var data = await res.json();
+                if (!res.ok || !data.ok) {
+                    var messages = data.messages && data.messages.length ? data.messages.join('\n') : 'Dữ liệu form chưa hợp lệ.';
+                    alert(messages);
+                    return;
+                }
+
+                renderAiReview(data.analysis);
+                cleanupModalBackdrops();
+                aiReviewModal.show();
+            } catch {
+                if (confirm('Không gọi được AI review. Bạn vẫn muốn lưu lệnh?')) {
+                    aiConfirmedSubmit = true;
+                    formEl.submit();
+                }
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalHtml;
+            }
+        });
+
+        // "Lưu ngay (không AI)": bỏ qua bước phân tích AI, gửi form thẳng tới Create/Edit.
+        // Đặt cờ trước khi sự kiện submit chạy → listener phía trên thấy cờ và cho submit mặc định.
+        if (saveDirectBtn) {
+            saveDirectBtn.addEventListener('click', function () {
+                aiConfirmedSubmit = true;
+            });
+        }
+
+        confirmAiSaveBtn.addEventListener('click', function () {
+            aiConfirmedSubmit = true;
+            aiReviewModal.hide();
+            formEl.submit();
+        });
+
+        if (saveWithAiBtn) {
+            saveWithAiBtn.addEventListener('click', function () {
+                if (aiSuggestedSl != null) slEl.value = roundToTick(parseFloat(aiSuggestedSl));
+                if (aiSuggestedTp != null) tpEl.value = roundToTick(parseFloat(aiSuggestedTp));
+                computeQty(false);
+                aiConfirmedSubmit = true;
+                aiReviewModal.hide();
+                formEl.submit();
+            });
+        }
+
+        function renderAiReview(analysis) {
+            var decision = (analysis.decision || 'wait').toLowerCase();
+            var badge = decision === 'accept'
+                ? '<span class="badge bg-success-lt">ACCEPT</span>'
+                : decision === 'reject'
+                    ? '<span class="badge bg-danger-lt">REJECT</span>'
+                    : '<span class="badge bg-warning-lt">WAIT</span>';
+
+            confirmAiSaveBtn.className = decision === 'reject' ? 'btn btn-danger' : 'btn btn-primary';
+            confirmAiSaveBtn.textContent = decision === 'reject' ? 'Vẫn lưu lệnh' : 'Tiếp tục lưu';
+
+            var reasons = renderList(analysis.reasons);
+            var warnings = renderList(analysis.riskWarnings);
+            var metrics = analysis.metrics || {};
+            var aiState = analysis.isAiConfigured
+                ? '<span class="badge bg-blue-lt">AI</span>'
+                : '<span class="badge bg-secondary-lt">Rule nội bộ</span>';
+
+            var slSug = analysis.suggestedStopLoss;
+            var tpSug = analysis.suggestedTakeProfit;
+            aiSuggestedSl = slSug;
+            aiSuggestedTp = tpSug;
+            var hasLevels = (slSug != null) || (tpSug != null);
+            var levelsHtml = hasLevels
+                ? '<div class="alert alert-warning mb-3">' +
+                      '<div class="text-secondary small mb-1">AI đề xuất SL/TP tối ưu</div>' +
+                      '<div class="fw-semibold">' +
+                          (slSug != null ? 'SL → ' + escapeHtml(slSug) : '') +
+                          (slSug != null && tpSug != null ? ' · ' : '') +
+                          (tpSug != null ? 'TP → ' + escapeHtml(tpSug) : '') +
+                      '</div>' +
+                      '<div class="text-secondary small mt-1">Chọn nút bên dưới: lưu theo gợi ý AI hoặc giữ nguyên.</div>' +
+                  '</div>'
+                : '';
+
+            aiReviewBody.innerHTML =
+                '<div class="d-flex align-items-center justify-content-between mb-3">' +
+                    '<div>' + badge + ' ' + aiState + '</div>' +
+                    '<div class="text-secondary small">Score ' + escapeHtml(analysis.score ?? 0) +
+                        ' · Confidence ' + escapeHtml(formatPercent(analysis.confidence)) + '</div>' +
+                '</div>' +
+                '<div class="mb-3">' +
+                    '<div class="text-secondary small mb-1">Lời khuyên</div>' +
+                    '<div class="fs-3 fw-semibold">' + escapeHtml(analysis.advice || 'Không có lời khuyên.') + '</div>' +
+                '</div>' +
+                levelsHtml +
+                '<div class="row g-3 mb-3">' +
+                    metricItem('Giá hiện tại', metrics.currentPrice) +
+                    metricItem('Risk %', metrics.riskPercent == null ? null : metrics.riskPercent.toFixed(2) + '%') +
+                    metricItem('RR', metrics.plannedRiskReward == null ? null : metrics.plannedRiskReward.toFixed(2)) +
+                    metricItem('RSI 1h', metrics.rsi14 == null ? null : metrics.rsi14.toFixed(1)) +
+                    metricItem('EMA20', metrics.ema20) +
+                    metricItem('EMA50', metrics.ema50) +
+                    metricItem('ATR', metrics.atr14) +
+                    metricItem('Bias', metrics.bias) +
+                '</div>' +
+                '<div class="mb-3">' +
+                    '<div class="text-secondary small mb-1">Lý do</div>' +
+                    reasons +
+                '</div>' +
+                '<div class="mb-3">' +
+                    '<div class="text-secondary small mb-1">Cảnh báo rủi ro</div>' +
+                    warnings +
+                '</div>' +
+                '<div class="alert alert-info mb-0">' +
+                    '<strong>Điều kiện hủy:</strong> ' + escapeHtml(analysis.invalidation || 'Không có.') +
+                '</div>';
+
+            // Footer: 2 lựa chọn khi có gợi ý SL/TP.
+            if (saveWithAiBtn) saveWithAiBtn.style.display = hasLevels ? '' : 'none';
+            confirmAiSaveBtn.textContent = hasLevels
+                ? 'Giữ nguyên & lưu'
+                : (decision === 'reject' ? 'Vẫn lưu lệnh' : 'Tiếp tục lưu');
+        }
+
+        function cleanupModalBackdrops() {
+            if (document.querySelector('.modal.show')) return;
+
+            document.querySelectorAll('.modal-backdrop').forEach(function (backdrop) {
+                backdrop.remove();
+            });
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+        }
+
+        function metricItem(label, value) {
+            return '<div class="col-md-3 col-6">' +
+                '<div class="text-secondary small">' + escapeHtml(label) + '</div>' +
+                '<div class="fw-semibold">' + escapeHtml(formatValue(value)) + '</div>' +
+            '</div>';
+        }
+
+        function renderList(items) {
+            if (!items || !items.length) return '<div class="text-secondary">Không có.</div>';
+            return '<ul class="mb-0">' + items.map(function (x) {
+                return '<li>' + escapeHtml(x) + '</li>';
+            }).join('') + '</ul>';
+        }
+
+        function formatValue(value) {
+            if (value === null || value === undefined || value === '') return 'N/A';
+            if (typeof value === 'number') return Number(value).toLocaleString(undefined, { maximumFractionDigits: 6 });
+            return value;
+        }
+
+        function formatPercent(value) {
+            var n = Number(value || 0);
+            return Math.round(n * 100) + '%';
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
+        function initSymbolSearch() {
+            if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2 || !symbolEl) return;
+
+            var $symbol = jQuery(symbolEl);
+            if ($symbol.hasClass('select2-hidden-accessible')) {
+                $symbol.select2('destroy');
+            }
+
+            $symbol.select2({
+                theme: 'mmw',
+                width: '100%',
+                placeholder: $symbol.data('placeholder') || 'Tìm symbol futures...',
+                allowClear: true,
+                minimumInputLength: 0,
+                dropdownCssClass: 'trade-create-symbol-dropdown',
+                ajax: {
+                    url: '@Url.Action("Symbols", "Trades")',
+                    dataType: 'json',
+                    delay: 180,
+                    data: function (params) {
+                        return { q: params.term || '' };
+                    },
+                    processResults: function (data) {
+                        return { results: data.results || [] };
+                    }
+                }
+            });
+
+            // Chọn symbol → tự lấy giá hiện tại fill vào Giá vào.
+            $symbol.on('select2:select', function (e) {
+                var sym = (e.params && e.params.data && e.params.data.id) || symbolEl.value;
+                fetchAndFillPrice(sym, false);
+            });
+        }
     </script>
 }

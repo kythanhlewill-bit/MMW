@@ -27,6 +27,7 @@ public class BinanceAccountProviderFactory : IExchangeAccountProviderFactory
             ApiSecret = apiSecret,
             ApiBaseUrl = _options.ApiBaseUrl,
             MarketDataBaseUrl = _options.MarketDataBaseUrl,
+            FuturesApiBaseUrl = _options.FuturesApiBaseUrl,
         });
 
         return new BinanceAccountProvider(client, opts);

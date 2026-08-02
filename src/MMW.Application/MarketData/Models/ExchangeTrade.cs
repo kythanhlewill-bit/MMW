@@ -9,4 +9,5 @@ public sealed record ExchangeTrade(
     decimal Quantity,
     decimal Commission,
     string CommissionAsset,
-    DateTime Time);
+    DateTime Time,
+    string? OrderId = null);

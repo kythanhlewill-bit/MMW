@@ -32,7 +32,13 @@ public class SettingsService : ISettingsService
         return created;
     }
 
-    public async Task UpdateAppSettingAsync(long? defaultAccountId, bool confirmBeforeCreateTrade, int minSignalScore, CancellationToken cancellationToken = default)
+    public async Task UpdateAppSettingAsync(
+        long? defaultAccountId,
+        bool confirmBeforeCreateTrade,
+        bool autoCreateTradeFromSignal,
+        int minSignalScore,
+        bool allowOverrideRisk,
+        CancellationToken cancellationToken = default)
     {
         var current = (await _appSettings.GetAllAsync()).FirstOrDefault();
         var tracked = current is null
@@ -41,7 +47,9 @@ public class SettingsService : ISettingsService
 
         tracked.DefaultTradingAccountId = defaultAccountId;
         tracked.ConfirmBeforeCreateTrade = confirmBeforeCreateTrade;
+        tracked.AutoCreateTradeFromSignal = autoCreateTradeFromSignal;
         tracked.MinSignalScore = Math.Max(0, minSignalScore);
+        tracked.AllowOverrideRisk = allowOverrideRisk;
 
         if (tracked.Id == 0)
             await _appSettings.AddAsync(tracked);

@@ -9,5 +9,8 @@ public interface IExchangeAccountProvider
 {
     Task<IReadOnlyList<ExchangeBalance>> GetBalancesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Lấy số dư USDT thực tế từ tài khoản USD-M Futures. Trả null nếu không tìm thấy.</summary>
+    Task<decimal?> GetFuturesUsdtBalanceAsync(CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ExchangeTrade>> GetMyTradesAsync(string symbol, int limit = 500, CancellationToken cancellationToken = default);
 }

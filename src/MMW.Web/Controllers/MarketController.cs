@@ -30,7 +30,7 @@ public class MarketController : Controller
         return View(data);
     }
 
-    public IActionResult History(string? symbol)
+    public IActionResult History(string? symbol, int page = 1, int pageSize = 20)
     {
         var query = _history.GetAll();
         if (!string.IsNullOrWhiteSpace(symbol))
@@ -39,11 +39,14 @@ public class MarketController : Controller
             query = query.Where(r => r.Symbol == symbol);
         }
 
+        var pager = PagerModel.Build(page, pageSize, query.Count());
         var records = query
             .OrderByDescending(r => r.Id)
-            .Take(HistoryPageSize)
+            .Skip((pager.CurrentPage - 1) * pager.PageSize)
+            .Take(pager.PageSize)
             .ToList();
 
+        ViewBag.Pager = pager;
         return View(new IndicatorHistoryViewModel { Symbol = symbol, Records = records });
     }
 

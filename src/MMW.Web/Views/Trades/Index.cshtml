@@ -8,7 +8,19 @@
         <div class="col">
             <h2 class="page-title">Nhật ký lệnh</h2>
         </div>
-        <div class="col-auto">
+        <div class="col-auto d-flex gap-2">
+            <form asp-action="ImportFromBinance" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-primary" title="Import vị thế đang mở từ Binance Futures (lệnh đặt tay bên sàn)">
+                    <i class="ti ti-download me-1"></i> Import Binance
+                </button>
+            </form>
+            <form asp-action="Sync" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-secondary" title="Đồng bộ kết quả lệnh (fills) từ Binance">
+                    <i class="ti ti-refresh me-1"></i> Sync kết quả
+                </button>
+            </form>
             <a asp-action="Create" class="btn btn-primary">
                 <i class="ti ti-plus me-1"></i> Thêm lệnh
             </a>
@@ -19,6 +31,107 @@
 @if (TempData["Message"] is string msg)
 {
     <div class="alert alert-success">@msg</div>
+}
+@if (TempData["Error"] is string err)
+{
+    <div class="alert alert-danger">@err</div>
+}
+
+@if (!Model.OpenOrdersLoaded)
+{
+    <div class="alert alert-warning d-print-none">
+        <i class="ti ti-alert-triangle me-1"></i> Không đọc được lệnh chờ từ Binance (kiểm tra API key/kết nối).
+    </div>
+}
+
+@if (Model.OpenOrders.Count > 0)
+{
+    <div class="card mb-3 d-print-none">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="ti ti-clock-hour-4 me-1"></i> Lệnh chờ trên sàn
+                <span class="badge bg-azure-lt ms-2">@Model.OpenOrders.Count</span>
+            </h3>
+            <div class="card-subtitle">LIMIT đợi khớp + STOP/TP đang treo · đọc trực tiếp từ Binance, không lưu DB.</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Tài khoản</th>
+                        <th>Symbol</th>
+                        <th>Loại</th>
+                        <th>Hướng</th>
+                        <th class="text-end">Giá</th>
+                        <th class="text-end">Stop</th>
+                        <th class="text-end">Khối lượng</th>
+                        <th>Thời gian (VN)</th>
+                        <th class="w-1"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.OpenOrders)
+                    {
+                        var o = row.Order;
+                        <tr>
+                            <td class="text-secondary">@row.AccountName</td>
+                            <td><strong>@o.Symbol</strong></td>
+                            <td>
+                                <span class="badge bg-blue-lt">@o.Type</span>
+                                @if (o.ClosePosition)
+                                {
+                                    <span class="badge bg-orange-lt ms-1" title="Đóng toàn bộ vị thế khi chạm">Close</span>
+                                }
+                                else if (o.ReduceOnly)
+                                {
+                                    <span class="badge bg-yellow-lt ms-1" title="Chỉ giảm vị thế">Reduce</span>
+                                }
+                            </td>
+                            <td>
+                                @if (o.Side == MMW.Application.MarketData.Models.OrderSide.Buy)
+                                {
+                                    <span class="badge bg-green text-green-fg">BUY</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-red text-red-fg">SELL</span>
+                                }
+                                @if (!string.IsNullOrEmpty(o.PositionSide) && o.PositionSide != "BOTH")
+                                {
+                                    <span class="text-secondary small ms-1">@o.PositionSide</span>
+                                }
+                            </td>
+                            <td class="text-end">@(o.Price > 0m ? o.Price.ToString("N4") : "—")</td>
+                            <td class="text-end">@(o.StopPrice > 0m ? o.StopPrice.ToString("N4") : "—")</td>
+                            <td class="text-end">
+                                @if (o.ClosePosition)
+                                {
+                                    <span class="text-secondary">Toàn bộ</span>
+                                }
+                                else
+                                {
+                                    @($"{o.ExecutedQty:0.########}/{o.OrigQty:0.########}")
+                                }
+                            </td>
+                            <td class="text-secondary">@VietnamTimeHelper.Format(o.CreatedTimeUtc, "HH:mm dd/MM")</td>
+                            <td>
+                                <form asp-action="CancelOpenOrder" method="post" class="m-0"
+                                      onsubmit="return confirm('Huỷ lệnh chờ @o.Symbol (@o.Type, id @o.OrderId)?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="accountId" value="@row.AccountId" />
+                                    <input type="hidden" name="symbol" value="@o.Symbol" />
+                                    <input type="hidden" name="orderId" value="@o.OrderId" />
+                                    <button type="submit" class="btn btn-sm btn-ghost-danger" title="Huỷ lệnh chờ này trên Binance">
+                                        <i class="ti ti-x"></i> Huỷ
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
 }
 
 <div class="card">
@@ -60,7 +173,22 @@
 
                         <tr class="@(hasAnalysis && analysis!.RiskLevel == "Critical" ? "table-danger" : hasAnalysis && analysis!.RiskLevel == "High" ? "table-warning" : "")">
                             <td class="text-secondary">@(t.AccountName ?? "—")</td>
-                            <td><strong>@t.Symbol</strong></td>
+                            <td>
+                                <strong>@t.Symbol</strong>
+                                @if (t.LiveStatus != MMW.Domain.Enums.LiveOrderStatus.None)
+                                {
+                                    var liveBadge = t.LiveStatus switch
+                                    {
+                                        MMW.Domain.Enums.LiveOrderStatus.Submitted => ("bg-azure text-azure-fg", "LIVE"),
+                                        MMW.Domain.Enums.LiveOrderStatus.Filled => ("bg-green text-green-fg", "LIVE ✓"),
+                                        MMW.Domain.Enums.LiveOrderStatus.Blocked => ("bg-yellow text-yellow-fg", "BLOCKED"),
+                                        MMW.Domain.Enums.LiveOrderStatus.Error => ("bg-red text-red-fg", "LỖI SÀN"),
+                                        MMW.Domain.Enums.LiveOrderStatus.Canceled => ("bg-secondary", "HUỶ"),
+                                        _ => ("bg-secondary", t.LiveStatus.ToString())
+                                    };
+                                    <span class="badge @liveBadge.Item1 ms-1" title="@t.LiveNote">@liveBadge.Item2</span>
+                                }
+                            </td>
                             <td>
                                 @if (t.Direction == MMW.Domain.Enums.TradeDirection.Long)
                                 {
@@ -125,7 +253,23 @@
                             </td>
                             <td>
                                 <div class="btn-list flex-nowrap">
-                                    @if (t.Status != MMW.Domain.Enums.TradeStatus.Closed)
+                                    @{
+                                        var canRetry = t.Status != MMW.Domain.Enums.TradeStatus.Closed
+                                            && (t.Status == MMW.Domain.Enums.TradeStatus.Cancelled
+                                                || t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Blocked
+                                                || t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Error);
+                                    }
+                                    @if (canRetry)
+                                    {
+                                        <form asp-action="Reactivate" asp-route-id="@t.Id" method="post" class="m-0">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-warning"
+                                                    title="@(t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Blocked ? t.LiveNote : "Kích hoạt lại lệnh")">
+                                                <i class="ti ti-player-play"></i> Retry
+                                            </button>
+                                        </form>
+                                    }
+                                    @if (t.Status != MMW.Domain.Enums.TradeStatus.Closed && t.Status != MMW.Domain.Enums.TradeStatus.Cancelled)
                                     {
                                         <a asp-action="Close" asp-route-id="@t.Id" class="btn btn-sm btn-primary">Đóng</a>
                                         <a asp-action="Edit" asp-route-id="@t.Id" class="btn btn-sm">Sửa</a>
@@ -139,27 +283,27 @@
                         </tr>
                         @if (hasAnalysis)
                         {
-                            <tr class="bg-dark-subtle">
+                            <tr class="trade-analysis-row">
                                 <td colspan="12" class="py-2 px-3">
-                                    <div class="d-flex flex-column gap-1">
-                                        <div class="d-flex align-items-start gap-2">
+                                    <div class="trade-analysis-card">
+                                        <div class="trade-analysis-main">
                                             @if (analysis!.AiEnhanced)
                                             {
-                                                <span class="badge bg-purple-lt">
+                                                <span class="badge trade-analysis-provider trade-analysis-provider-ai">
                                                     <i class="ti ti-sparkles"></i> AI
                                                 </span>
                                             }
                                             else
                                             {
-                                                <span class="badge bg-azure-lt">
+                                                <span class="badge trade-analysis-provider trade-analysis-provider-auto">
                                                     <i class="ti ti-chart-line"></i> Auto
                                                 </span>
                                             }
-                                            <span>@analysis.Advice</span>
+                                            <span class="trade-analysis-advice">@analysis.Advice</span>
                                         </div>
-                                        <div class="text-secondary small">
+                                        <div class="trade-analysis-details small">
                                             @analysis.Details
-                                            <span class="ms-2 text-muted">· Cập nhật: @analysis.AnalyzedAt.ToString("HH:mm dd/MM")</span>
+                                            <span class="ms-2 trade-analysis-updated">· Cập nhật: @VietnamTimeHelper.Format(analysis.AnalyzedAt, "HH:mm dd/MM")</span>
                                         </div>
                                     </div>
                                 </td>
@@ -171,3 +315,8 @@
         </div>
     }
 </div>
+
+@if (ViewBag.Pager != null)
+{
+    @await Html.PartialAsync("_Pagination", (MMW.Web.Models.PagerModel)ViewBag.Pager)
+}

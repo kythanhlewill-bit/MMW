@@ -37,6 +37,7 @@ public class MiniMaxLlmService : ILlmService
                     new ChatMessage { Role = "user", Content = userMessage },
                 ],
                 Temperature = 0.3m,
+                MaxTokens = _options.MaxOutputTokens > 0 ? _options.MaxOutputTokens : 2048,
             };
 
             using var response = await _http.PostAsJsonAsync("v1/chat/completions", request, ct);
@@ -64,6 +65,7 @@ public class MiniMaxLlmService : ILlmService
         [JsonPropertyName("model")] public string Model { get; set; } = "";
         [JsonPropertyName("messages")] public List<ChatMessage> Messages { get; set; } = [];
         [JsonPropertyName("temperature")] public decimal Temperature { get; set; }
+        [JsonPropertyName("max_tokens")] public int MaxTokens { get; set; }
     }
 
     private sealed class ChatMessage

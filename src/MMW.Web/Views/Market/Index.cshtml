@@ -80,7 +80,7 @@
                             <td class="text-end">@(s.Atr?.ToString("N4") ?? "—")</td>
                             <td><span class="badge @css">@label</span></td>
                             <td class="text-secondary small">@s.Notes</td>
-                            <td class="text-end text-secondary small">@s.UpdatedAt.ToLocalTime().ToString("HH:mm:ss")</td>
+                            <td class="text-end text-secondary small">@VietnamTimeHelper.Format(s.UpdatedAt, "HH:mm:ss")</td>
                             <td>
                                 <a asp-controller="Market" asp-action="History" asp-route-symbol="@s.Symbol"
                                    class="btn btn-sm">Lịch sử</a>

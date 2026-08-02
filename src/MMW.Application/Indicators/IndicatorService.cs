@@ -7,6 +7,73 @@ namespace MMW.Application.Indicators;
 /// </summary>
 public class IndicatorService : IIndicatorService
 {
+    /// <summary>
+    /// Số mẫu tối thiểu để một phân vị có ý nghĩa (R-009). Dưới ngưỡng thì trả <c>null</c>
+    /// và tiêu chí liên quan nhận 0 điểm theo FR-006 — thà không có kết luận còn hơn có
+    /// một kết luận dựa trên quá ít mẫu.
+    /// </summary>
+    public const int MinPercentileSamples = 60;
+
+    public decimal? Percentile(IReadOnlyList<decimal> values, int percentile)
+    {
+        if (percentile is <= 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(percentile), percentile,
+                "Phân vị phải nằm trong khoảng (0, 100].");
+        }
+
+        if (values.Count < MinPercentileSamples) return null;
+
+        var sorted = values.ToArray();
+        Array.Sort(sorted);
+
+        // Thứ hạng gần nhất, không nội suy: rank = ceil(p/100 × n).
+        // Dùng số nguyên để tránh hoàn toàn sai số dấu phẩy động ở vùng biên.
+        var rank = (percentile * sorted.Length + 99) / 100;
+        return sorted[rank - 1];
+    }
+
+    public decimal? PercentileOf(IReadOnlyList<decimal> values, decimal value)
+    {
+        if (values.Count < MinPercentileSamples) return null;
+
+        var atOrBelow = 0;
+        foreach (var v in values) if (v <= value) atOrBelow++;
+
+        return (decimal)atOrBelow / values.Count * 100m;
+    }
+
+    public decimal? AnchoredVwap(IReadOnlyList<Candle> candles)
+    {
+        if (candles.Count == 0) return null;
+
+        // Neo bám theo nến CUỐI chuỗi chứ không theo đồng hồ: giữ cho hàm thuần,
+        // nhờ vậy kiểm thử lịch sử dùng được y hệt chạy thật.
+        var anchorDay = candles[^1].OpenTime.Date;
+
+        decimal pv = 0m, volume = 0m;
+        for (var i = candles.Count - 1; i >= 0; i--)
+        {
+            var c = candles[i];
+            if (c.OpenTime.Date != anchorDay) break;
+
+            var typical = (c.High + c.Low + c.Close) / 3m;
+            pv += typical * c.Volume;
+            volume += c.Volume;
+        }
+
+        return volume == 0m ? null : pv / volume;
+    }
+
+    public decimal? VolumeSma(IReadOnlyList<Candle> candles, int period)
+    {
+        if (period <= 0 || candles.Count < period) return null;
+
+        decimal sum = 0m;
+        for (var i = candles.Count - period; i < candles.Count; i++) sum += candles[i].Volume;
+        return sum / period;
+    }
+
     public decimal? Sma(IReadOnlyList<decimal> values, int period)
     {
         if (period <= 0 || values.Count < period)

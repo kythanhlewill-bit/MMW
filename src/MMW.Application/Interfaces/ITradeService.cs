@@ -29,4 +29,10 @@ public interface ITradeService
     /// xoá lệnh (cascade TradeTag/TradeAnalysis); tính lại tổng hợp ngày.
     /// </summary>
     Task DeleteAsync(long tradeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Kích hoạt lại lệnh Blocked/Error/Cancelled: reset LiveStatus + IsLive, đổi status về Open nếu Cancelled.
+    /// Không tự gửi lên sàn — caller quyết định có gọi PlaceForTradeAsync không.
+    /// </summary>
+    Task ReactivateAsync(long tradeId, CancellationToken cancellationToken = default);
 }

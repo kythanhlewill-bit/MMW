@@ -45,7 +45,7 @@
                     {
                         var (css, label) = BiasBadge(r.Bias);
                         <tr>
-                            <td class="text-secondary small">@r.ScannedAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td class="text-secondary small">@VietnamTimeHelper.Format(r.ScannedAt, "dd/MM HH:mm")</td>
                             <td><strong>@r.Symbol</strong></td>
                             <td class="text-secondary">@r.Interval</td>
                             <td class="text-end">@r.Price.ToString("N4")</td>
@@ -62,3 +62,8 @@
         </div>
     }
 </div>
+
+@if (ViewBag.Pager != null)
+{
+    @await Html.PartialAsync("_Pagination", (MMW.Web.Models.PagerModel)ViewBag.Pager)
+}

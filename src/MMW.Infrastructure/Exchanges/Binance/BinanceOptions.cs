@@ -10,6 +10,12 @@ public class BinanceOptions
     /// <summary>Endpoint REST chính (dùng cho API cần ký).</summary>
     public string ApiBaseUrl { get; set; } = "https://api.binance.com";
 
+    /// <summary>Endpoint USD-M Futures public REST (dùng để lấy danh sách symbol futures).</summary>
+    public string FuturesApiBaseUrl { get; set; } = "https://fapi.binance.com";
+
+    /// <summary>Endpoint USD-M Futures TESTNET (tiền ảo) — dùng khi LiveTrading.UseTestnet=true.</summary>
+    public string FuturesTestnetBaseUrl { get; set; } = "https://testnet.binancefuture.com";
+
     /// <summary>API key READ-ONLY. Để trong User Secrets, không commit.</summary>
     public string? ApiKey { get; set; }
 

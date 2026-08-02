@@ -85,6 +85,15 @@ public class TradeService : ITradeService
         var settings = await _riskSettings.FirstOrDefaultAsync(s => s.TradingAccountId == accountId)
             ?? new RiskSetting();
 
+        var hasOpenSameDirection = await _tradeRepository.AnyAsync(t =>
+            t.TradingAccountId == accountId &&
+            t.Symbol == signal.Symbol &&
+            t.Direction == signal.Direction &&
+            t.Status == TradeStatus.Open);
+
+        if (hasOpenSameDirection)
+            throw new InvalidOperationException($"Đang có lệnh mở {signal.Direction} {signal.Symbol} trên tài khoản #{accountId}.");
+
         // Auto-size theo % rủi ro: quantity = (vốn × maxRisk%) / khoảng cách dừng lỗ.
         var stopDistance = Math.Abs(signal.Entry - signal.StopLoss);
         var quantity = 0m;
@@ -105,6 +114,7 @@ public class TradeService : ITradeService
             StopLoss = signal.StopLoss,
             TakeProfit = signal.TakeProfit,
             Quantity = quantity,
+            Leverage = 20m,
             OpenedAt = DateTime.UtcNow,
             Note = $"Tạo từ đề xuất #{signal.Id} ({signal.Symbol} {signal.Direction})",
         };
@@ -169,6 +179,28 @@ public class TradeService : ITradeService
 
         // Chấm lại rule + behavior + tổng hợp ngày theo giá trị mới.
         await _workflow.ProcessTradeAsync(tradeId, cancellationToken);
+    }
+
+    public async Task ReactivateAsync(long tradeId, CancellationToken cancellationToken = default)
+    {
+        var trade = await _tradeRepository.FindAsync(tradeId)
+            ?? throw new InvalidOperationException($"Không tìm thấy lệnh #{tradeId}.");
+
+        if (trade.Status == TradeStatus.Closed)
+            throw new InvalidOperationException("Không kích hoạt lại lệnh đã đóng.");
+
+        // Mở lại nếu bị Cancelled.
+        if (trade.Status == TradeStatus.Cancelled)
+            trade.Status = TradeStatus.Open;
+
+        // Reset trạng thái live để cho phép thử lại.
+        trade.IsLive = false;
+        trade.LiveStatus = LiveOrderStatus.None;
+        trade.ExchangeOrderId = null;
+        trade.ExchangeClientOrderId = null;
+        trade.LiveNote = null;
+
+        await _unitOfWork.CommitAsync(cancellationToken);
     }
 
     public async Task DeleteAsync(long tradeId, CancellationToken cancellationToken = default)

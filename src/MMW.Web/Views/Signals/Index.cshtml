@@ -5,13 +5,16 @@
     ViewData["Title"] = "Đề xuất lệnh";
     var symbol = ViewData["Symbol"] as string;
     var confirmBeforeCreate = ViewData["Confirm"] as bool? ?? true;
+    var autoCreate = ViewData["AutoCreate"] as bool? ?? false;
 }
 
 <div class="page-header d-print-none mb-3">
     <div class="row align-items-center">
         <div class="col">
             <h2 class="page-title">Đề xuất lệnh @(symbol is null ? "" : $"· {symbol}")</h2>
-            <div class="text-secondary mt-1">Sinh tự động từ phân tích · chỉ là gợi ý, không phải lệnh thật</div>
+            <div class="text-secondary mt-1">
+                Sinh bởi AI từ indicator + tin tức thị trường · @(autoCreate ? "auto tạo lệnh journal khi AI ACCEPT" : "chỉ là gợi ý, chưa tạo lệnh")
+            </div>
         </div>
     </div>
 </div>
@@ -26,7 +29,7 @@
     {
         <div class="empty">
             <p class="empty-title">Chưa có đề xuất</p>
-            <p class="empty-subtitle text-secondary">Đề xuất chỉ sinh khi tín hiệu đủ mạnh (trend + MACD đồng thuận).</p>
+            <p class="empty-subtitle text-secondary">Đề xuất chỉ sinh khi AI thấy setup đủ rõ sau khi đọc indicator và bối cảnh thị trường.</p>
         </div>
     }
     else
@@ -44,7 +47,7 @@
                     @foreach (var s in Model)
                     {
                         <tr>
-                            <td class="text-secondary small">@s.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td class="text-secondary small">@VietnamTimeHelper.Format(s.CreatedAt, "dd/MM HH:mm")</td>
                             <td><strong>@s.Symbol</strong></td>
                             <td class="text-secondary">@s.Interval</td>
                             <td>
@@ -63,8 +66,17 @@
                             <td class="text-end">@s.RiskReward.ToString("N1")</td>
                             <td class="text-secondary small">@s.Reason</td>
                             <td>
-                                <a asp-controller="Trades" asp-action="Create" asp-route-signalId="@s.Id"
-                                   class="btn btn-sm btn-primary">Ghi nhận</a>
+                                @if (confirmBeforeCreate)
+                                {
+                                    <a asp-controller="Trades" asp-action="Create" asp-route-signalId="@s.Id"
+                                       class="btn btn-sm btn-primary">Ghi nhận</a>
+                                }
+                                else
+                                {
+                                    <form asp-action="CreateTrade" asp-route-id="@s.Id" method="post" class="m-0">
+                                        <button type="submit" class="btn btn-sm btn-primary">Tạo lệnh</button>
+                                    </form>
+                                }
                             </td>
                         </tr>
                     }
@@ -73,3 +85,8 @@
         </div>
     }
 </div>
+
+@if (ViewBag.Pager != null)
+{
+    @await Html.PartialAsync("_Pagination", (MMW.Web.Models.PagerModel)ViewBag.Pager)
+}

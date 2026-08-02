@@ -1,0 +1,68 @@
+@using MMW.Domain.Enums
+@model MMW.Web.Models.NotificationSettingsForm
+@{
+    ViewData["Title"] = "Cấu hình thông báo";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col"><h2 class="page-title">Cấu hình thông báo</h2></div>
+        <div class="col-auto"><a asp-action="Index" class="btn">← Cài đặt</a></div>
+    </div>
+</div>
+
+@if (TempData["Message"] is string msg)
+{
+    <div class="alert alert-success">@msg</div>
+}
+
+<form asp-action="SaveNotifications" method="post" class="card">
+    <div class="card-header"><h3 class="card-title">Kênh nhận cảnh báo</h3></div>
+    <div class="card-body">
+        <div class="mb-4">
+            <label class="form-label" asp-for="Email"></label>
+            <input asp-for="Email" class="form-control" placeholder="you@example.com" />
+            <span asp-validation-for="Email" class="text-danger small"></span>
+            <div class="form-hint">Email chỉ gửi khi loại thông báo bật kênh Email và đạt min severity.</div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-vcenter">
+                <thead>
+                    <tr>
+                        <th>Loại thông báo</th>
+                        <th class="text-center">Realtime</th>
+                        <th class="text-center">Email</th>
+                        <th>Min severity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < Model.Preferences.Count; i++)
+                    {
+                        <tr>
+                            <td>
+                                <input type="hidden" asp-for="Preferences[i].Type" />
+                                <input type="hidden" asp-for="Preferences[i].Name" />
+                                <input type="hidden" asp-for="Preferences[i].Description" />
+                                <div class="fw-semibold">@Model.Preferences[i].Name</div>
+                                <div class="text-secondary small">@Model.Preferences[i].Description</div>
+                            </td>
+                            <td class="text-center">
+                                <input asp-for="Preferences[i].InAppEnabled" class="form-check-input" type="checkbox" />
+                            </td>
+                            <td class="text-center">
+                                <input asp-for="Preferences[i].EmailEnabled" class="form-check-input" type="checkbox" />
+                            </td>
+                            <td style="width: 180px">
+                                <select asp-for="Preferences[i].MinSeverity" class="form-select" asp-items="Html.GetEnumSelectList<NotificationSeverity>()"></select>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer text-end">
+        <button type="submit" class="btn btn-primary">Lưu cấu hình</button>
+    </div>
+</form>

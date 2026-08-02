@@ -1,0 +1,153 @@
+@using MMW.Domain.Enums
+@using MMW.Web.Helpers
+@model IReadOnlyList<MMW.Application.Models.NotificationModel>
+@{
+    ViewData["Title"] = "Thông báo";
+    const int PageSize = 20;
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col"><h2 class="page-title">Thông báo</h2></div>
+        <div class="col-auto">
+            <form asp-action="MarkAllRead" method="post">
+                <button type="submit" class="btn">Đánh dấu tất cả đã đọc</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    @if (Model.Count == 0)
+    {
+        <div id="notificationEmpty" class="card-body text-secondary">Chưa có thông báo.</div>
+    }
+    <div id="notificationList" class="list-group list-group-flush" data-skip="@Model.Count" data-take="@PageSize" data-has-more="@(Model.Count == PageSize ? "true" : "false")">
+        @foreach (var n in Model)
+        {
+            var severityClass = n.Severity == NotificationSeverity.Critical ? "text-danger" : n.Severity == NotificationSeverity.Warning ? "text-warning" : "text-blue";
+            <div class="list-group-item @(n.IsRead ? "" : "bg-blue-lt")">
+                <div class="d-flex align-items-start">
+                    <div class="me-3 @severityClass"><i class="ti ti-bell"></i></div>
+                    <div class="flex-fill">
+                        <div class="fw-semibold">@n.Title</div>
+                        <div>@n.Message</div>
+                        @if (!string.IsNullOrWhiteSpace(n.RelatedUrl))
+                        {
+                            <div class="mt-2">
+                                <a href="@n.RelatedUrl" target="_blank" rel="noopener" class="btn btn-sm">
+                                    <i class="ti ti-external-link me-1"></i> Mở Binance Futures
+                                </a>
+                            </div>
+                        }
+                        <div class="text-secondary small mt-1">
+                            @n.Type · @n.Severity · @VietnamTimeHelper.Format(n.CreatedAt)
+                            @if (!string.IsNullOrWhiteSpace(n.RelatedSymbol))
+                            {
+                                <span> · @n.RelatedSymbol</span>
+                            }
+                        </div>
+                    </div>
+                    @if (!n.IsRead)
+                    {
+                        <form asp-action="MarkRead" method="post" class="ms-3">
+                            <input type="hidden" name="id" value="@n.Id" />
+                            <button type="submit" class="btn btn-sm">Đã đọc</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+    <div id="notificationLoader" class="card-body text-center text-secondary small" style="display:none">Đang tải thêm...</div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var list = document.getElementById('notificationList');
+            var loader = document.getElementById('notificationLoader');
+            var empty = document.getElementById('notificationEmpty');
+            var antiForgery = document.querySelector('input[name="__RequestVerificationToken"]');
+            var isLoading = false;
+
+            if (!list) return;
+
+            function htmlEscape(value) {
+                return String(value || '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", '&#039;');
+            }
+
+            function severityClass(severity) {
+                if (severity === 'Critical' || severity === 2) return 'text-danger';
+                if (severity === 'Warning' || severity === 1) return 'text-warning';
+                return 'text-blue';
+            }
+
+            function itemHtml(item) {
+                var unread = item.isRead ? '' : ' bg-blue-lt';
+                var relatedSymbol = item.relatedSymbol ? ' · ' + htmlEscape(item.relatedSymbol) : '';
+                var relatedUrl = item.relatedUrl
+                    ? '<div class="mt-2"><a href="' + htmlEscape(item.relatedUrl) + '" target="_blank" rel="noopener" class="btn btn-sm"><i class="ti ti-external-link me-1"></i> Mở Binance Futures</a></div>'
+                    : '';
+                var markRead = item.isRead
+                    ? ''
+                    : '<form action="/Notifications/MarkRead" method="post" class="ms-3">' +
+                        (antiForgery ? '<input name="__RequestVerificationToken" type="hidden" value="' + htmlEscape(antiForgery.value) + '" />' : '') +
+                        '<input type="hidden" name="id" value="' + item.id + '" />' +
+                        '<button type="submit" class="btn btn-sm">Đã đọc</button>' +
+                    '</form>';
+
+                return '<div class="list-group-item' + unread + '">' +
+                    '<div class="d-flex align-items-start">' +
+                    '<div class="me-3 ' + severityClass(item.severity) + '"><i class="ti ti-bell"></i></div>' +
+                    '<div class="flex-fill">' +
+                    '<div class="fw-semibold">' + htmlEscape(item.title) + '</div>' +
+                    '<div>' + htmlEscape(item.message) + '</div>' +
+                    relatedUrl +
+                    '<div class="text-secondary small mt-1">' + htmlEscape(item.type) + ' · ' + htmlEscape(item.severity) + ' · ' + htmlEscape(item.createdAtText) + relatedSymbol + '</div>' +
+                    '</div>' +
+                    markRead +
+                    '</div>' +
+                    '</div>';
+            }
+
+            async function loadMore() {
+                if (isLoading || list.dataset.hasMore !== 'true') return;
+                isLoading = true;
+                if (loader) loader.style.display = '';
+
+                try {
+                    var skip = Number(list.dataset.skip || 0);
+                    var take = Number(list.dataset.take || 20);
+                    var res = await fetch('/Notifications/Items?skip=' + skip + '&take=' + take);
+                    if (!res.ok) return;
+
+                    var items = await res.json();
+                    if (items.length > 0) {
+                        if (empty) empty.style.display = 'none';
+                        list.insertAdjacentHTML('beforeend', items.map(itemHtml).join(''));
+                        list.dataset.skip = String(skip + items.length);
+                    }
+
+                    if (items.length < take) {
+                        list.dataset.hasMore = 'false';
+                    }
+                } finally {
+                    isLoading = false;
+                    if (loader) loader.style.display = 'none';
+                }
+            }
+
+            window.addEventListener('scroll', function () {
+                if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300) {
+                    loadMore();
+                }
+            }, { passive: true });
+        })();
+    </script>
+}

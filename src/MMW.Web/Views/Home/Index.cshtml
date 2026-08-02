@@ -31,8 +31,23 @@ else
         <div class="col-sm-6 col-lg-3">
             <div class="card">
                 <div class="card-body">
-                    <div class="subheader">Số dư</div>
-                    <div class="h1 mb-0 mt-2">@Model.Balance.ToString("N2") <span class="text-secondary h3">@Model.Currency</span></div>
+                    @if (Model.LiveBalance.HasValue)
+                    {
+                        <div class="subheader d-flex align-items-center gap-1">
+                            Số dư <span class="badge bg-green-lt text-green ms-1" title="Lấy trực tiếp từ Binance Futures">LIVE</span>
+                        </div>
+                        <div class="h1 mb-0 mt-2">@Model.LiveBalance.Value.ToString("N2") <span class="text-secondary h3">@Model.Currency</span></div>
+                        <div class="text-secondary small mt-1">Sổ: @Model.Balance.ToString("N2")</div>
+                    }
+                    else
+                    {
+                        <div class="subheader">Số dư <span class="badge bg-secondary-lt ms-1" title="@Model.LiveBalanceFetchError">Sổ</span></div>
+                        <div class="h1 mb-0 mt-2">@Model.Balance.ToString("N2") <span class="text-secondary h3">@Model.Currency</span></div>
+                        @if (!string.IsNullOrWhiteSpace(Model.LiveBalanceFetchError))
+                        {
+                            <div class="text-secondary small mt-1" title="@Model.LiveBalanceFetchError">Binance chưa kết nối</div>
+                        }
+                    }
                 </div>
             </div>
         </div>

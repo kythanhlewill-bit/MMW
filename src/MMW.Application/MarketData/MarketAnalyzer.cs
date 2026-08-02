@@ -1,4 +1,5 @@
 using System.Globalization;
+using MMW.Application.Abstractions;
 using MMW.Application.Indicators;
 using MMW.Application.MarketData.Models;
 using MMW.Domain.Enums;
@@ -12,22 +13,34 @@ namespace MMW.Application.MarketData;
 ///   RSI &gt;70 / &lt;30 chỉ ghi chú (quá mua/quá bán), không tự lật bias.
 /// Tổng điểm > 0 → Bullish, &lt; 0 → Bearish, = 0 → Neutral.
 /// </summary>
+/// <remarks>
+/// Mọi phép tính chạy trên chuỗi đã qua <c>ClosedOnly()</c>. Giá hiện tại đến từ tham số
+/// riêng chứ không từ nến cuối chuỗi — nến cuối có thể đang chạy, và dùng nó để tính chỉ báo
+/// làm chỉ báo đổi giá trị theo từng tick (repaint).
+/// </remarks>
 public class MarketAnalyzer : IMarketAnalyzer
 {
     private readonly IIndicatorService _ind;
+    private readonly IClock _clock;
 
-    public MarketAnalyzer(IIndicatorService indicators) => _ind = indicators;
-
-    public MarketAnalysis Analyze(IReadOnlyList<Candle> candles)
+    public MarketAnalyzer(IIndicatorService indicators, IClock clock)
     {
-        var closes = candles.Select(c => c.Close).ToList();
-        var price = closes.Count > 0 ? closes[^1] : 0m;
+        _ind = indicators;
+        _clock = clock;
+    }
+
+    public MarketAnalysis Analyze(IReadOnlyList<Candle> candles, decimal currentPrice)
+    {
+        var closed = candles.ClosedOnly(_clock);
+
+        var closes = closed.Select(c => c.Close).ToList();
+        var price = currentPrice;
 
         var rsi = _ind.Rsi(closes, 14);
         var ema20 = _ind.Ema(closes, 20);
         var ema50 = _ind.Ema(closes, 50);
         var macd = _ind.Macd(closes);
-        var atr = _ind.Atr(candles, 14);
+        var atr = _ind.Atr(closed, 14);
 
         var score = 0;
         var notes = new List<string>();

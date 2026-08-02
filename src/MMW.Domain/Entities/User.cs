@@ -16,5 +16,13 @@ public class User : BaseEntity
     [MaxLength(100)]
     public string? DisplayName { get; set; }
 
+    [MaxLength(200)]
+    public string? Email { get; set; }
+
+    public bool EmailConfirmed { get; set; }
+
     public bool IsActive { get; set; } = true;
+
+    public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
+    public ICollection<NotificationPreference> NotificationPreferences { get; set; } = new List<NotificationPreference>();
 }

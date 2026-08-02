@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MMW.Application.Indicators;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
@@ -21,6 +22,7 @@ public class TradeAdvisorService : ITradeAdvisorService
     private readonly IIndicatorService _indicators;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILlmService _llm;
+    private readonly ILogger<TradeAdvisorService> _logger;
 
     private const string SystemPrompt =
         "Bạn là cố vấn giao dịch crypto chuyên nghiệp. " +
@@ -35,7 +37,8 @@ public class TradeAdvisorService : ITradeAdvisorService
         IMarketDataProvider marketData,
         IIndicatorService indicators,
         IUnitOfWork unitOfWork,
-        ILlmService llm)
+        ILlmService llm,
+        ILogger<TradeAdvisorService> logger)
     {
         _trades = trades;
         _analyses = analyses;
@@ -43,6 +46,7 @@ public class TradeAdvisorService : ITradeAdvisorService
         _indicators = indicators;
         _unitOfWork = unitOfWork;
         _llm = llm;
+        _logger = logger;
     }
 
     public async Task<int> AnalyzeOpenTradesAsync(CancellationToken cancellationToken = default)
@@ -89,12 +93,18 @@ public class TradeAdvisorService : ITradeAdvisorService
                         await UpsertAnalysisAsync(trade.Id, analysis);
                         analyzed++;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to analyze open trade {TradeId} for {Symbol}", trade.Id, trade.Symbol);
+                    }
                 }
 
                 await _unitOfWork.CommitAsync(cancellationToken);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to analyze open trades for symbol {Symbol}", group.Key);
+            }
         }
 
         return analyzed;

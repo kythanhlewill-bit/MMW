@@ -1,4 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using MMW.Application.Interfaces;
+using MMW.Application.Models;
 using MMW.Application.RuleEngine;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
@@ -19,7 +22,9 @@ public class RuleEvaluationService : IRuleEvaluationService
     private readonly IBaseRepository<Flag> _flags;
     private readonly ITradeMetricsCalculator _calculator;
     private readonly IRuleEngine _engine;
+    private readonly INotificationService _notifications;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<RuleEvaluationService> _logger;
 
     public RuleEvaluationService(
         IBaseRepository<Trade> trades,
@@ -29,7 +34,9 @@ public class RuleEvaluationService : IRuleEvaluationService
         IBaseRepository<Flag> flags,
         ITradeMetricsCalculator calculator,
         IRuleEngine engine,
-        IUnitOfWork unitOfWork)
+        INotificationService notifications,
+        IUnitOfWork unitOfWork,
+        ILogger<RuleEvaluationService> logger)
     {
         _trades = trades;
         _accounts = accounts;
@@ -38,7 +45,9 @@ public class RuleEvaluationService : IRuleEvaluationService
         _flags = flags;
         _calculator = calculator;
         _engine = engine;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<Flag>> EvaluateTradeAsync(long tradeId, CancellationToken cancellationToken = default)
@@ -72,8 +81,11 @@ public class RuleEvaluationService : IRuleEvaluationService
         var violations = _engine.Evaluate(context);
 
         // 3) Xoá Flag RuleViolation cũ của lệnh (idempotent), rồi thêm cờ mới.
-        var existing = await _flags.FindListAsync(
-            f => f.TradeId == trade.Id && f.Category == FlagCategory.RuleViolation);
+        // Dùng tracked query (Queryable) thay AsNoTracking để EF dùng identity map,
+        // tránh lỗi duplicate-tracking khi DbContext đã track các Flag đó từ trước.
+        var existing = await _flags.Queryable
+            .Where(f => f.TradeId == trade.Id && f.Category == FlagCategory.RuleViolation)
+            .ToListAsync(cancellationToken);
         if (existing.Count > 0)
             _flags.RemoveRange(existing);
 
@@ -94,6 +106,34 @@ public class RuleEvaluationService : IRuleEvaluationService
 
         await _unitOfWork.CommitAsync(cancellationToken);
 
+        await NotifyRuleViolationsAsync(trade, newFlags, cancellationToken);
+
         return newFlags;
+    }
+
+    private async Task NotifyRuleViolationsAsync(Trade trade, IReadOnlyList<Flag> flags, CancellationToken cancellationToken)
+    {
+        foreach (var flag in flags.Where(f => f.Severity >= FlagSeverity.Warning))
+        {
+            try
+            {
+                await _notifications.PublishAsync(new NotificationCreateModel
+                {
+                    Type = NotificationType.TradeRiskWarning,
+                    Severity = flag.Severity == FlagSeverity.Critical ? NotificationSeverity.Critical : NotificationSeverity.Warning,
+                    Title = $"Cảnh báo rủi ro {trade.Symbol}",
+                    Message = flag.Message,
+                    Source = "rule_engine",
+                    SourceKey = $"{trade.Id}:{flag.Type}",
+                    RelatedSymbol = trade.Symbol,
+                    ExpiresAt = DateTime.UtcNow.AddDays(7),
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Notification không được làm fail workflow chấm rule.
+                _logger.LogWarning(ex, "Failed to publish rule violation notification for trade {TradeId} and flag {FlagType}", trade.Id, flag.Type);
+            }
+        }
     }
 }

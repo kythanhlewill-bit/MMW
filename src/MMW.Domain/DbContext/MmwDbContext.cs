@@ -25,8 +25,26 @@ public partial class MmwDbContext : Microsoft.EntityFrameworkCore.DbContext
     public virtual DbSet<MarketSnapshot> MarketSnapshots => Set<MarketSnapshot>();
     public virtual DbSet<IndicatorRecord> IndicatorRecords => Set<IndicatorRecord>();
     public virtual DbSet<TradeSignal> TradeSignals => Set<TradeSignal>();
+    public virtual DbSet<AiSignalScanRecord> AiSignalScanRecords => Set<AiSignalScanRecord>();
+    public virtual DbSet<ExchangeApiAuditRecord> ExchangeApiAuditRecords => Set<ExchangeApiAuditRecord>();
     public virtual DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public virtual DbSet<TradeAnalysis> TradeAnalyses => Set<TradeAnalysis>();
+    public virtual DbSet<Notification> Notifications => Set<Notification>();
+    public virtual DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+    public virtual DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+
+    // --- Deterministic Intraday Trading Engine ---
+    public virtual DbSet<EngineSetting> EngineSettings => Set<EngineSetting>();
+    public virtual DbSet<SessionQualityRow> SessionQualityRows => Set<SessionQualityRow>();
+    public virtual DbSet<BlackoutRule> BlackoutRules => Set<BlackoutRule>();
+    public virtual DbSet<ScheduledEvent> ScheduledEvents => Set<ScheduledEvent>();
+    public virtual DbSet<DailyPlan> DailyPlans => Set<DailyPlan>();
+    public virtual DbSet<EntryScorecard> EntryScorecards => Set<EntryScorecard>();
+    public virtual DbSet<EntryScorecardLine> EntryScorecardLines => Set<EntryScorecardLine>();
+    public virtual DbSet<MarketContextRecord> MarketContextRecords => Set<MarketContextRecord>();
+    public virtual DbSet<KlineArchive> KlineArchives => Set<KlineArchive>();
+    public virtual DbSet<FundingRateArchive> FundingRateArchives => Set<FundingRateArchive>();
+    public virtual DbSet<BacktestRun> BacktestRuns => Set<BacktestRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

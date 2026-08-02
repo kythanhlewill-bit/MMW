@@ -10,5 +10,7 @@ public class AppSettingConfiguration : IEntityTypeConfiguration<AppSetting>
     {
         builder.ToTable("AppSettings");
         builder.HasKey(x => x.Id);
+        builder.Property(x => x.AutoCreateTradeFromSignal).HasDefaultValue(false);
+        builder.Property(x => x.AllowOverrideRisk).HasDefaultValue(false);
     }
 }

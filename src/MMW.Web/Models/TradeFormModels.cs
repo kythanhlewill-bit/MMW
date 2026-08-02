@@ -44,7 +44,7 @@ public class CreateTradeForm
     public decimal Quantity { get; set; }
 
     [Display(Name = "Đòn bẩy")]
-    public decimal? Leverage { get; set; }
+    public decimal? Leverage { get; set; } = 20m;
 
     [Display(Name = "Phí")]
     public decimal Fee { get; set; }
@@ -74,6 +74,8 @@ public class AccountRiskInfo
     public long Id { get; set; }
     public decimal Balance { get; set; }
     public decimal MaxRiskPercent { get; set; }
+    /// <summary>RR tối thiểu — dùng để gợi ý giá TP từ khoảng cách SL.</summary>
+    public decimal Rr { get; set; }
 }
 
 public class CloseTradeForm

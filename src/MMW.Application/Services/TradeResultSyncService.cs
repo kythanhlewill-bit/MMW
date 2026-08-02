@@ -15,6 +15,7 @@ public class TradeResultSyncService : ITradeResultSyncService
     private readonly IBaseRepository<TradingAccount> _accounts;
     private readonly IBaseRepository<Trade> _trades;
     private readonly IExchangeAccountProviderFactory _providerFactory;
+    private readonly IExchangeOrderProviderFactory _orderFactory;
     private readonly ITradeWorkflowService _workflow;
     private readonly IUnitOfWork _unitOfWork;
 
@@ -22,12 +23,14 @@ public class TradeResultSyncService : ITradeResultSyncService
         IBaseRepository<TradingAccount> accounts,
         IBaseRepository<Trade> trades,
         IExchangeAccountProviderFactory providerFactory,
+        IExchangeOrderProviderFactory orderFactory,
         ITradeWorkflowService workflow,
         IUnitOfWork unitOfWork)
     {
         _accounts = accounts;
         _trades = trades;
         _providerFactory = providerFactory;
+        _orderFactory = orderFactory;
         _workflow = workflow;
         _unitOfWork = unitOfWork;
     }
@@ -67,6 +70,10 @@ public class TradeResultSyncService : ITradeResultSyncService
         var failed = 0;
         var skipped = 0;
 
+        // Vị thế còn mở thực tế trên sàn → để KHÔNG đóng nhầm lệnh fuzzy/import khi position vẫn còn.
+        // null = không đọc được (best-effort, không chặn đóng).
+        var openPositionKeys = await TryGetOpenPositionKeysAsync(account, cancellationToken);
+
         var symbolGroups = openTrades.GroupBy(t => t.Symbol);
 
         foreach (var group in symbolGroups)
@@ -80,7 +87,7 @@ public class TradeResultSyncService : ITradeResultSyncService
                 {
                     try
                     {
-                        if (TryMatchAndClose(trade, fills, account))
+                        if (TryMatchAndClose(trade, fills, account, openPositionKeys))
                         {
                             _trades.Update(trade);
                             synced++;
@@ -115,20 +122,74 @@ public class TradeResultSyncService : ITradeResultSyncService
         return new SyncResult(synced, failed, skipped);
     }
 
-    private static bool TryMatchAndClose(Trade trade, IReadOnlyList<MarketData.Models.ExchangeTrade> fills, TradingAccount account)
+    /// <summary>
+    /// Đọc vị thế còn mở trên sàn, trả set khoá "SYMBOL|Direction" (vd "BTCUSDT|Long").
+    /// Null nếu không đọc được (không chặn việc đóng — best-effort).
+    /// </summary>
+    private async Task<HashSet<string>?> TryGetOpenPositionKeysAsync(TradingAccount account, CancellationToken ct)
     {
-        // Tìm fills đóng lệnh: BUY lệnh Long → tìm SELL fills sau entry time; ngược lại cho Short.
-        var isClosingSide = trade.Direction == TradeDirection.Long ? false : true; // close Long = Sell (isBuyer=false)
+        try
+        {
+            // Đọc vị thế cùng venue với nguồn fills (real net) để khớp dữ liệu.
+            var orderProvider = _orderFactory.Create(account.ApiKey!, account.ApiSecret!, useTestnet: false);
+            var positions = await orderProvider.GetOpenPositionsAsync(null, ct);
+            return positions
+                .Where(p => p.PositionAmt != 0m)
+                .Select(p => PositionKey(p.Symbol, p.IsLong ? TradeDirection.Long : TradeDirection.Short))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string PositionKey(string symbol, TradeDirection direction) => $"{symbol}|{direction}";
+
+    private static bool TryMatchAndClose(
+        Trade trade,
+        IReadOnlyList<MarketData.Models.ExchangeTrade> fills,
+        TradingAccount account,
+        HashSet<string>? openPositionKeys)
+    {
+        // An toàn: nếu vị thế cùng symbol+hướng VẪN còn mở trên sàn thì chưa đóng (tránh đóng nhầm
+        // do fuzzy match khớp fill cũ). Chỉ áp dụng khi đọc được vị thế.
+        if (openPositionKeys is not null && openPositionKeys.Contains(PositionKey(trade.Symbol, trade.Direction)))
+            return false;
+
+        // Phía đóng lệnh: Long đóng bằng SELL (isBuyer=false), Short đóng bằng BUY (isBuyer=true).
+        var isClosingSide = trade.Direction != TradeDirection.Long;
         var afterOpen = trade.OpenedAt ?? trade.CreatedDate;
 
-        var closingFills = fills
-            .Where(f => f.IsBuyer == isClosingSide && f.Time > afterOpen)
-            .OrderBy(f => f.Time)
-            .ToList();
+        List<MarketData.Models.ExchangeTrade> closingFills;
+
+        if (!string.IsNullOrWhiteSpace(trade.ExchangeOrderId))
+        {
+            // Tier 1 — Exact match: lệnh đặt qua MMW có orderId → match chính xác 100%.
+            // Lấy fills có cùng orderId (Binance gom partial fills vào cùng một order).
+            closingFills = fills
+                .Where(f => f.OrderId == trade.ExchangeOrderId)
+                .OrderBy(f => f.Time)
+                .ToList();
+        }
+        else
+        {
+            // Tier 2 — Fuzzy match: import thủ công / không có orderId.
+            // Điều kiện: đúng phía đóng + sau thời điểm mở + giá fill nằm trong ±5% entry
+            // (loại fills của các lệnh khác trên cùng symbol).
+            var entryRef = trade.EntryPrice;
+            closingFills = fills
+                .Where(f => f.IsBuyer == isClosingSide
+                         && f.Time > afterOpen
+                         && entryRef > 0m
+                         && Math.Abs(f.Price - entryRef) / entryRef <= 0.05m)
+                .OrderBy(f => f.Time)
+                .ToList();
+        }
 
         if (closingFills.Count == 0) return false;
 
-        // Ghép fills cho đến đủ quantity hoặc hết.
+        // Gom fills cho đến khi đủ quantity.
         var remainingQty = trade.Quantity;
         var totalPnl = 0m;
         var totalFee = 0m;
@@ -153,7 +214,7 @@ public class TradeResultSyncService : ITradeResultSyncService
             totalPnl += pnl;
         }
 
-        // Chỉ đóng nếu đã fill >= 90% quantity (cho phép sai số rounding).
+        // Chỉ đóng nếu đã fill >= 90% quantity (cho phép sai số rounding sàn).
         if (filledQty < trade.Quantity * 0.9m) return false;
 
         trade.ExitPrice = filledQty > 0 ? Math.Round(weightedExitPrice / filledQty, 8) : null;
@@ -165,7 +226,6 @@ public class TradeResultSyncService : ITradeResultSyncService
             : trade.RealizedPnl < 0 ? TradeOutcome.Loss
             : TradeOutcome.BreakEven;
 
-        // Cập nhật balance tài khoản.
         account.CurrentBalance += trade.RealizedPnl.Value;
 
         return true;

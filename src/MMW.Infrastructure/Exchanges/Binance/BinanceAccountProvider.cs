@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MMW.Application.MarketData;
@@ -37,27 +35,52 @@ public class BinanceAccountProvider : IExchangeAccountProvider
         return balances;
     }
 
+    public async Task<decimal?> GetFuturesUsdtBalanceAsync(CancellationToken cancellationToken = default)
+    {
+        var futuresBase = string.IsNullOrWhiteSpace(_options.FuturesApiBaseUrl)
+            ? "https://fapi.binance.com"
+            : _options.FuturesApiBaseUrl;
+        using var doc = await SignedGetAsync("/fapi/v2/balance", "", cancellationToken, absoluteBase: futuresBase);
+        foreach (var item in doc.RootElement.EnumerateArray())
+        {
+            if (string.Equals(item.GetProperty("asset").GetString(), "USDT", StringComparison.OrdinalIgnoreCase))
+                return ParseDecimal(item.GetProperty("balance").GetString());
+        }
+        return null;
+    }
+
     public async Task<IReadOnlyList<ExchangeTrade>> GetMyTradesAsync(string symbol, int limit = 500, CancellationToken cancellationToken = default)
     {
         symbol = symbol.ToUpperInvariant();
-        using var doc = await SignedGetAsync("/api/v3/myTrades", $"symbol={symbol}&limit={limit}", cancellationToken);
+        var futuresBase = string.IsNullOrWhiteSpace(_options.FuturesApiBaseUrl)
+            ? "https://fapi.binance.com"
+            : _options.FuturesApiBaseUrl;
+        // Futures trades: /fapi/v1/userTrades — trả "side":"BUY"/"SELL" thay vì "isBuyer"
+        using var doc = await SignedGetAsync("/fapi/v1/userTrades", $"symbol={symbol}&limit={limit}", cancellationToken, absoluteBase: futuresBase);
         var trades = new List<ExchangeTrade>();
         foreach (var t in doc.RootElement.EnumerateArray())
         {
+            var isBuyer = string.Equals(
+                t.TryGetProperty("side", out var sideProp) ? sideProp.GetString() : null,
+                "BUY", StringComparison.OrdinalIgnoreCase);
+            var orderId = t.TryGetProperty("orderId", out var oidProp)
+                ? oidProp.GetRawText().Trim('"')
+                : null;
             trades.Add(new ExchangeTrade(
                 t.GetProperty("id").GetRawText().Trim('"'),
                 t.GetProperty("symbol").GetString()!,
-                t.GetProperty("isBuyer").GetBoolean(),
-                ParseDecimal(t.GetProperty("price").GetString()),
-                ParseDecimal(t.GetProperty("qty").GetString()),
-                ParseDecimal(t.GetProperty("commission").GetString()),
-                t.GetProperty("commissionAsset").GetString()!,
-                DateTimeOffset.FromUnixTimeMilliseconds(t.GetProperty("time").GetInt64()).UtcDateTime));
+                isBuyer,
+                ParseDecimal(t.TryGetProperty("price", out var p) ? p.GetString() : "0"),
+                ParseDecimal(t.TryGetProperty("qty", out var q) ? q.GetString() : "0"),
+                ParseDecimal(t.TryGetProperty("commission", out var c) ? c.GetString() : "0"),
+                t.TryGetProperty("commissionAsset", out var ca) ? ca.GetString() ?? "USDT" : "USDT",
+                DateTimeOffset.FromUnixTimeMilliseconds(t.GetProperty("time").GetInt64()).UtcDateTime,
+                orderId));
         }
         return trades;
     }
 
-    private async Task<JsonDocument> SignedGetAsync(string path, string query, CancellationToken ct)
+    private async Task<JsonDocument> SignedGetAsync(string path, string query, CancellationToken ct, string? absoluteBase = null)
     {
         if (string.IsNullOrWhiteSpace(_options.ApiKey) || string.IsNullOrWhiteSpace(_options.ApiSecret))
             throw new InvalidOperationException(
@@ -68,8 +91,12 @@ public class BinanceAccountProvider : IExchangeAccountProvider
             ? $"recvWindow=5000&timestamp={timestamp}"
             : $"{query}&recvWindow=5000&timestamp={timestamp}";
 
-        var signature = Sign(baseQuery, _options.ApiSecret!);
-        var url = $"{path}?{baseQuery}&signature={signature}";
+        var signature = BinanceSigner.Sign(baseQuery, _options.ApiSecret!);
+
+        // Nếu có absoluteBase (ví dụ Futures API), dùng URL tuyệt đối để bỏ qua BaseAddress của HttpClient.
+        var url = absoluteBase is not null
+            ? $"{absoluteBase.TrimEnd('/')}{path}?{baseQuery}&signature={signature}"
+            : $"{path}?{baseQuery}&signature={signature}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("X-MBX-APIKEY", _options.ApiKey);
@@ -78,13 +105,6 @@ public class BinanceAccountProvider : IExchangeAccountProvider
         response.EnsureSuccessStatusCode();
         var stream = await response.Content.ReadAsStreamAsync(ct);
         return await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-    }
-
-    private static string Sign(string payload, string secret)
-    {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
-        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static decimal ParseDecimal(string? s) =>

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
 using MMW.Application.Models;
@@ -20,6 +21,14 @@ public class TradesController : Controller
     private readonly IBaseRepository<WatchItem> _watchItems;
     private readonly ISettingsService _settings;
     private readonly IMarketDataProvider _marketData;
+    private readonly ITradePreflightAnalysisService _preflightAnalysis;
+    private readonly ISymbolSearchService _symbolSearch;
+    private readonly ILiveOrderService _liveOrders;
+    private readonly ITradeResultSyncService _tradeSync;
+    private readonly IExchangeOrderProviderFactory _orderProviderFactory;
+    private readonly ILiveBalanceService _liveBalance;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly LiveTradingOptions _liveTradingOptions;
 
     public TradesController(
         ITradeService tradeService,
@@ -30,7 +39,15 @@ public class TradesController : Controller
         IBaseRepository<TradeSignal> signals,
         IBaseRepository<WatchItem> watchItems,
         ISettingsService settings,
-        IMarketDataProvider marketData)
+        IMarketDataProvider marketData,
+        ITradePreflightAnalysisService preflightAnalysis,
+        ISymbolSearchService symbolSearch,
+        ILiveOrderService liveOrders,
+        ITradeResultSyncService tradeSync,
+        IExchangeOrderProviderFactory orderProviderFactory,
+        ILiveBalanceService liveBalance,
+        IUnitOfWork unitOfWork,
+        IOptions<LiveTradingOptions> liveTradingOptions)
     {
         _tradeService = tradeService;
         _analyses = analyses;
@@ -41,23 +58,105 @@ public class TradesController : Controller
         _watchItems = watchItems;
         _settings = settings;
         _marketData = marketData;
+        _preflightAnalysis = preflightAnalysis;
+        _symbolSearch = symbolSearch;
+        _liveOrders = liveOrders;
+        _tradeSync = tradeSync;
+        _orderProviderFactory = orderProviderFactory;
+        _liveBalance = liveBalance;
+        _unitOfWork = unitOfWork;
+        _liveTradingOptions = liveTradingOptions.Value;
     }
 
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
     {
-        var trades = await _tradeService.GetAllAsync();
+        var all = await _tradeService.GetAllAsync();
+        var pager = PagerModel.Build(page, pageSize, all.Count);
+        var trades = all
+            .Skip((pager.CurrentPage - 1) * pager.PageSize)
+            .Take(pager.PageSize)
+            .ToList();
 
         var openTradeIds = trades.Where(t => t.Status == TradeStatus.Open).Select(t => t.Id).ToList();
         var analysisList = await _analyses.FindListAsync(a => openTradeIds.Contains(a.TradeId));
         var analysisMap = analysisList.ToDictionary(a => a.TradeId);
 
+        ViewBag.Pager = pager;
         var vm = new TradeJournalViewModel
         {
             Trades = trades,
             Analyses = analysisMap,
         };
 
+        // Lệnh chờ trên sàn chỉ hiển thị ở trang đầu (đọc live, tránh làm chậm khi lật trang sâu).
+        if (pager.CurrentPage == 1)
+        {
+            var (orders, loaded) = await LoadOpenOrdersAsync(cancellationToken);
+            vm.OpenOrders = orders;
+            vm.OpenOrdersLoaded = loaded;
+        }
+
         return View(vm);
+    }
+
+    /// <summary>Huỷ 1 lệnh chờ trên sàn theo (accountId, symbol, orderId). Không động DB.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelOpenOrder(long accountId, string symbol, string orderId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(orderId))
+        {
+            TempData["Error"] = "Thiếu thông tin lệnh cần huỷ.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var account = await _accounts.FindAsync(accountId);
+        if (account is null || string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret))
+        {
+            TempData["Error"] = "Tài khoản không hợp lệ hoặc chưa cấu hình API key.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            var provider = _orderProviderFactory.Create(account.ApiKey!, account.ApiSecret!, _liveTradingOptions.UseTestnet);
+            await provider.CancelOrderAsync(symbol, orderId, cancellationToken);
+            TempData["Message"] = $"Đã huỷ lệnh chờ {symbol} (orderId {orderId}).";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = $"Huỷ lệnh {symbol} #{orderId} lỗi: {ex.Message}";
+        }
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Đọc lệnh chờ (LIMIT đợi khớp + STOP/TP treo) trực tiếp từ Binance cho mọi tài khoản active.
+    /// Read-only — không lưu DB. Lỗi 1 tài khoản không làm hỏng cả trang.
+    /// </summary>
+    private async Task<(IReadOnlyList<OpenOrderRow> Orders, bool Loaded)> LoadOpenOrdersAsync(CancellationToken ct)
+    {
+        var accounts = await _accounts.FindListAsync(a =>
+            a.IsActive && a.ApiKey != null && a.ApiSecret != null);
+        if (accounts.Count == 0) return (new List<OpenOrderRow>(), true);
+
+        var rows = new List<OpenOrderRow>();
+        var allOk = true;
+        foreach (var account in accounts)
+        {
+            try
+            {
+                var provider = _orderProviderFactory.Create(account.ApiKey!, account.ApiSecret!, _liveTradingOptions.UseTestnet);
+                var orders = await provider.GetOpenOrdersAsync(null, ct);
+                rows.AddRange(orders.Select(o => new OpenOrderRow(account.Id, account.Name ?? "—", o)));
+            }
+            catch
+            {
+                allOk = false; // báo nhẹ ở view, không chặn nhật ký
+            }
+        }
+
+        return (rows.OrderByDescending(r => r.Order.CreatedTimeUtc).ToList(), allOk);
     }
 
     // --- Form ghi nhận lệnh (tay HOẶC điền sẵn từ đề xuất) ---
@@ -100,6 +199,11 @@ public class TradesController : Controller
 
         var dto = ToDto(form);
         var id = await _tradeService.CreateAsync(dto);
+
+        // Tạo lệnh tay cũng gửi lên sàn (LiveOrderService tự chặn nếu master switch tắt /
+        // thiếu key / vượt cap / vi phạm rule Critical / lệnh Planned).
+        await _liveOrders.PlaceForTradeAsync(id);
+
         TempData["Message"] = $"Đã ghi nhận lệnh #{id} ({dto.Symbol}). Đã chấm rule + behavior.";
         return RedirectToAction(nameof(Index));
     }
@@ -146,6 +250,8 @@ public class TradesController : Controller
             return View("Create", await BuildCreateViewModelAsync(form, null));
 
         await _tradeService.UpdateAsync(form.Id, ToDto(form));
+        // Lệnh live: đồng bộ SL/TP mới lên sàn (huỷ SL/TP cũ, đặt lại). No-op nếu không live.
+        await _liveOrders.SyncLevelsAsync(form.Id);
         TempData["Message"] = $"Đã cập nhật lệnh #{form.Id}.";
         return RedirectToAction(nameof(Index));
     }
@@ -154,6 +260,8 @@ public class TradesController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(long id)
     {
+        // Lệnh live đang mở: đóng vị thế + huỷ SL/TP trên sàn TRƯỚC khi xoá khỏi hệ thống.
+        await _liveOrders.CloseOnExchangeAsync(id);
         await _tradeService.DeleteAsync(id);
         TempData["Message"] = $"Đã xoá lệnh #{id}.";
         return RedirectToAction(nameof(Index));
@@ -191,12 +299,56 @@ public class TradesController : Controller
         if (!ModelState.IsValid)
             return View(form);
 
+        // Lệnh live: đóng vị thế + huỷ SL/TP trên sàn TRƯỚC, rồi ghi sổ kết quả.
+        await _liveOrders.CloseOnExchangeAsync(form.TradeId);
         await _tradeService.CloseAsync(form.TradeId, form.ExitPrice, form.EmotionAfter);
         TempData["Message"] = $"Đã đóng lệnh #{form.TradeId} tại giá {form.ExitPrice:N4}.";
         return RedirectToAction(nameof(Index));
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AnalyzeBeforeSave(CreateTradeForm form, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            var messages = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .Where(m => !string.IsNullOrWhiteSpace(m))
+                .ToList();
+
+            return BadRequest(new { ok = false, messages });
+        }
+
+        var result = await _preflightAnalysis.AnalyzeAsync(ToPreflightRequest(form), cancellationToken);
+        return Json(new { ok = true, analysis = result });
+    }
+
     // --- Lấy giá live cho form (JSON) ---
+
+    // --- Gợi ý SL/TP bằng AI (preflight) ---
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SuggestLevels(CreateTradeForm form, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _preflightAnalysis.AnalyzeAsync(ToPreflightRequest(form), cancellationToken);
+            return Json(new
+            {
+                ok = true,
+                stopLoss = result.SuggestedStopLoss,
+                takeProfit = result.SuggestedTakeProfit,
+                isAi = result.AiAnswered,
+                advice = result.Advice,
+            });
+        }
+        catch
+        {
+            return Json(new { ok = false });
+        }
+    }
 
     [HttpGet]
     public async Task<IActionResult> Price(string symbol)
@@ -205,13 +357,215 @@ public class TradesController : Controller
             return Json(new { ok = false });
         try
         {
-            var ticker = await _marketData.GetTickerAsync(symbol.Trim().ToUpperInvariant());
-            return Json(new { ok = true, price = ticker.Price });
+            var sym = symbol.Trim().ToUpperInvariant();
+            var ticker = await _marketData.GetTickerAsync(sym);
+            var filter = await _marketData.GetPriceFilterAsync(sym);
+            return Json(new
+            {
+                ok = true,
+                price = ticker.Price,
+                tickSize = filter?.TickSize,
+                priceDecimals = filter?.PriceDecimals,
+            });
         }
         catch
         {
             return Json(new { ok = false });
         }
+    }
+
+    /// <summary>Trả tickSize/độ chính xác giá của 1 symbol (cho client làm tròn Entry/SL/TP).</summary>
+    [HttpGet]
+    public async Task<IActionResult> PriceFilter(string symbol, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(symbol))
+            return Json(new { ok = false });
+        try
+        {
+            var filter = await _marketData.GetPriceFilterAsync(symbol.Trim().ToUpperInvariant(), cancellationToken);
+            return filter is null
+                ? Json(new { ok = false })
+                : Json(new { ok = true, tickSize = filter.TickSize, priceDecimals = filter.PriceDecimals });
+        }
+        catch
+        {
+            return Json(new { ok = false });
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Sync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _tradeSync.SyncAllAccountsAsync(cancellationToken);
+            TempData["Message"] = $"Đồng bộ từ Binance: {result.Synced} cập nhật, {result.Skipped} bỏ qua, {result.Failed} lỗi.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = $"Lỗi đồng bộ: {ex.Message}";
+        }
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Kích hoạt lại lệnh Blocked/Error/Cancelled, sau đó thử gửi lên sàn.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Reactivate(long id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _tradeService.ReactivateAsync(id, cancellationToken);
+            await _liveOrders.PlaceForTradeAsync(id, cancellationToken);
+            TempData["Message"] = $"Đã kích hoạt lại lệnh #{id}. Hệ thống sẽ thử gửi lên Binance nếu điều kiện phù hợp.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Error"] = $"Lỗi kích hoạt lại #{id}: {ex.Message}";
+        }
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Import vị thế đang mở từ Binance Futures vào nhật ký (cho lệnh đặt tay bên sàn).
+    /// Dùng API key của từng tài khoản, gọi /fapi/v2/positionRisk, tạo entry nếu chưa có.
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportFromBinance(CancellationToken cancellationToken)
+    {
+        var accounts = await _accounts.FindListAsync(a =>
+            a.IsActive && a.ApiKey != null && a.ApiSecret != null);
+
+        if (!accounts.Any())
+        {
+            TempData["Error"] = "Không có tài khoản nào cấu hình API key Binance.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var totalImported = 0;
+        var totalReconciled = 0;
+        var errors = new List<string>();
+
+        foreach (var account in accounts)
+        {
+            try
+            {
+                // Luôn dùng real network (không phải testnet) khi đọc vị thế thực.
+                var provider = _orderProviderFactory.Create(account.ApiKey!, account.ApiSecret!, useTestnet: false);
+                var positions = await provider.GetOpenPositionsAsync(null, cancellationToken);
+
+                foreach (var pos in positions)
+                {
+                    var direction = pos.IsLong ? TradeDirection.Long : TradeDirection.Short;
+                    var qty = Math.Abs(pos.PositionAmt);
+                    var positionVersion = pos.UpdatedAtUtc.HasValue
+                        ? new DateTimeOffset(DateTime.SpecifyKind(pos.UpdatedAtUtc.Value, DateTimeKind.Utc)).ToUnixTimeMilliseconds()
+                        : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    var externalId = $"binance_pos_{pos.Symbol}_{direction}_{positionVersion}";
+
+                    // Đã có lệnh Open trùng symbol + hướng → SYNC lại entry/khối lượng theo vị thế thật
+                    // (vd đã nhồi thêm/bớt lệnh bên sàn) thay vì bỏ qua.
+                    var existing = await _trades.FirstOrDefaultAsync(t =>
+                        t.TradingAccountId == account.Id &&
+                        t.Symbol == pos.Symbol &&
+                        t.Direction == direction &&
+                        t.Status == TradeStatus.Open);
+
+                    if (existing is not null)
+                    {
+                        var changed = false;
+                        if (pos.EntryPrice > 0m && existing.EntryPrice != pos.EntryPrice)
+                        {
+                            existing.EntryPrice = pos.EntryPrice;
+                            changed = true;
+                        }
+                        if (qty > 0m && existing.Quantity != qty)
+                        {
+                            existing.Quantity = qty;
+                            changed = true;
+                        }
+                        if (changed)
+                        {
+                            _trades.Update(existing);
+                            totalReconciled++;
+                        }
+                        continue;
+                    }
+
+                    var dto = new TradeDto
+                    {
+                        TradingAccountId = account.Id,
+                        Symbol = pos.Symbol,
+                        Direction = direction,
+                        Status = TradeStatus.Open,
+                        Source = TradeSource.Import,
+                        OrderType = OrderType.Market,
+                        EntryPrice = pos.EntryPrice,
+                        Quantity = qty,
+                        OpenedAt = pos.UpdatedAtUtc ?? DateTime.UtcNow,
+                        Note = "Import từ Binance Futures (vị thế thực tế)",
+                        ExternalId = externalId,
+                    };
+                    await _tradeService.CreateAsync(dto);
+                    totalImported++;
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{account.Name}: {ex.Message}");
+            }
+        }
+
+        if (totalReconciled > 0)
+            await _unitOfWork.CommitAsync(cancellationToken);
+
+        if (errors.Any())
+            TempData["Error"] = "Lỗi khi import: " + string.Join("; ", errors);
+
+        TempData["Message"] = (totalImported, totalReconciled) switch
+        {
+            ( > 0, > 0) => $"Đã import {totalImported} vị thế mới và đồng bộ {totalReconciled} lệnh có sẵn từ Binance.",
+            ( > 0, 0) => $"Đã import {totalImported} vị thế từ Binance Futures.",
+            (0, > 0) => $"Đã đồng bộ {totalReconciled} lệnh có sẵn theo vị thế thật trên Binance.",
+            _ => "Không có vị thế mới để import (tất cả đã khớp với nhật ký).",
+        };
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Symbols(string? q, CancellationToken cancellationToken)
+    {
+        var remoteSymbols = await _symbolSearch.SearchFuturesSymbolsAsync(q, 40, cancellationToken);
+        var whitelist = (await _watchItems.GetAllAsync())
+            .Select(w => w.Symbol?.Trim().ToUpperInvariant())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!)
+            .ToHashSet();
+        var keyword = (q ?? string.Empty).Trim().ToUpperInvariant();
+        var symbols = whitelist
+            .Concat(remoteSymbols.Select(s => s.Trim().ToUpperInvariant()))
+            .Where(s => string.IsNullOrWhiteSpace(keyword) || s.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            .Distinct()
+            .OrderBy(s => whitelist.Contains(s) ? 0 : 1) // watchlist ưu tiên lên đầu
+            .ThenBy(s => string.IsNullOrWhiteSpace(keyword) ? 1 : s.StartsWith(keyword, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(s => s.Length)
+            .ThenBy(s => s)
+            .Take(40)
+            .ToList();
+
+        return Json(new
+        {
+            results = symbols.Select(s => new
+            {
+                id = s,
+                text = whitelist.Contains(s) ? $"★ {s}" : s, // đánh dấu symbol đang theo dõi
+            })
+        });
     }
 
     private static TradeDto ToDto(CreateTradeForm form) => new()
@@ -234,6 +588,23 @@ public class TradesController : Controller
         OpenedAt = DateTime.UtcNow,
     };
 
+    private static TradePreflightAnalysisRequest ToPreflightRequest(CreateTradeForm form) => new()
+    {
+        TradingAccountId = form.TradingAccountId,
+        Symbol = form.Symbol,
+        Direction = form.Direction,
+        OrderType = form.OrderType,
+        Status = form.Status,
+        EntryPrice = form.EntryPrice,
+        StopLoss = form.StopLoss,
+        TakeProfit = form.TakeProfit,
+        Quantity = form.Quantity,
+        Leverage = form.Leverage,
+        Fee = form.Fee,
+        EmotionBefore = form.EmotionBefore,
+        Note = form.Note,
+    };
+
     private async Task<CreateTradeViewModel> BuildCreateViewModelAsync(CreateTradeForm form, string? hint)
     {
         var accounts = (await _accounts.GetAllAsync()).Where(a => a.IsActive).OrderBy(a => a.Name).ToList();
@@ -245,7 +616,13 @@ public class TradesController : Controller
         foreach (var a in accounts)
         {
             var rs = await _settings.GetRiskSettingAsync(a.Id);
-            risks.Add(new AccountRiskInfo { Id = a.Id, Balance = a.CurrentBalance, MaxRiskPercent = rs.MaxRiskPerTradePercent });
+            risks.Add(new AccountRiskInfo
+            {
+                Id = a.Id,
+                Balance = await _liveBalance.GetEffectiveBalanceAsync(a), // số dư thật từ Binance (fallback DB)
+                MaxRiskPercent = rs.MaxRiskPerTradePercent,
+                Rr = rs.MinRiskRewardRatio,
+            });
         }
 
         return new CreateTradeViewModel
@@ -265,9 +642,12 @@ public class TradesController : Controller
         var account = await _accounts.FindAsync(accountId);
         var risk = await _settings.GetRiskSettingAsync(accountId);
         var stopDistance = Math.Abs(entry - stopLoss);
-        if (account is null || stopDistance <= 0m || account.CurrentBalance <= 0m)
+        if (account is null || stopDistance <= 0m)
             return 0m;
-        var riskAmount = account.CurrentBalance * risk.MaxRiskPerTradePercent / 100m;
+        var balance = await _liveBalance.GetEffectiveBalanceAsync(account); // số dư thật từ Binance
+        if (balance <= 0m)
+            return 0m;
+        var riskAmount = balance * risk.MaxRiskPerTradePercent / 100m;
         return Math.Round(riskAmount / stopDistance, 8, MidpointRounding.AwayFromZero);
     }
 

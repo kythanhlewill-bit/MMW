@@ -1,0 +1,450 @@
+@using MMW.Shared.Models
+@using MMW.Domain.Entities
+@model MMW.Web.Models.AuditIndexViewModel
+@{
+    ViewData["Title"] = "Audit";
+
+    string Active(string tab) => Model.ActiveTab == tab ? "active" : "";
+
+    string Short(string? value, int max = 90)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "—";
+        value = value.Replace("\r", " ").Replace("\n", " ");
+        return value.Length <= max ? value : value[..max] + "...";
+    }
+
+    string JsonText(string? value) => string.IsNullOrWhiteSpace(value) ? "{}" : value;
+
+    string AiSortUrl(string sort) => Url.Action("Index", new
+    {
+        tab = "ai",
+        aiSearch = Model.AiQuery.Search,
+        aiSymbol = Model.AiQuery.Symbol,
+        aiStatus = Model.AiQuery.Status,
+        aiAction = Model.AiQuery.Action,
+        aiFrom = Model.AiQuery.From?.ToString("yyyy-MM-dd HH:mm:ss"),
+        aiTo = Model.AiQuery.To?.ToString("yyyy-MM-dd HH:mm:ss"),
+        aiSort = sort,
+        aiPage = 1,
+        aiPageSize = Model.AiQuery.PageSize,
+        exSearch = Model.ExchangeQuery.Search,
+        exSymbol = Model.ExchangeQuery.Symbol,
+        exMethod = Model.ExchangeQuery.Method,
+        exSucceeded = Model.ExchangeQuery.Succeeded,
+        exFrom = Model.ExchangeQuery.From?.ToString("yyyy-MM-dd HH:mm:ss"),
+        exTo = Model.ExchangeQuery.To?.ToString("yyyy-MM-dd HH:mm:ss"),
+        exSort = Model.ExchangeQuery.Sort,
+        exPage = Model.ExchangeQuery.Page,
+        exPageSize = Model.ExchangeQuery.PageSize,
+    }) ?? "#";
+
+    string ExSortUrl(string sort) => Url.Action("Index", new
+    {
+        tab = "exchange",
+        aiSearch = Model.AiQuery.Search,
+        aiSymbol = Model.AiQuery.Symbol,
+        aiStatus = Model.AiQuery.Status,
+        aiAction = Model.AiQuery.Action,
+        aiFrom = Model.AiQuery.From?.ToString("yyyy-MM-dd HH:mm:ss"),
+        aiTo = Model.AiQuery.To?.ToString("yyyy-MM-dd HH:mm:ss"),
+        aiSort = Model.AiQuery.Sort,
+        aiPage = Model.AiQuery.Page,
+        aiPageSize = Model.AiQuery.PageSize,
+        exSearch = Model.ExchangeQuery.Search,
+        exSymbol = Model.ExchangeQuery.Symbol,
+        exMethod = Model.ExchangeQuery.Method,
+        exSucceeded = Model.ExchangeQuery.Succeeded,
+        exFrom = Model.ExchangeQuery.From?.ToString("yyyy-MM-dd HH:mm:ss"),
+        exTo = Model.ExchangeQuery.To?.ToString("yyyy-MM-dd HH:mm:ss"),
+        exSort = sort,
+        exPage = 1,
+        exPageSize = Model.ExchangeQuery.PageSize,
+    }) ?? "#";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Audit</h2>
+            <div class="text-secondary mt-1">Lịch sử AI signal scan và request/response Binance API</div>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link @Active("ai")" asp-action="Index" asp-route-tab="ai">AI Signal Scan</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @Active("exchange")" asp-action="Index" asp-route-tab="exchange">Binance API</a>
+    </li>
+</ul>
+
+@if (Model.ActiveTab == "ai")
+{
+    <form method="get" class="card mb-3">
+        <input type="hidden" name="tab" value="ai" />
+        <input type="hidden" name="aiSort" value="@Model.AiQuery.Sort" />
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Tìm kiếm</label>
+                    <input class="form-control" name="aiSearch" value="@Model.AiQuery.Search" placeholder="reason, JSON, status..." />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Symbol</label>
+                    <input class="form-control" name="aiSymbol" value="@Model.AiQuery.Symbol" placeholder="BTCUSDT" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" name="aiStatus" data-select2-skip="true">
+                        <option value="">Tất cả</option>
+                        @foreach (var s in new[] { "Accepted", "Rejected", "Wait", "InvalidJson", "NotConfigured", "Configured", "Responded" })
+                        {
+                            <option value="@s" selected="@(Model.AiQuery.Status == s)">@s</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Action</label>
+                    <select class="form-select" name="aiAction" data-select2-skip="true">
+                        <option value="">Tất cả</option>
+                        @foreach (var s in new[] { "long", "short", "wait" })
+                        {
+                            <option value="@s" selected="@(Model.AiQuery.Action == s)">@s</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Khoảng thời gian</label>
+                    <input class="form-control js-daterange" type="text" id="aiRange" autocomplete="off" readonly
+                           data-from="#aiFrom" data-to="#aiTo"
+                           value="@Model.AiQuery.From?.ToString("dd/MM/yyyy HH:mm") – @Model.AiQuery.To?.ToString("dd/MM/yyyy HH:mm")" />
+                    <input type="hidden" name="aiFrom" id="aiFrom" value="@Model.AiQuery.From?.ToString("yyyy-MM-dd HH:mm:ss")" />
+                    <input type="hidden" name="aiTo" id="aiTo" value="@Model.AiQuery.To?.ToString("yyyy-MM-dd HH:mm:ss")" />
+                </div>
+                <input type="hidden" name="aiPageSize" value="@Model.AiQuery.PageSize" />
+                <div class="col-md-12 d-flex gap-2">
+                    <button class="btn btn-primary" type="submit"><i class="ti ti-search me-1"></i>Lọc</button>
+                    <a class="btn" asp-action="Index" asp-route-tab="ai">Xoá lọc</a>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">@Model.AiRecords.TotalCount bản ghi AI</div>
+        </div>
+        @if (Model.AiRecords.Data.Count == 0)
+        {
+            <div class="empty"><p class="empty-title">Không có bản ghi phù hợp</p></div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+                    <thead>
+                        <tr>
+                            <th><a href="@AiSortUrl(Model.AiQuery.Sort == "scanned_desc" ? "scanned_asc" : "scanned_desc")">Thời điểm</a></th>
+                            <th><a href="@AiSortUrl(Model.AiQuery.Sort == "symbol_asc" ? "symbol_desc" : "symbol_asc")">Symbol</a></th>
+                            <th><a href="@AiSortUrl(Model.AiQuery.Sort == "status_asc" ? "status_desc" : "status_asc")">Status</a></th>
+                            <th>Action</th>
+                            <th class="text-end"><a href="@AiSortUrl(Model.AiQuery.Sort == "score_desc" ? "score_asc" : "score_desc")">Score</a></th>
+                            <th class="text-end">Entry</th>
+                            <th class="text-end">SL</th>
+                            <th class="text-end">TP</th>
+                            <th>Lý do</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Model.AiRecords.Data)
+                        {
+                            <tr>
+                                <td class="text-secondary small">@VietnamTimeHelper.Format(r.ScannedAt, "dd/MM HH:mm:ss")</td>
+                                <td><strong>@r.Symbol</strong><div class="small text-secondary">@r.Interval</div></td>
+                                <td><span class="badge @(r.Status == "Accepted" ? "bg-green text-green-fg" : r.Status == "Rejected" || r.Status == "InvalidJson" ? "bg-red text-red-fg" : "bg-secondary text-secondary-fg")">@r.Status</span></td>
+                                <td>@(r.Action ?? "—")</td>
+                                <td class="text-end">@(r.Score?.ToString() ?? "—")</td>
+                                <td class="text-end">@(r.Entry?.ToString("N4") ?? "—")</td>
+                                <td class="text-end">@(r.StopLoss?.ToString("N4") ?? "—")</td>
+                                <td class="text-end">@(r.TakeProfit?.ToString("N4") ?? "—")</td>
+                                <td class="text-secondary small">
+                                    @Short(r.RejectReason ?? r.AiReason)
+                                    <details class="mt-2">
+                                        <summary>Request / response</summary>
+                                        <div class="mt-2">
+                                            <div class="text-secondary small mb-1">System prompt</div>
+                                            <pre class="audit-pre">@r.SystemPrompt</pre>
+                                            <div class="text-secondary small mb-1">Request JSON</div>
+                                            <pre class="audit-pre">@JsonText(r.RequestJson)</pre>
+                                            <div class="text-secondary small mb-1">Response JSON</div>
+                                            <pre class="audit-pre">@JsonText(r.ResponseJson)</pre>
+                                            @if (!string.IsNullOrWhiteSpace(r.RepairResponseJson))
+                                            {
+                                                <div class="text-secondary small mb-1">Repair response</div>
+                                                <pre class="audit-pre">@JsonText(r.RepairResponseJson)</pre>
+                                            }
+                                        </div>
+                                    </details>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <form method="get" class="card mb-3">
+        <input type="hidden" name="tab" value="exchange" />
+        <input type="hidden" name="exSort" value="@Model.ExchangeQuery.Sort" />
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Tìm kiếm</label>
+                    <input class="form-control" name="exSearch" value="@Model.ExchangeQuery.Search" placeholder="path, clientOrderId, JSON..." />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Symbol</label>
+                    <input class="form-control" name="exSymbol" value="@Model.ExchangeQuery.Symbol" placeholder="BTCUSDT" />
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Method</label>
+                    <select class="form-select" name="exMethod" data-select2-skip="true">
+                        <option value="">Tất cả</option>
+                        @foreach (var s in new[] { "GET", "POST", "DELETE" })
+                        {
+                            <option value="@s" selected="@(Model.ExchangeQuery.Method == s)">@s</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Kết quả</label>
+                    <select class="form-select" name="exSucceeded" data-select2-skip="true">
+                        <option value="">Tất cả</option>
+                        <option value="true" selected="@(Model.ExchangeQuery.Succeeded == true)">Thành công</option>
+                        <option value="false" selected="@(Model.ExchangeQuery.Succeeded == false)">Lỗi</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Khoảng thời gian</label>
+                    <input class="form-control js-daterange" type="text" id="exRange" autocomplete="off" readonly
+                           data-from="#exFrom" data-to="#exTo"
+                           value="@Model.ExchangeQuery.From?.ToString("dd/MM/yyyy HH:mm") – @Model.ExchangeQuery.To?.ToString("dd/MM/yyyy HH:mm")" />
+                    <input type="hidden" name="exFrom" id="exFrom" value="@Model.ExchangeQuery.From?.ToString("yyyy-MM-dd HH:mm:ss")" />
+                    <input type="hidden" name="exTo" id="exTo" value="@Model.ExchangeQuery.To?.ToString("yyyy-MM-dd HH:mm:ss")" />
+                </div>
+                <input type="hidden" name="exPageSize" value="@Model.ExchangeQuery.PageSize" />
+                <div class="col-md-12 d-flex gap-2">
+                    <button class="btn btn-primary" type="submit"><i class="ti ti-search me-1"></i>Lọc</button>
+                    <a class="btn" asp-action="Index" asp-route-tab="exchange">Xoá lọc</a>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">@Model.ExchangeRecords.TotalCount bản ghi Binance API</div>
+        </div>
+        @if (Model.ExchangeRecords.Data.Count == 0)
+        {
+            <div class="empty"><p class="empty-title">Không có bản ghi phù hợp</p></div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+                    <thead>
+                        <tr>
+                            <th><a href="@ExSortUrl(Model.ExchangeQuery.Sort == "requested_desc" ? "requested_asc" : "requested_desc")">Thời điểm</a></th>
+                            <th><a href="@ExSortUrl(Model.ExchangeQuery.Sort == "symbol_asc" ? "symbol_desc" : "symbol_asc")">Symbol</a></th>
+                            <th>Method</th>
+                            <th>Path</th>
+                            <th><a href="@ExSortUrl(Model.ExchangeQuery.Sort == "status_desc" ? "status_asc" : "status_desc")">Status</a></th>
+                            <th class="text-end"><a href="@ExSortUrl(Model.ExchangeQuery.Sort == "duration_desc" ? "duration_asc" : "duration_desc")">ms</a></th>
+                            <th>ClientOrderId</th>
+                            <th>Lỗi / body</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Model.ExchangeRecords.Data)
+                        {
+                            <tr>
+                                <td class="text-secondary small">@VietnamTimeHelper.Format(r.RequestedAtUtc, "dd/MM HH:mm:ss")</td>
+                                <td><strong>@(r.Symbol ?? "—")</strong></td>
+                                <td><span class="badge bg-blue-lt">@r.Method</span></td>
+                                <td class="text-secondary small">@r.Path</td>
+                                <td><span class="badge @(r.Succeeded ? "bg-green text-green-fg" : "bg-red text-red-fg")">@(r.StatusCode?.ToString() ?? "ERR")</span></td>
+                                <td class="text-end">@(r.DurationMs?.ToString() ?? "—")</td>
+                                <td class="small">@Short(r.ClientOrderId, 32)</td>
+                                <td class="text-secondary small">
+                                    @Short(r.Error ?? r.ResponseJson)
+                                    <details class="mt-2">
+                                        <summary>Request / response</summary>
+                                        <div class="mt-2">
+                                            <div class="text-secondary small mb-1">Request JSON</div>
+                                            <pre class="audit-pre">@JsonText(r.RequestJson)</pre>
+                                            <div class="text-secondary small mb-1">Response JSON</div>
+                                            <pre class="audit-pre">@JsonText(r.ResponseJson)</pre>
+                                        </div>
+                                    </details>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@functions {
+    string PageUrl(int page)
+    {
+        if (Model.ActiveTab == "ai")
+        {
+            return Url.Action("Index", new
+            {
+                tab = "ai",
+                aiSearch = Model.AiQuery.Search,
+                aiSymbol = Model.AiQuery.Symbol,
+                aiStatus = Model.AiQuery.Status,
+                aiAction = Model.AiQuery.Action,
+                aiFrom = Model.AiQuery.From?.ToString("yyyy-MM-dd HH:mm:ss"),
+                aiTo = Model.AiQuery.To?.ToString("yyyy-MM-dd HH:mm:ss"),
+                aiSort = Model.AiQuery.Sort,
+                aiPage = page,
+                aiPageSize = Model.AiQuery.PageSize,
+            }) ?? "#";
+        }
+
+        return Url.Action("Index", new
+        {
+            tab = "exchange",
+            exSearch = Model.ExchangeQuery.Search,
+            exSymbol = Model.ExchangeQuery.Symbol,
+            exMethod = Model.ExchangeQuery.Method,
+            exSucceeded = Model.ExchangeQuery.Succeeded,
+            exFrom = Model.ExchangeQuery.From?.ToString("yyyy-MM-dd HH:mm:ss"),
+            exTo = Model.ExchangeQuery.To?.ToString("yyyy-MM-dd HH:mm:ss"),
+            exSort = Model.ExchangeQuery.Sort,
+            exPage = page,
+            exPageSize = Model.ExchangeQuery.PageSize,
+        }) ?? "#";
+    }
+}
+
+@{
+    var pager = Model.ActiveTab == "ai"
+        ? (CurrentPage: Model.AiRecords.CurrentPage, TotalPages: Model.AiRecords.TotalPages, TotalCount: Model.AiRecords.TotalCount, PageSize: Model.AiQuery.PageSize)
+        : (CurrentPage: Model.ExchangeRecords.CurrentPage, TotalPages: Model.ExchangeRecords.TotalPages, TotalCount: Model.ExchangeRecords.TotalCount, PageSize: Model.ExchangeQuery.PageSize);
+    var pageSizeParam = Model.ActiveTab == "ai" ? "aiPageSize" : "exPageSize";
+    var pageParam = Model.ActiveTab == "ai" ? "aiPage" : "exPage";
+}
+
+<div class="mt-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center gap-2">
+        <span class="text-secondary small">@pager.TotalCount bản ghi · Trang @pager.CurrentPage/@Math.Max(1, pager.TotalPages)</span>
+        <select class="form-select form-select-sm w-auto" data-select2-skip="true" aria-label="Số dòng mỗi trang"
+                onchange="(function(s){var u=new URL(window.location.href);u.searchParams.set('@pageSizeParam',s.value);u.searchParams.set('@pageParam','1');window.location.href=u.toString();})(this)">
+            @foreach (var s in new[] { 10, 20, 50, 100 })
+            {
+                <option value="@s" selected="@(pager.PageSize == s)">@s / trang</option>
+            }
+        </select>
+    </div>
+    @if (pager.TotalPages > 1)
+    {
+        <ul class="pagination m-0">
+            <li class="page-item @(pager.CurrentPage <= 1 ? "disabled" : "")">
+                <a class="page-link" href="@PageUrl(pager.CurrentPage - 1)">Trước</a>
+            </li>
+            @{
+                var start = Math.Max(1, pager.CurrentPage - 2);
+                var end = Math.Min(pager.TotalPages, pager.CurrentPage + 2);
+            }
+            @for (var p = start; p <= end; p++)
+            {
+                <li class="page-item @(p == pager.CurrentPage ? "active" : "")">
+                    <a class="page-link" href="@PageUrl(p)">@p</a>
+                </li>
+            }
+            <li class="page-item @(pager.CurrentPage >= pager.TotalPages ? "disabled" : "")">
+                <a class="page-link" href="@PageUrl(pager.CurrentPage + 1)">Sau</a>
+            </li>
+        </ul>
+    }
+</div>
+
+@section Scripts {
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker@3.1.0/daterangepicker.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.30.1/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker@3.1.0/daterangepicker.min.js"></script>
+    <style>
+        .audit-pre {
+            max-height: 360px;
+            overflow: auto;
+            padding: .75rem;
+            border: 1px solid var(--tblr-border-color);
+            border-radius: 6px;
+            background: var(--tblr-bg-surface-secondary);
+            font-size: .75rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+    </style>
+    <script>
+        (function () {
+            if (!window.jQuery || !window.moment || !jQuery.fn || !jQuery.fn.daterangepicker) return;
+
+            jQuery('.js-daterange').each(function () {
+                var $vis = jQuery(this);
+                var $from = jQuery($vis.data('from'));
+                var $to = jQuery($vis.data('to'));
+
+                var start = $from.val() ? moment($from.val(), 'YYYY-MM-DD HH:mm:ss') : moment().subtract(24, 'hours');
+                var end = $to.val() ? moment($to.val(), 'YYYY-MM-DD HH:mm:ss') : moment();
+                if (!start.isValid()) start = moment().subtract(24, 'hours');
+                if (!end.isValid()) end = moment();
+
+                function apply(s, e) {
+                    $from.val(s.format('YYYY-MM-DD HH:mm:ss'));
+                    $to.val(e.format('YYYY-MM-DD HH:mm:ss'));
+                    $vis.val(s.format('DD/MM/YYYY HH:mm') + ' – ' + e.format('DD/MM/YYYY HH:mm'));
+                }
+
+                $vis.daterangepicker({
+                    timePicker: true,
+                    timePicker24Hour: true,
+                    timePickerSeconds: false,
+                    autoApply: false,
+                    startDate: start,
+                    endDate: end,
+                    opens: 'left',
+                    locale: {
+                        format: 'DD/MM/YYYY HH:mm',
+                        applyLabel: 'Áp dụng',
+                        cancelLabel: 'Huỷ',
+                        customRangeLabel: 'Tuỳ chọn',
+                        daysOfWeek: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'],
+                        monthNames: ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'],
+                        firstDay: 1
+                    },
+                    ranges: {
+                        '24 giờ qua': [moment().subtract(24, 'hours'), moment()],
+                        'Hôm nay': [moment().startOf('day'), moment()],
+                        'Hôm qua': [moment().subtract(1, 'days').startOf('day'), moment().subtract(1, 'days').endOf('day')],
+                        '7 ngày': [moment().subtract(7, 'days'), moment()],
+                        '30 ngày': [moment().subtract(30, 'days'), moment()]
+                    }
+                }, apply);
+
+                apply(start, end); // đồng bộ hidden + hiển thị ban đầu
+            });
+        })();
+    </script>
+}
