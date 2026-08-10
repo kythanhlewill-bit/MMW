@@ -168,11 +168,13 @@ try
         job => job.SyncAllAccountsAsync(CancellationToken.None),
         "*/2 * * * *");
 
-    // Job phân tích lệnh đang mở: mỗi 3 phút.
+    // Job phân tích lệnh đang mở: mỗi 3 phút. Cron trước đây là */1 dù chú thích ghi 3 phút —
+    // phần tính máy chạy thừa 3 lần, và phần AI thì tốn tiền thật. Nhịp gọi AI còn bị chặn thêm
+    // một lớp nữa bên trong service, xem TradeAdvisorService.ShouldAskLlm.
     RecurringJob.AddOrUpdate<ITradeAdvisorService>(
         "trade-advisor",
         job => job.AnalyzeOpenTradesAsync(CancellationToken.None),
-        "*/1 * * * *");
+        "*/3 * * * *");
 
     // Job quét lịch/tin vĩ mô: cảnh báo user trước vùng tin mạnh.
     RecurringJob.AddOrUpdate<IMacroEventService>(

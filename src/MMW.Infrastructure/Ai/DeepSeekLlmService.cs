@@ -53,7 +53,24 @@ public class DeepSeekLlmService : ILlmService
             }
 
             var result = await response.Content.ReadFromJsonAsync<ChatResponse>(ct);
-            return result?.Choices?.FirstOrDefault()?.Message?.Content;
+            var choice = result?.Choices?.FirstOrDefault();
+            var content = choice?.Message?.Content;
+
+            // Phản hồi 200 nhưng content rỗng là trạng thái ĐẮT: bên gọi coi như hỏng rồi gọi lại,
+            // nên một lần im lặng thành hai lần trả tiền. Đo được 62% lượt quét rơi vào đây sau khi
+            // đổi sang model có suy luận, vì vậy nghi phạm số một là phần suy luận ăn hết max_tokens
+            // (finish_reason = "length", chữ nằm ở reasoning_content chứ không phải content).
+            // Ghi rõ hai trường đó ra log — không có chúng thì chỉ biết "rỗng" mà không biết vì sao.
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                _logger.LogWarning(
+                    "DeepSeek trả nội dung rỗng (model {Model}, finish_reason {Finish}, reasoning {ReasoningLen} ký tự, max_tokens {MaxTokens}). "
+                    + "Bên gọi sẽ coi là lỗi và gọi lại — mỗi lần như vậy tốn gấp đôi.",
+                    request.Model, choice?.FinishReason ?? "(không có)",
+                    choice?.Message?.ReasoningContent?.Length ?? 0, request.MaxTokens);
+            }
+
+            return content;
         }
         catch (Exception ex)
         {
@@ -76,6 +93,12 @@ public class DeepSeekLlmService : ILlmService
     {
         [JsonPropertyName("role")] public string Role { get; set; } = "";
         [JsonPropertyName("content")] public string Content { get; set; } = "";
+
+        /// <summary>
+        /// Model có suy luận trả phần nghĩ ở đây, tách khỏi <see cref="Content"/>. Chỉ đọc để
+        /// chẩn đoán — không bao giờ dùng làm câu trả lời, vì nó là nháp chứ không phải kết quả.
+        /// </summary>
+        [JsonPropertyName("reasoning_content")] public string? ReasoningContent { get; set; }
     }
 
     private sealed class ChatResponse
@@ -86,6 +109,7 @@ public class DeepSeekLlmService : ILlmService
     private sealed class ChatChoice
     {
         [JsonPropertyName("message")] public ChatMessage? Message { get; set; }
+        [JsonPropertyName("finish_reason")] public string? FinishReason { get; set; }
     }
 
     #endregion
