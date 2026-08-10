@@ -134,8 +134,11 @@ public class TradeResultSyncService : ITradeResultSyncService
     {
         try
         {
-            // Đọc vị thế cùng venue với nguồn fills (real net) để khớp dữ liệu.
-            var orderProvider = _orderFactory.Create(account.ApiKey!, account.ApiSecret!, useTestnet: false);
+            // Phải cùng venue với nguồn fills ở trên, nếu không hai bên nói về hai sàn khác nhau.
+            // Trước đây chỗ này ghi cứng false: chạy testnet thì lời gọi trả -2015, hàm nuốt lỗi
+            // và trả null, và rào an toàn "vị thế còn mở trên sàn thì chưa đóng" biến mất — nhật ký
+            // đóng lệnh theo fuzzy match trong khi vị thế vẫn đang chạy.
+            var orderProvider = _orderFactory.Create(account.ApiKey!, account.ApiSecret!, _liveTrading.UseTestnet);
             var positions = await orderProvider.GetOpenPositionsAsync(null, ct);
             return positions
                 .Where(p => p.PositionAmt != 0m)

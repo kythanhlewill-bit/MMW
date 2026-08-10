@@ -1,7 +1,13 @@
 @{
     var displayName = User.FindFirst("DisplayName")?.Value ?? User.Identity?.Name ?? "User";
+    var currentController = (string?)ViewContext.RouteData.Values["controller"];
     string Active(string controller) =>
-        string.Equals((string?)ViewContext.RouteData.Values["controller"], controller, StringComparison.OrdinalIgnoreCase)
+        string.Equals(currentController, controller, StringComparison.OrdinalIgnoreCase)
+            ? "active" : "";
+    // Nhóm cha sáng lên khi đang ở bất kỳ trang con nào — nếu không, mở một trang trong dropdown
+    // sẽ làm cả thanh điều hướng trông như không có mục nào được chọn.
+    string ActiveAny(params string[] controllers) =>
+        controllers.Any(c => string.Equals(currentController, c, StringComparison.OrdinalIgnoreCase))
             ? "active" : "";
 }
 <!DOCTYPE html>
@@ -85,24 +91,9 @@
                                     <span class="nav-link-title">Tổng quan</span>
                                 </a>
                             </li>
-                            <li class="nav-item @Active("Trades")">
-                                <a class="nav-link" asp-controller="Trades" asp-action="Index">
-                                    <span class="nav-link-icon"><i class="ti ti-list-details"></i></span>
-                                    <span class="nav-link-title">Nhật ký lệnh</span>
-                                </a>
-                            </li>
-                            <li class="nav-item @Active("Market")">
-                                <a class="nav-link" asp-controller="Market" asp-action="Index">
-                                    <span class="nav-link-icon"><i class="ti ti-chart-candle"></i></span>
-                                    <span class="nav-link-title">Thị trường</span>
-                                </a>
-                            </li>
-                            <li class="nav-item @Active("Signals")">
-                                <a class="nav-link" asp-controller="Signals" asp-action="Index">
-                                    <span class="nav-link-icon"><i class="ti ti-bulb"></i></span>
-                                    <span class="nav-link-title">Đề xuất lệnh</span>
-                                </a>
-                            </li>
+                            @* Bốn mục đi thẳng là bốn bước của một ngày giao dịch, theo đúng thứ tự:
+                               lập kế hoạch → engine chấm điểm → xem lệnh đã vào. Mọi thứ khác là
+                               tra cứu hoặc cấu hình, gom vào nhóm để thanh điều hướng còn đọc được. *@
                             <li class="nav-item @Active("DailyPlan")">
                                 <a class="nav-link" asp-controller="DailyPlan" asp-action="Index">
                                     <span class="nav-link-icon"><i class="ti ti-calendar-stats"></i></span>
@@ -115,47 +106,68 @@
                                     <span class="nav-link-title">Phiếu chấm điểm</span>
                                 </a>
                             </li>
-                            <li class="nav-item @Active("TimeGuard")">
-                                <a class="nav-link" asp-controller="TimeGuard" asp-action="Index">
-                                    <span class="nav-link-icon"><i class="ti ti-clock-pause"></i></span>
-                                    <span class="nav-link-title">Chặn khung giờ</span>
+                            <li class="nav-item @Active("Trades")">
+                                <a class="nav-link" asp-controller="Trades" asp-action="Index">
+                                    <span class="nav-link-icon"><i class="ti ti-list-details"></i></span>
+                                    <span class="nav-link-title">Nhật ký lệnh</span>
                                 </a>
                             </li>
-                            <li class="nav-item @Active("Backtest")">
-                                <a class="nav-link" asp-controller="Backtest" asp-action="Index">
+
+                            <li class="nav-item dropdown @ActiveAny("Market", "Watchlist", "Signals")">
+                                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"
+                                   role="button" aria-expanded="false">
+                                    <span class="nav-link-icon"><i class="ti ti-chart-candle"></i></span>
+                                    <span class="nav-link-title">Thị trường</span>
+                                </a>
+                                <div class="dropdown-menu">
+                                    <a class="dropdown-item @Active("Market")" asp-controller="Market" asp-action="Index">
+                                        <i class="ti ti-chart-candle me-2"></i>Bảng giá
+                                    </a>
+                                    <a class="dropdown-item @Active("Watchlist")" asp-controller="Watchlist" asp-action="Index">
+                                        <i class="ti ti-eye me-2"></i>Watchlist
+                                    </a>
+                                    <a class="dropdown-item @Active("Signals")" asp-controller="Signals" asp-action="Index">
+                                        <i class="ti ti-bulb me-2"></i>Đề xuất AI
+                                    </a>
+                                </div>
+                            </li>
+
+                            <li class="nav-item dropdown @ActiveAny("Backtest", "ShadowComparison", "Audit")">
+                                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"
+                                   role="button" aria-expanded="false">
                                     <span class="nav-link-icon"><i class="ti ti-timeline"></i></span>
-                                    <span class="nav-link-title">Kiểm thử lịch sử</span>
+                                    <span class="nav-link-title">Phân tích</span>
                                 </a>
+                                <div class="dropdown-menu">
+                                    <a class="dropdown-item @Active("Backtest")" asp-controller="Backtest" asp-action="Index">
+                                        <i class="ti ti-timeline me-2"></i>Kiểm thử lịch sử
+                                    </a>
+                                    <a class="dropdown-item @Active("ShadowComparison")" asp-controller="ShadowComparison" asp-action="Index">
+                                        <i class="ti ti-arrows-diff me-2"></i>So sánh AI
+                                    </a>
+                                    <a class="dropdown-item @Active("Audit")" asp-controller="Audit" asp-action="Index">
+                                        <i class="ti ti-history me-2"></i>Audit
+                                    </a>
+                                </div>
                             </li>
-                             <li class="nav-item @Active("Audit")">
-                                <a class="nav-link" asp-controller="Audit" asp-action="Index">
-                                    <span class="nav-link-icon"><i class="ti ti-history"></i></span>
-                                    <span class="nav-link-title">Audit</span>
-                                </a>
-                             </li>
-                             <li class="nav-item @Active("ShadowComparison")">
-                                 <a class="nav-link" asp-controller="ShadowComparison" asp-action="Index">
-                                     <span class="nav-link-icon"><i class="ti ti-arrows-diff"></i></span>
-                                     <span class="nav-link-title">So sánh AI</span>
-                                 </a>
-                             </li>
-                            <li class="nav-item @Active("Watchlist")">
-                                <a class="nav-link" asp-controller="Watchlist" asp-action="Index">
-                                    <span class="nav-link-icon"><i class="ti ti-eye"></i></span>
-                                    <span class="nav-link-title">Watchlist</span>
-                                </a>
-                            </li>
-                            <li class="nav-item @Active("Accounts")">
-                                <a class="nav-link" asp-controller="Accounts" asp-action="Index">
-                                    <span class="nav-link-icon"><i class="ti ti-wallet"></i></span>
-                                    <span class="nav-link-title">Tài khoản</span>
-                                </a>
-                            </li>
-                            <li class="nav-item @Active("Settings")">
-                                <a class="nav-link" asp-controller="Settings" asp-action="Index">
+
+                            <li class="nav-item dropdown @ActiveAny("Accounts", "TimeGuard", "Settings")">
+                                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"
+                                   role="button" aria-expanded="false">
                                     <span class="nav-link-icon"><i class="ti ti-settings"></i></span>
-                                    <span class="nav-link-title">Cài đặt</span>
+                                    <span class="nav-link-title">Cấu hình</span>
                                 </a>
+                                <div class="dropdown-menu">
+                                    <a class="dropdown-item @Active("Accounts")" asp-controller="Accounts" asp-action="Index">
+                                        <i class="ti ti-wallet me-2"></i>Tài khoản
+                                    </a>
+                                    <a class="dropdown-item @Active("TimeGuard")" asp-controller="TimeGuard" asp-action="Index">
+                                        <i class="ti ti-clock-pause me-2"></i>Chặn khung giờ
+                                    </a>
+                                    <a class="dropdown-item @Active("Settings")" asp-controller="Settings" asp-action="Index">
+                                        <i class="ti ti-settings me-2"></i>Cài đặt
+                                    </a>
+                                </div>
                             </li>
                         </ul>
                     </div>
