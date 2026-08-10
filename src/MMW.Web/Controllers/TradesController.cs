@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
@@ -29,6 +30,22 @@ public class TradesController : Controller
     private readonly ILiveBalanceService _liveBalance;
     private readonly IUnitOfWork _unitOfWork;
     private readonly LiveTradingOptions _liveTradingOptions;
+    private readonly IMemoryCache _cache;
+
+    /// <summary>
+    /// Bảng lệnh chờ trên sàn giữ lại bao lâu giữa hai lần mở trang.
+    /// </summary>
+    /// <remarks>
+    /// Không phải tối ưu cho vui. <c>GET /fapi/v1/openOrders</c> KHÔNG kèm symbol có trọng số 40
+    /// trên hạn mức IP, và từ khi phải hỏi thêm lệnh điều kiện thì mỗi lần mở trang tốn gấp đôi.
+    /// Bấm F5 vài lần trong lúc theo dõi là đủ ăn -1003 Too many requests — đã gặp thật khi chạy
+    /// thử. Hạn mức đó dùng CHUNG với lời gọi đặt lệnh, nên một trang xem không được phép tiêu
+    /// vào phần của việc vào lệnh.
+    ///
+    /// 15 giây là khoảng nhìn thấy được nhưng không đáng kể: lệnh chờ đổi khi có người đặt hoặc
+    /// huỷ, mà cả hai đường đó đều đi qua ứng dụng này.
+    /// </remarks>
+    private static readonly TimeSpan OpenOrdersCacheTtl = TimeSpan.FromSeconds(15);
 
     public TradesController(
         ITradeService tradeService,
@@ -47,8 +64,10 @@ public class TradesController : Controller
         IExchangeOrderProviderFactory orderProviderFactory,
         ILiveBalanceService liveBalance,
         IUnitOfWork unitOfWork,
-        IOptions<LiveTradingOptions> liveTradingOptions)
+        IOptions<LiveTradingOptions> liveTradingOptions,
+        IMemoryCache cache)
     {
+        _cache = cache;
         _tradeService = tradeService;
         _analyses = analyses;
         _trades = trades;
@@ -146,8 +165,15 @@ public class TradesController : Controller
         {
             try
             {
-                var provider = _orderProviderFactory.Create(account.ApiKey!, account.ApiSecret!, _liveTradingOptions.UseTestnet);
-                var orders = await provider.GetOpenOrdersAsync(null, ct);
+                // Khoá theo cả venue: đổi testnet ↔ sàn thật phải thấy ngay bảng khác, không phải
+                // đợi cache cũ hết hạn rồi mới biết mình đang nhìn sàn nào.
+                var cacheKey = $"open-orders:{account.Id}:{(_liveTradingOptions.UseTestnet ? "test" : "live")}";
+                if (!_cache.TryGetValue(cacheKey, out IReadOnlyList<MMW.Application.MarketData.Models.ExchangeOpenOrder>? orders) || orders is null)
+                {
+                    var provider = _orderProviderFactory.Create(account.ApiKey!, account.ApiSecret!, _liveTradingOptions.UseTestnet);
+                    orders = await provider.GetOpenOrdersAsync(null, ct);
+                    _cache.Set(cacheKey, orders, OpenOrdersCacheTtl);
+                }
                 rows.AddRange(orders.Select(o => new OpenOrderRow(account.Id, account.Name ?? "—", o)));
             }
             catch
