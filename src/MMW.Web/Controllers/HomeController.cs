@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
 using MMW.Application.Abstractions;
@@ -25,6 +26,7 @@ public class HomeController : Controller
     private readonly IBaseRepository<EngineSetting> _engineSettings;
     private readonly IBaseRepository<RiskSetting> _riskSettings;
     private readonly IClock _clock;
+    private readonly LiveTradingOptions _liveTrading;
 
     public HomeController(
         IBaseRepository<TradingAccount> accounts,
@@ -37,7 +39,8 @@ public class HomeController : Controller
         IDailyPlanService dailyPlan,
         IBaseRepository<EngineSetting> engineSettings,
         IBaseRepository<RiskSetting> riskSettings,
-        IClock clock)
+        IClock clock,
+        IOptions<LiveTradingOptions> liveTrading)
     {
         _accounts = accounts;
         _trades = trades;
@@ -50,6 +53,7 @@ public class HomeController : Controller
         _engineSettings = engineSettings;
         _riskSettings = riskSettings;
         _clock = clock;
+        _liveTrading = liveTrading.Value;
     }
 
     public async Task<IActionResult> Index(long? accountId)
@@ -83,7 +87,7 @@ public class HomeController : Controller
             {
                 try
                 {
-                    var provider = _exchangeFactory.Create(account.ApiKey, account.ApiSecret);
+                    var provider = _exchangeFactory.Create(account.ApiKey, account.ApiSecret, _liveTrading.UseTestnet);
                     vm.LiveBalance = await provider.GetFuturesUsdtBalanceAsync();
                 }
                 catch (Exception ex)

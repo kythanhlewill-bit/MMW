@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
 using MMW.Domain.Entities;
@@ -18,6 +19,7 @@ public class TradeResultSyncService : ITradeResultSyncService
     private readonly IExchangeOrderProviderFactory _orderFactory;
     private readonly ITradeWorkflowService _workflow;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly LiveTradingOptions _liveTrading;
 
     public TradeResultSyncService(
         IBaseRepository<TradingAccount> accounts,
@@ -25,7 +27,8 @@ public class TradeResultSyncService : ITradeResultSyncService
         IExchangeAccountProviderFactory providerFactory,
         IExchangeOrderProviderFactory orderFactory,
         ITradeWorkflowService workflow,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IOptions<LiveTradingOptions> liveTrading)
     {
         _accounts = accounts;
         _trades = trades;
@@ -33,6 +36,7 @@ public class TradeResultSyncService : ITradeResultSyncService
         _orderFactory = orderFactory;
         _workflow = workflow;
         _unitOfWork = unitOfWork;
+        _liveTrading = liveTrading.Value;
     }
 
     public async Task<SyncResult> SyncAllAccountsAsync(CancellationToken cancellationToken = default)
@@ -65,7 +69,7 @@ public class TradeResultSyncService : ITradeResultSyncService
         if (openTrades.Count == 0)
             return new SyncResult(0, 0, 0);
 
-        var provider = _providerFactory.Create(account.ApiKey, account.ApiSecret);
+        var provider = _providerFactory.Create(account.ApiKey, account.ApiSecret, _liveTrading.UseTestnet);
         var synced = 0;
         var failed = 0;
         var skipped = 0;

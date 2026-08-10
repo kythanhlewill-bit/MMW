@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
 using MMW.Domain.Entities;
@@ -15,11 +16,16 @@ public class LiveBalanceService : ILiveBalanceService
 
     private readonly IExchangeAccountProviderFactory _accountFactory;
     private readonly IMemoryCache _cache;
+    private readonly LiveTradingOptions _liveTrading;
 
-    public LiveBalanceService(IExchangeAccountProviderFactory accountFactory, IMemoryCache cache)
+    public LiveBalanceService(
+        IExchangeAccountProviderFactory accountFactory,
+        IMemoryCache cache,
+        IOptions<LiveTradingOptions> liveTrading)
     {
         _accountFactory = accountFactory;
         _cache = cache;
+        _liveTrading = liveTrading.Value;
     }
 
     public async Task<decimal> GetEffectiveBalanceAsync(TradingAccount account, CancellationToken cancellationToken = default)
@@ -36,7 +42,7 @@ public class LiveBalanceService : ILiveBalanceService
 
         try
         {
-            var provider = _accountFactory.Create(account.ApiKey!, account.ApiSecret!);
+            var provider = _accountFactory.Create(account.ApiKey!, account.ApiSecret!, _liveTrading.UseTestnet);
             var real = await provider.GetFuturesUsdtBalanceAsync(cancellationToken);
             var value = real is > 0m ? real.Value : fallback;
             if (account.Id != 0)

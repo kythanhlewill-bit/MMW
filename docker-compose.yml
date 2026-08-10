@@ -20,12 +20,22 @@ services:
       BootstrapAdmin__Username: "${BOOTSTRAP_ADMIN_USER}"
       BootstrapAdmin__Password: "${BOOTSTRAP_ADMIN_PASSWORD}"
 
-      # RÀO AN TOÀN: tuần chạy thử KHÔNG đặt lệnh thật.
+      # RÀO AN TOÀN. Enabled=true mới gửi lệnh; UseTestnet=true thì lệnh đi vào
+      # testnet.binancefuture.com (tiền ảo). Hai cờ này độc lập nhau — Enabled=true mà
+      # UseTestnet=false là đặt lệnh TIỀN THẬT.
       LiveTrading__Enabled: "${LIVE_TRADING_ENABLED:-false}"
       LiveTrading__UseTestnet: "${LIVE_TRADING_USE_TESTNET:-true}"
 
-      Binance__ApiKey: "${BINANCE_API_KEY}"
-      Binance__ApiSecret: "${BINANCE_API_SECRET}"
+      # Cap cứng. Không khai ở đây thì rơi về mặc định appsettings.json (leverage 20,
+      # 10 lệnh/ngày) — khác cấu hình bạn dùng ở máy local nên kết quả tuần thử sẽ lệch.
+      LiveTrading__MaxLeverage: "${LIVE_TRADING_MAX_LEVERAGE:-5}"
+      LiveTrading__DefaultLeverage: "${LIVE_TRADING_DEFAULT_LEVERAGE:-5}"
+      LiveTrading__MaxNotionalUsdt: "${LIVE_TRADING_MAX_NOTIONAL_USDT:-120}"
+      LiveTrading__MaxOrdersPerDay: "${LIVE_TRADING_MAX_ORDERS_PER_DAY:-5}"
+
+      # KHÔNG khai Binance__ApiKey ở đây: mọi consumer (LiveOrderService, LiveBalanceService,
+      # TradeResultSyncService) đọc key theo từng tài khoản từ bảng TradingAccounts, nhập qua
+      # giao diện /Accounts. Cấu hình Binance:ApiKey không có nơi nào dùng tới.
 
       AiService__Provider: "${AI_PROVIDER:-DeepSeek}"
       AiService__BaseUrl: "${AI_BASE_URL:-https://api.deepseek.com}"
