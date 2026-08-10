@@ -38,6 +38,7 @@ public sealed class EngineJobs : IEngineJobs
     private readonly ICalendarFreshnessMonitor _calendarFreshness;
     private readonly IDailyPlanService _dailyPlan;
     private readonly ISignalEvalService _signalEval;
+    private readonly IScorecardExecutionService _scorecardExecution;
     private readonly IKlineArchiveService _archive;
     private readonly IDailyBriefEnricher _dailyBrief;
     private readonly IMarketContextService _marketContext;
@@ -50,6 +51,7 @@ public sealed class EngineJobs : IEngineJobs
         ICalendarFreshnessMonitor calendarFreshness,
         IDailyPlanService dailyPlan,
         ISignalEvalService signalEval,
+        IScorecardExecutionService scorecardExecution,
         IKlineArchiveService archive,
         IDailyBriefEnricher dailyBrief,
         IMarketContextService marketContext,
@@ -61,6 +63,7 @@ public sealed class EngineJobs : IEngineJobs
         _calendarFreshness = calendarFreshness;
         _dailyPlan = dailyPlan;
         _signalEval = signalEval;
+        _scorecardExecution = scorecardExecution;
         _archive = archive;
         _dailyBrief = dailyBrief;
         _marketContext = marketContext;
@@ -147,7 +150,17 @@ public sealed class EngineJobs : IEngineJobs
         {
             try
             {
-                await _signalEval.EvaluateAllAsync(accountId, utcNow, ct);
+                var scorecards = await _signalEval.EvaluateAllAsync(accountId, utcNow, ct);
+
+                // Phiếu kết luận VÀO LỆNH được gửi sàn ngay trong chu kỳ này. Tách khỏi việc chấm
+                // điểm ở trên là có chủ ý — SignalEvalService phải chạy được khi không có sàn lẫn
+                // không có AI, nên nó không biết gì về đặt lệnh; phần nối nằm ở đây.
+                //
+                // Lỗi đặt lệnh KHÔNG được huỷ phiếu đã chấm: phiếu là bản ghi lịch sử "hệ thống
+                // nghĩ gì lúc đó", còn lệnh vào được sàn hay không là chuyện khác hẳn.
+                var placed = await _scorecardExecution.ExecuteAsync(scorecards, ct);
+                if (placed > 0)
+                    _logger.LogInformation("Tài khoản {AccountId}: tạo {Count} lệnh từ phiếu chấm điểm.", accountId, placed);
             }
             catch (Exception ex)
             {

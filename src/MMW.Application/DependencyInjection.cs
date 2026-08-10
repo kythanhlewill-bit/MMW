@@ -155,6 +155,7 @@ public static class DependencyInjection
 
         // Đặt lệnh thật (live trading) — chỉ chạy khi LiveTrading.Enabled=true
         services.AddScoped<ILiveOrderService, LiveOrderService>();
+        services.AddScoped<IScorecardExecutionService, ScorecardExecutionService>();
 
         // Trade advisor (phân tích lệnh mở + lời khuyên)
         services.AddScoped<ITradeAdvisorService, TradeAdvisorService>();
