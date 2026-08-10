@@ -35,9 +35,10 @@ public class SettingsController : Controller
             {
                 DefaultTradingAccountId = app.DefaultTradingAccountId,
                 ConfirmBeforeCreateTrade = app.ConfirmBeforeCreateTrade,
-                AutoCreateTradeFromSignal = app.AutoCreateTradeFromSignal,
                 MinSignalScore = app.MinSignalScore,
                 AllowOverrideRisk = app.AllowOverrideRisk,
+                DeterministicEngineEnabled = app.DeterministicEngineEnabled,
+                ShadowComparisonEnabled = app.ShadowComparisonEnabled,
             },
             Accounts = accounts,
         };
@@ -51,9 +52,10 @@ public class SettingsController : Controller
         await _settings.UpdateAppSettingAsync(
             model.DefaultTradingAccountId,
             model.ConfirmBeforeCreateTrade,
-            model.AutoCreateTradeFromSignal,
             model.MinSignalScore,
-            model.AllowOverrideRisk);
+            model.AllowOverrideRisk,
+            model.DeterministicEngineEnabled,
+            model.ShadowComparisonEnabled);
         TempData["Message"] = "Đã lưu cấu hình chung.";
         return RedirectToAction(nameof(Index));
     }

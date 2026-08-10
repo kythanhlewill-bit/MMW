@@ -40,4 +40,7 @@ public class EntryScorecardLine : BaseEntity
 
     /// <summary>True cho tiêu chí vùng thanh khoản, vốn là xấp xỉ từ nến (R-010).</summary>
     public bool IsApproximation { get; set; }
+
+    /// <summary>Mã trạng thái máy đọc được, ví dụ NoBos/RetestConfirmed; null với tiêu chí không cần.</summary>
+    public string? StateCode { get; set; }
 }

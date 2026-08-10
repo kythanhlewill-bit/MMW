@@ -74,6 +74,64 @@ public class IndicatorService : IIndicatorService
         return sum / period;
     }
 
+    /// <summary>
+    /// Số mẫu tối thiểu để một hệ số tương quan có ý nghĩa.
+    /// </summary>
+    /// <remarks>
+    /// 30 lợi suất là mức thấp nhất còn nói được điều gì. Dưới mức đó, hệ số dao động dữ dội
+    /// theo vài nến lẻ và sẽ khiến tiêu chí tương quan bật/tắt ngẫu nhiên giữa các lần chấm.
+    /// </remarks>
+    public const int MinCorrelationSamples = 30;
+
+    public IReadOnlyList<decimal> LogReturns(IReadOnlyList<decimal> closes)
+    {
+        if (closes is null || closes.Count < 2) return Array.Empty<decimal>();
+
+        var returns = new List<decimal>(closes.Count - 1);
+        for (var i = 1; i < closes.Count; i++)
+        {
+            var prev = closes[i - 1];
+            var current = closes[i];
+            if (prev <= 0m || current <= 0m) continue;   // giá 0 không lấy log được; bỏ mẫu chứ không ném
+
+            returns.Add((decimal)Math.Log((double)(current / prev)));
+        }
+
+        return returns;
+    }
+
+    public decimal? Correlation(IReadOnlyList<decimal> a, IReadOnlyList<decimal> b)
+    {
+        if (a is null || b is null) return null;
+        if (a.Count != b.Count || a.Count < MinCorrelationSamples) return null;
+
+        var n = a.Count;
+        decimal sumA = 0m, sumB = 0m;
+        for (var i = 0; i < n; i++) { sumA += a[i]; sumB += b[i]; }
+
+        var meanA = sumA / n;
+        var meanB = sumB / n;
+
+        decimal covariance = 0m, varianceA = 0m, varianceB = 0m;
+        for (var i = 0; i < n; i++)
+        {
+            var da = a[i] - meanA;
+            var db = b[i] - meanB;
+            covariance += da * db;
+            varianceA += da * da;
+            varianceB += db * db;
+        }
+
+        if (varianceA <= 0m || varianceB <= 0m) return null;
+
+        var denominator = (decimal)Math.Sqrt((double)varianceA * (double)varianceB);
+        if (denominator <= 0m) return null;
+
+        // Kẹp về [-1, 1]: sai số dấu phẩy động có thể đẩy kết quả ra 1.0000000002, và một hệ số
+        // "lớn hơn 1" sẽ lọt qua mọi phép so ngưỡng phía sau mà không ai nghi ngờ.
+        return Math.Clamp(covariance / denominator, -1m, 1m);
+    }
+
     public decimal? Sma(IReadOnlyList<decimal> values, int period)
     {
         if (period <= 0 || values.Count < period)

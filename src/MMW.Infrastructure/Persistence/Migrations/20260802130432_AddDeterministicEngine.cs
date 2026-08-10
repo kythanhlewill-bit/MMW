@@ -29,7 +29,7 @@ namespace MMW.Infrastructure.Persistence.Migrations
                 table: "AppSettings",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: true);
 
             migrationBuilder.CreateTable(
                 name: "BacktestRuns",

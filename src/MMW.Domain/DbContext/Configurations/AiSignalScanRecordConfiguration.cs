@@ -11,6 +11,7 @@ public class AiSignalScanRecordConfiguration : IEntityTypeConfiguration<AiSignal
         builder.ToTable("AiSignalScanRecords");
         builder.HasKey(x => x.Id);
         builder.HasIndex(x => new { x.Symbol, x.Interval, x.ScannedAt });
+        builder.HasIndex(x => new { x.IsDisagreement, x.ScannedAt });
         builder.Property(x => x.SystemPrompt).HasColumnType("nvarchar(max)");
         builder.Property(x => x.RequestJson).HasColumnType("nvarchar(max)");
         builder.Property(x => x.ResponseJson).HasColumnType("nvarchar(max)");

@@ -1,0 +1,67 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using MMW.Domain.DbContext;
+using MMW.Domain.Enums;
+using MMW.Web.Models;
+
+namespace MMW.Web.Controllers;
+
+/// <summary>
+/// Phiếu chấm điểm: xem mọi lần đánh giá, kể cả những lần kết luận là không vào lệnh.
+/// </summary>
+/// <remarks>
+/// Mục tiêu SC-013: tra được lý do một cơ hội bị từ chối trong dưới 30 giây. Vì vậy bộ lọc
+/// theo lý do từ chối nằm ngay ở đầu trang, và chi tiết điểm từng tiêu chí mở ra tại chỗ chứ
+/// không phải qua thêm một lần bấm sang trang khác.
+/// </remarks>
+public class ScorecardController : Controller
+{
+    private const int PageSize = 50;
+
+    private readonly MmwDbContext _db;
+
+    public ScorecardController(MmwDbContext db) => _db = db;
+
+    public async Task<IActionResult> Index(
+        string? symbol, VetoReason? veto, ScorecardOutcome? outcome, CancellationToken ct)
+    {
+        var query = _db.EntryScorecards.AsNoTracking().Where(c => !c.IsBacktest);
+
+        if (!string.IsNullOrWhiteSpace(symbol))
+            query = query.Where(c => c.Symbol == symbol.ToUpperInvariant());
+
+        if (veto is not null) query = query.Where(c => c.VetoReason == veto);
+        if (outcome is not null) query = query.Where(c => c.Outcome == outcome);
+
+        var model = new ScorecardListViewModel
+        {
+            Symbol = symbol,
+            Veto = veto,
+            Outcome = outcome,
+            Items = await query
+                .Include(c => c.Lines)
+                .OrderByDescending(c => c.EvaluatedAtUtc)
+                .Take(PageSize)
+                .ToListAsync(ct),
+
+            // Bảng xếp hạng lý do từ chối — Nguyên tắc IV: "3 tháng qua lý do phổ biến nhất
+            // là gì" là câu hỏi trader sẽ hỏi, nên nó phải có sẵn câu trả lời.
+            VetoCounts = await _db.EntryScorecards.AsNoTracking()
+                .Where(c => !c.IsBacktest && c.VetoReason != null)
+                .GroupBy(c => c.VetoReason!.Value)
+                .Select(g => new { Reason = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .ToDictionaryAsync(x => x.Reason, x => x.Count, ct),
+
+            ZeroPointCriteria = await _db.EntryScorecardLines.AsNoTracking()
+                .Where(l => l.AwardedPoints == 0 && l.MaxPoints > 0)
+                .GroupBy(l => l.CriterionKey)
+                .Select(g => new { Key = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .Take(5)
+                .ToDictionaryAsync(x => x.Key, x => x.Count, ct),
+        };
+
+        return View(model);
+    }
+}

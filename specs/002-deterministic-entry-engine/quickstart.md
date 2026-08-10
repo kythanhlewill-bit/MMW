@@ -29,7 +29,7 @@ dotnet restore
 dotnet ef database update --project src/MMW.Infrastructure --startup-project src/MMW.Web
 ```
 
-Migration mang theo seed: `EngineSetting` + 6 dòng bảng phiên + 8 luật cửa sổ chặn + lịch sự kiện phần còn lại của năm.
+Seeder runtime tạo `EngineSetting` + 6 dòng bảng phiên + 12 luật cửa sổ chặn cho mỗi tài khoản. Lịch NFP được seed theo quy tắc; lịch CPI/PPI/PCE/FOMC 2026 được nạp từ lịch chính thức của BLS, BEA và Federal Reserve.
 
 Nạp kho nến (cần mạng, chạy một lần, mất vài phút):
 
@@ -93,7 +93,7 @@ Kiểm chứng thủ công: xoá khoá AI khỏi User Secrets, chạy ứng dụ
 Chứng minh User Story 6 và SC-008.
 
 ```bash
-dotnet test tests/MMW.RuleEngine.Tests --filter "FullyQualifiedName~MarketContextApplier|FullyQualifiedName~AiGuard"
+dotnet test tests/MMW.RuleEngine.Tests --filter "FullyQualifiedName~.Ai."
 ```
 
 **Kỳ vọng**: đủ **12 trường hợp** liệt kê trong [contracts/ai-context.md](./contracts/ai-context.md) đều xanh.
@@ -124,13 +124,13 @@ dotnet test tests/MMW.RuleEngine.Tests --filter "FullyQualifiedName~BacktestPari
 
 **Kỳ vọng**: chuỗi phiếu chấm điểm từ `BacktestEngine` và từ `SignalEvalService` chạy chế độ mô phỏng trên **cùng dữ liệu, cùng khoảng thời gian** trùng khớp ở mọi trường — điểm từng tiêu chí, điểm tổng, lý do veto, kích thước cuối cùng.
 
-Chạy kiểm thử thật qua giao diện:
+Nạp kho và chạy kiểm thử thật bằng CLI:
 
 ```bash
-dotnet run --project src/MMW.Web
+dotnet run --project src/MMW.Web -- backtest --account 1 --symbol BTCUSDT --from 2024-01-01 --to 2025-12-31
 ```
 
-Mở `/Backtest`, chọn khoảng 2024-01-01 → 2025-12-31, chạy.
+Mở `/Backtest` để xem báo cáo và kiểm tra khoảng trống kho. CLI được dùng vì một request web không thể thay `IClock` và market-data provider an toàn cho cả vòng lặp.
 
 **Kỳ vọng**:
 
@@ -199,11 +199,13 @@ dotnet test
 
 Trước khi coi feature là xong, cho chạy 7 ngày liên tục với `LiveTrading:Enabled = false` và xác nhận:
 
-1. Đủ **7 bản `DailyPlan`**, không thiếu ngày nào
-2. Mỗi ngày ~**192 phiếu chấm điểm** (2 symbol × 96 nến 15 phút), kể cả những phiếu kết luận không vào lệnh
-3. Tổng lần gọi AI **< 30/ngày** — đếm trong bảng kiểm toán (SC-005)
-4. Có ít nhất một ngày ra **0 lệnh**, và điều đó **không** sinh cảnh báo lỗi nào
-5. Mọi lần chặn theo khung giờ đều tra được lý do trong dưới 30 giây qua giao diện (SC-013)
-6. Bảng so sánh song song có dữ liệu của cả hai đường (User Story 7)
+1. Vào `/Settings`, bật **Deterministic engine**. Giữ `LiveTrading:Enabled=false` và `UseTestnet=true` trong cấu hình.
+
+2. Đủ **7 bản `DailyPlan`**, không thiếu ngày nào
+3. Mỗi ngày ~**192 phiếu chấm điểm** (2 symbol × 96 nến 15 phút), kể cả những phiếu kết luận không vào lệnh
+4. Tổng lần gọi AI **< 30/ngày** — đếm trong bảng kiểm toán (SC-005)
+5. Có ít nhất một ngày ra **0 lệnh**, và điều đó **không** sinh cảnh báo lỗi nào
+6. Mọi lần chặn theo khung giờ đều tra được lý do trong dưới 30 giây qua giao diện (SC-013)
+7. Bảng so sánh song song có dữ liệu của cả hai đường (User Story 7)
 
 Điểm 4 dễ bị hiểu nhầm là hỏng hóc. Nó là bằng chứng feature hoạt động đúng.

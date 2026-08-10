@@ -94,7 +94,22 @@ public static class DependencyInjection
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.Section));
         var llmOptions = configuration.GetSection(LlmOptions.Section).Get<LlmOptions>() ?? new LlmOptions();
         var provider = llmOptions.Provider?.Trim();
-        if (string.Equals(provider, "DeepSeek", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(provider, "Claude", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddHttpClient<ILlmService, ClaudeLlmService>((sp, client) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<LlmOptions>>().Value;
+                var baseUrl = string.IsNullOrWhiteSpace(opt.BaseUrl)
+                    ? "https://api.anthropic.com"
+                    : opt.BaseUrl;
+                client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+                if (!string.IsNullOrWhiteSpace(opt.ApiKey))
+                    client.DefaultRequestHeaders.Add("x-api-key", opt.ApiKey);
+                client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+                client.Timeout = TimeSpan.FromSeconds(opt.TimeoutSeconds > 0 ? opt.TimeoutSeconds : 30);
+            });
+        }
+        else if (string.Equals(provider, "DeepSeek", StringComparison.OrdinalIgnoreCase))
         {
             services.AddHttpClient<ILlmService, DeepSeekLlmService>((sp, client) =>
             {

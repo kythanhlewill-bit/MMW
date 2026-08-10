@@ -58,7 +58,7 @@ public class LiveOrderTests
         public FakeSettings(bool allowOverride) => _override = allowOverride;
         public Task<AppSetting> GetAppSettingAsync(CancellationToken ct = default)
             => Task.FromResult(new AppSetting { AllowOverrideRisk = _override });
-        public Task UpdateAppSettingAsync(long? a, bool b, bool c, int d, bool e, CancellationToken ct = default) => Task.CompletedTask;
+        public Task UpdateAppSettingAsync(long? a, bool b, int c, bool d, bool e, bool f, CancellationToken ct = default) => Task.CompletedTask;
         public Task<RiskSetting> GetRiskSettingAsync(long accountId, CancellationToken ct = default) => Task.FromResult(new RiskSetting());
         public Task UpsertRiskSettingAsync(long accountId, RiskSetting values, CancellationToken ct = default) => Task.CompletedTask;
     }

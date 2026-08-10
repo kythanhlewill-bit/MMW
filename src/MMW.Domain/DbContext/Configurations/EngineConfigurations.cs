@@ -109,6 +109,8 @@ public class EntryScorecardConfiguration : IEntityTypeConfiguration<EntryScoreca
         b.Property(x => x.Symbol).HasMaxLength(30);
         b.Property(x => x.Interval).HasMaxLength(8);
         b.Property(x => x.VetoDetail).HasMaxLength(300);
+        b.Property(x => x.TriggerDetail).HasMaxLength(300);
+        b.Property(x => x.SetupEventId).HasMaxLength(120);
 
         // Chống sinh phiếu trùng cho cùng một cây nến (FR-051).
         b.HasIndex(x => new { x.Symbol, x.CandleCloseTimeUtc, x.IsBacktest }).IsUnique();
@@ -129,6 +131,7 @@ public class EntryScorecardLineConfiguration : IEntityTypeConfiguration<EntrySco
         b.HasKey(x => x.Id);
         b.Property(x => x.CriterionKey).HasMaxLength(60);
         b.Property(x => x.Reason).HasMaxLength(300);
+        b.Property(x => x.StateCode).HasMaxLength(40);
 
         b.HasIndex(x => new { x.EntryScorecardId, x.CriterionKey }).IsUnique();
 
@@ -195,6 +198,10 @@ public class BacktestRunConfiguration : IEntityTypeConfiguration<BacktestRun>
         b.Property(x => x.Name).HasMaxLength(120);
         b.Property(x => x.Symbols).HasMaxLength(200);
         b.Property(x => x.Status).HasMaxLength(20);
-        b.Property(x => x.Limitations).HasMaxLength(500);
+        b.Property(x => x.TelemetrySchemaVersion).HasMaxLength(20);
+        b.Property(x => x.DecisionFingerprint).HasMaxLength(64);
+        b.Property(x => x.TradeFingerprint).HasMaxLength(64);
+        b.Property(x => x.DiagnosticsJson).HasColumnType("nvarchar(max)");
+        b.Property(x => x.Limitations).HasColumnType("nvarchar(max)");
     }
 }

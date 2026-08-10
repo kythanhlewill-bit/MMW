@@ -41,4 +41,25 @@ public interface IIndicatorService
 
     /// <summary>Trung bình khối lượng <paramref name="period"/> nến gần nhất. Null khi thiếu dữ liệu.</summary>
     decimal? VolumeSma(IReadOnlyList<Candle> candles, int period);
+
+    /// <summary>
+    /// Hệ số tương quan Pearson của hai chuỗi, kết quả trong <c>[-1, 1]</c>.
+    /// </summary>
+    /// <remarks>
+    /// Null khi hai chuỗi lệch độ dài, dưới <see cref="IndicatorService.MinCorrelationSamples"/>
+    /// mẫu, hoặc một chuỗi phẳng tuyệt đối (phương sai bằng 0 — tương quan không xác định, và
+    /// trả 0 ở đó sẽ bị đọc nhầm thành "đã đo được và bằng 0").
+    /// </remarks>
+    decimal? Correlation(IReadOnlyList<decimal> a, IReadOnlyList<decimal> b);
+
+    /// <summary>
+    /// Chuỗi log-return của giá đóng. Độ dài bằng <c>closes.Count - 1</c>.
+    /// </summary>
+    /// <remarks>
+    /// Tương quan phải tính trên LỢI SUẤT, không phải trên giá. Hai chuỗi giá bất kỳ cùng có xu
+    /// hướng tăng sẽ cho tương quan gần 1 dù chuyển động ngày qua ngày chẳng liên quan gì nhau —
+    /// đó là tương quan giả kinh điển, và nó sẽ báo "ETH bám sát BTC" trong đúng lúc ETH đang
+    /// tách đoàn.
+    /// </remarks>
+    IReadOnlyList<decimal> LogReturns(IReadOnlyList<decimal> closes);
 }

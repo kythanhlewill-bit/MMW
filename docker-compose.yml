@@ -1,0 +1,61 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mmw-web
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+      # Container mặc định chạy UTC. Job Hangfire dùng cron UTC (đúng ý đồ), nhưng view
+      # hiển thị giờ local -> đặt giờ VN cho khớp thói quen đọc của trader.
+      TZ: "Asia/Ho_Chi_Minh"
+
+      # Dùng chung SQL Server của YODES (container yodes-db, alias "db" trên mạng yodes_default).
+      # Database MMW là DB riêng — Express giới hạn 10GB MỖI database nên không đụng YODES.
+      # MigrateAsync() trong SeedData tự tạo DB + áp migration khi container khởi động.
+      ConnectionStrings__Default: "Server=db;Database=MMW;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False;"
+
+      # Tài khoản admin đầu tiên — chỉ được dùng khi bảng user còn rỗng.
+      BootstrapAdmin__Username: "${BOOTSTRAP_ADMIN_USER}"
+      BootstrapAdmin__Password: "${BOOTSTRAP_ADMIN_PASSWORD}"
+
+      # RÀO AN TOÀN: tuần chạy thử KHÔNG đặt lệnh thật.
+      LiveTrading__Enabled: "${LIVE_TRADING_ENABLED:-false}"
+      LiveTrading__UseTestnet: "${LIVE_TRADING_USE_TESTNET:-true}"
+
+      Binance__ApiKey: "${BINANCE_API_KEY}"
+      Binance__ApiSecret: "${BINANCE_API_SECRET}"
+
+      AiService__Provider: "${AI_PROVIDER:-DeepSeek}"
+      AiService__BaseUrl: "${AI_BASE_URL:-https://api.deepseek.com}"
+      AiService__ApiKey: "${AI_API_KEY}"
+      AiService__Model: "${AI_MODEL:-deepseek-chat}"
+
+      Email__From: "${EMAIL_FROM}"
+      Email__SmtpHost: "${EMAIL_SMTP_HOST}"
+      Email__SmtpPort: "${EMAIL_SMTP_PORT:-587}"
+      Email__Username: "${EMAIL_USERNAME}"
+      Email__Password: "${EMAIL_PASSWORD}"
+    volumes:
+      - mmw-logs:/app/logs
+      # Giữ DataProtection keys qua các lần redeploy (không thì user bị logout mỗi lần deploy)
+      - mmw-dataprotection:/root/.aspnet/DataProtection-Keys
+    ports:
+      # 8080 đã bị yodes-web chiếm -> MMW dùng 8081. Chỉ mở localhost, Nginx trên host proxy vào.
+      - "127.0.0.1:8081:8080"
+    # VPS không có swap và đang chia sẻ với YODES. Chặn trần để MMW không kéo sập yodes-db khi
+    # job quét thị trường dồn cục. Bỏ dòng này nếu đã bật swap và muốn chạy thoải mái hơn.
+    mem_limit: 2g
+    restart: always
+    networks:
+      - yodes_default
+
+volumes:
+  mmw-logs:
+  mmw-dataprotection:
+
+networks:
+  # Mạng do compose project "yodes" tạo sẵn — KHÔNG khai báo lại, chỉ gắn vào.
+  yodes_default:
+    external: true

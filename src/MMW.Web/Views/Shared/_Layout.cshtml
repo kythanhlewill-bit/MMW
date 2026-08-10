@@ -103,12 +103,42 @@
                                     <span class="nav-link-title">Đề xuất lệnh</span>
                                 </a>
                             </li>
-                            <li class="nav-item @Active("Audit")">
+                            <li class="nav-item @Active("DailyPlan")">
+                                <a class="nav-link" asp-controller="DailyPlan" asp-action="Index">
+                                    <span class="nav-link-icon"><i class="ti ti-calendar-stats"></i></span>
+                                    <span class="nav-link-title">Kế hoạch ngày</span>
+                                </a>
+                            </li>
+                            <li class="nav-item @Active("Scorecard")">
+                                <a class="nav-link" asp-controller="Scorecard" asp-action="Index">
+                                    <span class="nav-link-icon"><i class="ti ti-checklist"></i></span>
+                                    <span class="nav-link-title">Phiếu chấm điểm</span>
+                                </a>
+                            </li>
+                            <li class="nav-item @Active("TimeGuard")">
+                                <a class="nav-link" asp-controller="TimeGuard" asp-action="Index">
+                                    <span class="nav-link-icon"><i class="ti ti-clock-pause"></i></span>
+                                    <span class="nav-link-title">Chặn khung giờ</span>
+                                </a>
+                            </li>
+                            <li class="nav-item @Active("Backtest")">
+                                <a class="nav-link" asp-controller="Backtest" asp-action="Index">
+                                    <span class="nav-link-icon"><i class="ti ti-timeline"></i></span>
+                                    <span class="nav-link-title">Kiểm thử lịch sử</span>
+                                </a>
+                            </li>
+                             <li class="nav-item @Active("Audit")">
                                 <a class="nav-link" asp-controller="Audit" asp-action="Index">
                                     <span class="nav-link-icon"><i class="ti ti-history"></i></span>
                                     <span class="nav-link-title">Audit</span>
                                 </a>
-                            </li>
+                             </li>
+                             <li class="nav-item @Active("ShadowComparison")">
+                                 <a class="nav-link" asp-controller="ShadowComparison" asp-action="Index">
+                                     <span class="nav-link-icon"><i class="ti ti-arrows-diff"></i></span>
+                                     <span class="nav-link-title">So sánh AI</span>
+                                 </a>
+                             </li>
                             <li class="nav-item @Active("Watchlist")">
                                 <a class="nav-link" asp-controller="Watchlist" asp-action="Index">
                                     <span class="nav-link-icon"><i class="ti ti-eye"></i></span>

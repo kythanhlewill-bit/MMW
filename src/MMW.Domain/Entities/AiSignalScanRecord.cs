@@ -48,4 +48,22 @@ public class AiSignalScanRecord : BaseEntity
     public string? RequestJson { get; set; }
     public string? ResponseJson { get; set; }
     public string? RepairResponseJson { get; set; }
+
+    // ── So sánh với engine tất định (FR-058) ───────────────────────────
+    /// <summary>Phiếu tất định gần nhất cùng symbol trong cửa sổ một giờ.</summary>
+    public long? EntryScorecardId { get; set; }
+
+    [MaxLength(40)]
+    public string? DeterministicOutcome { get; set; }
+
+    [MaxLength(20)]
+    public string? DeterministicDirection { get; set; }
+
+    public int? DeterministicScore { get; set; }
+
+    /// <summary>Null khi chưa có phiếu tất định để đối chiếu.</summary>
+    public bool? IsDisagreement { get; set; }
+
+    [MaxLength(500)]
+    public string? DisagreementReason { get; set; }
 }

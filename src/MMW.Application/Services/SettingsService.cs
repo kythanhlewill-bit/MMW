@@ -35,9 +35,10 @@ public class SettingsService : ISettingsService
     public async Task UpdateAppSettingAsync(
         long? defaultAccountId,
         bool confirmBeforeCreateTrade,
-        bool autoCreateTradeFromSignal,
         int minSignalScore,
         bool allowOverrideRisk,
+        bool deterministicEngineEnabled,
+        bool shadowComparisonEnabled,
         CancellationToken cancellationToken = default)
     {
         var current = (await _appSettings.GetAllAsync()).FirstOrDefault();
@@ -47,9 +48,12 @@ public class SettingsService : ISettingsService
 
         tracked.DefaultTradingAccountId = defaultAccountId;
         tracked.ConfirmBeforeCreateTrade = confirmBeforeCreateTrade;
-        tracked.AutoCreateTradeFromSignal = autoCreateTradeFromSignal;
+        // Đường AI đã là shadow-only từ Phase 9. Không cho cấu hình cũ mở lại quyền tạo lệnh.
+        tracked.AutoCreateTradeFromSignal = false;
         tracked.MinSignalScore = Math.Max(0, minSignalScore);
         tracked.AllowOverrideRisk = allowOverrideRisk;
+        tracked.DeterministicEngineEnabled = deterministicEngineEnabled;
+        tracked.ShadowComparisonEnabled = shadowComparisonEnabled;
 
         if (tracked.Id == 0)
             await _appSettings.AddAsync(tracked);

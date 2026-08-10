@@ -1,0 +1,12 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- NuGetAudit mặc định chỉ quét package khai trực tiếp, nên 4 lỗ hổng nằm ở tầng
+         transitive (Newtonsoft.Json qua Hangfire, Azure.Identity/Identity.Client/Asn1 qua
+         Microsoft.Data.SqlClient) đã lọt qua build mà không có warning nào.
+         "all" bắt build cảnh báo cả cây phụ thuộc. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+
+</Project>

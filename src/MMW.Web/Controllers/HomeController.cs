@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
+using MMW.Application.Abstractions;
+using MMW.Application.Trading.DailyPlanning;
+using MMW.Application.Trading.Discipline;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -16,19 +19,37 @@ public class HomeController : Controller
     private readonly IBaseRepository<Flag> _flags;
     private readonly ISettingsService _settings;
     private readonly IExchangeAccountProviderFactory _exchangeFactory;
+    private readonly IDisciplineGateRunner _gates;
+    private readonly ITraderStatisticsProvider _traderStats;
+    private readonly IDailyPlanService _dailyPlan;
+    private readonly IBaseRepository<EngineSetting> _engineSettings;
+    private readonly IBaseRepository<RiskSetting> _riskSettings;
+    private readonly IClock _clock;
 
     public HomeController(
         IBaseRepository<TradingAccount> accounts,
         IBaseRepository<Trade> trades,
         IBaseRepository<Flag> flags,
         ISettingsService settings,
-        IExchangeAccountProviderFactory exchangeFactory)
+        IExchangeAccountProviderFactory exchangeFactory,
+        IDisciplineGateRunner gates,
+        ITraderStatisticsProvider traderStats,
+        IDailyPlanService dailyPlan,
+        IBaseRepository<EngineSetting> engineSettings,
+        IBaseRepository<RiskSetting> riskSettings,
+        IClock clock)
     {
         _accounts = accounts;
         _trades = trades;
         _flags = flags;
         _settings = settings;
         _exchangeFactory = exchangeFactory;
+        _gates = gates;
+        _traderStats = traderStats;
+        _dailyPlan = dailyPlan;
+        _engineSettings = engineSettings;
+        _riskSettings = riskSettings;
+        _clock = clock;
     }
 
     public async Task<IActionResult> Index(long? accountId)
@@ -85,9 +106,69 @@ public class HomeController : Controller
 
             vm.TotalFlags = await _flags.CountAsync(f => f.TradingAccountId == account.Id);
             vm.CriticalFlags = await _flags.CountAsync(f => f.TradingAccountId == account.Id && f.Severity == FlagSeverity.Critical);
+
+            await FillDisciplineStatusAsync(vm, account);
         }
 
         return View(vm);
+    }
+
+    /// <summary>
+    /// Chạy bộ rào kỷ luật ở chế độ CHỈ ĐỌC để hiện trạng thái hiện tại (T125).
+    /// </summary>
+    /// <remarks>
+    /// Chạy lại gate ở đây thay vì đọc kết quả đã lưu là có chủ ý: trạng thái kỷ luật thay đổi
+    /// theo từng phút (cửa sổ trả thù hết hạn, sang ngày mới), nên một con số lưu từ chu kỳ
+    /// chấm điểm gần nhất sẽ hiển thị sai ngay khi trang được mở lại.
+    ///
+    /// Không có kế hoạch ngày thì không hiện gì — chưa có kế hoạch là một trạng thái khác hẳn,
+    /// và trang kế hoạch ngày đã nói về nó rồi.
+    /// </remarks>
+    private async Task FillDisciplineStatusAsync(DashboardViewModel vm, TradingAccount account)
+    {
+        var engineSetting = await _engineSettings.FirstOrDefaultAsync(s => s.TradingAccountId == account.Id);
+        if (engineSetting is null) return;
+
+        var plan = await _dailyPlan.GetCurrentAsync(account.Id);
+        if (plan is null) return;
+
+        var riskSetting = await _riskSettings.FirstOrDefaultAsync(r => r.TradingAccountId == account.Id)
+                          ?? new RiskSetting { TradingAccountId = account.Id };
+
+        var utcNow = _clock.UtcNow;
+        var stats = await _traderStats.GetAsync(account.Id, utcNow);
+
+        // Bảng này hỏi "hiện giờ tôi có được phép giao dịch không", chưa có mã và chiều cụ thể.
+        // Mã rỗng là câu trả lời trung thực cho câu hỏi đó, không phải giá trị tạm:
+        //   • `discipline.open_position` không khớp mã nào nên chỉ còn kiểm trần số vị thế đồng
+        //     thời — đúng phần mang tính toàn tài khoản của nó.
+        //   • `discipline.correlated_exposure` không đo được tương quan nên cho qua kèm lý do
+        //     nói rõ như vậy.
+        // Điền một mã giả để "cho có" sẽ khiến bảng khẳng định những điều chưa ai hỏi.
+        var outcome = _gates.Run(new DisciplineContext
+        {
+            TradingAccountId = account.Id,
+            Symbol = string.Empty,
+            Direction = TradeDirection.Long,
+            EvaluatedAtUtc = utcNow,
+            PlannedRiskPercent = riskSetting.MaxRiskPerTradePercent,
+            DailyPlan = plan,
+            Settings = engineSetting,
+            RiskSettings = riskSetting,
+            Stats = stats,
+        });
+
+        vm.IsBlocked = outcome.Aggregate.IsBlocked;
+        vm.BlockReason = outcome.Aggregate.Detail;
+        vm.DisciplineSizeMultiplier = outcome.Aggregate.SizeMultiplier;
+
+        vm.DisciplineGates = outcome.Lines
+            .Select(l => new DisciplineStatusRow(
+                l.Key,
+                l.Result.Action.ToString(),
+                l.Result.Reason,
+                l.Result.Action is GateAction.BlockTrade or GateAction.StopForDay))
+            .ToList();
     }
 
     [AllowAnonymous]

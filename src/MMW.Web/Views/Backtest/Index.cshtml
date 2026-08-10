@@ -1,0 +1,358 @@
+@using System.Text.Json
+@using MMW.Application.Backtest
+@using MMW.Application.Backtest.Models
+@using MMW.Web.Models
+@model BacktestViewModel
+@{
+    ViewData["Title"] = "Kiểm thử lịch sử";
+
+    Dictionary<string, JsonElement> Parse(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? new Dictionary<string, JsonElement>()
+            : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json) ?? new();
+
+    StructuralRrDistribution? ParseStructuralRr(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? null
+            : JsonSerializer.Deserialize<StructuralRrDistribution>(json);
+
+    BacktestTelemetryReport? ParseTelemetry(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? null
+            : JsonSerializer.Deserialize<BacktestTelemetryReport>(json);
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Kiểm thử lịch sử</h2>
+            <div class="text-secondary mt-1">
+                Kho: @Model.ArchiveCandleCount.ToString("N0") nến ·
+                @Model.ArchiveFundingCount.ToString("N0") mốc phí vốn ·
+                @(Model.ArchiveSymbols.Count == 0 ? "chưa có mã nào" : string.Join(", ", Model.ArchiveSymbols))
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.Runs.Count == 0)
+{
+    <div class="card">
+        <div class="card-body">
+            <h4>Chưa có lần chạy nào</h4>
+            <p class="text-secondary mb-2">Nạp kho rồi chạy bằng dòng lệnh:</p>
+            <pre class="mb-0"><code>dotnet run --project src/MMW.Web -- backfill BTCUSDT 15m 2026-06-01 2026-08-01
+dotnet run --project src/MMW.Web -- backtest "thử tháng 7" BTCUSDT 2026-07-01 2026-08-01</code></pre>
+        </div>
+    </div>
+}
+
+@if (Model.Selected is { } run)
+{
+    var telemetry = ParseTelemetry(run.DiagnosticsJson);
+    <div class="alert alert-info">
+        <strong>@run.StrategyVersion</strong> · telemetry @(string.IsNullOrWhiteSpace(run.TelemetrySchemaVersion) ? "chưa có" : run.TelemetrySchemaVersion)
+        @if (!string.IsNullOrWhiteSpace(run.DecisionFingerprint))
+        {
+            <span> · decision <code>@run.DecisionFingerprint[..12]</code> · trade <code>@run.TradeFingerprint[..12]</code></span>
+        }
+    </div>
+
+    <div class="alert alert-warning">
+        <h4 class="alert-title">Hạn chế của lần chạy này — đọc trước khi tin các con số</h4>
+        <ul class="mb-0">
+            @foreach (var line in Model.Limitations)
+            {
+                <li>@line</li>
+            }
+        </ul>
+    </div>
+
+    @if (telemetry is not null)
+    {
+        <div class="row row-cards mb-3">
+            <div class="col-md-3"><div class="card"><div class="card-body">
+                <div class="subheader">Kỳ vọng gross</div>
+                <div class="h3 mb-0">@telemetry.GrossExpectancyR.ToString("N3")R</div>
+                <div class="text-secondary">trước fee/funding/slippage</div>
+            </div></div></div>
+            <div class="col-md-3"><div class="card"><div class="card-body">
+                <div class="subheader">Friction trung bình</div>
+                <div class="h3 mb-0 text-orange">@telemetry.AverageFrictionR.ToString("N3")R</div>
+                <div class="text-secondary">mỗi lệnh đã khớp</div>
+            </div></div></div>
+            <div class="col-md-3"><div class="card"><div class="card-body">
+                <div class="subheader">Quyết định đã đo</div>
+                <div class="h3 mb-0">@telemetry.DecisionCount.ToString("N0")</div>
+                <div class="text-secondary">@telemetry.EnteredDecisionCount.ToString("N0") được chấp nhận</div>
+            </div></div></div>
+            <div class="col-md-3"><div class="card"><div class="card-body">
+                <div class="subheader">MFE / MAE trung bình</div>
+                <div class="h3 mb-0">@telemetry.Excursions.AverageMfeR.ToString("N2") / @telemetry.Excursions.AverageMaeR.ToString("N2")R</div>
+                <div class="text-secondary">đường đi sau entry</div>
+            </div></div></div>
+        </div>
+
+        <div class="row row-cards mb-3">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Telemetry theo Setup</h3></div>
+                    <div class="table-responsive"><table class="table table-sm card-table">
+                        <thead><tr><th>Setup</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Kỳ vọng</th></tr></thead>
+                        <tbody>@foreach (var (key, stats) in telemetry.BySetup) { <tr><td>@key</td><td class="text-end">@stats.TradeCount</td><td class="text-end">@stats.WinRate.ToString("N1")%</td><td class="text-end">@stats.ExpectancyR.ToString("N3")R</td></tr> }</tbody>
+                    </table></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Telemetry theo Trigger</h3></div>
+                    <div class="table-responsive"><table class="table table-sm card-table">
+                        <thead><tr><th>Trigger</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Kỳ vọng</th></tr></thead>
+                        <tbody>@foreach (var (key, stats) in telemetry.ByTrigger) { <tr><td>@key</td><td class="text-end">@stats.TradeCount</td><td class="text-end">@stats.WinRate.ToString("N1")%</td><td class="text-end">@stats.ExpectancyR.ToString("N3")R</td></tr> }</tbody>
+                    </table></div>
+                </div>
+            </div>
+        </div>
+
+        @if (telemetry.EntryFills is { } fills)
+        {
+            <div class="card mb-3">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Hiệu quả theo trạng thái khớp entry</h3>
+                        <div class="text-secondary">
+                            Market @fills.MarketTranchesFilled/@fills.MarketTranchesOffered
+                            (@fills.MarketFillRatePercent.ToString("N1")%) ·
+                            Limit @fills.LimitTranchesFilled/@fills.LimitTranchesOffered
+                            (@fills.LimitFillRatePercent.ToString("N1")%) ·
+                            hết hạn @fills.LimitTranchesExpired
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive"><table class="table table-sm card-table">
+                    <thead><tr><th>Trạng thái</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Net</th><th class="text-end">Gross</th><th class="text-end">Friction</th><th class="text-end">Risk khớp</th></tr></thead>
+                    <tbody>
+                    @foreach (var (state, stats) in fills.ByFillState)
+                    {
+                        <tr>
+                            <td>@state</td>
+                            <td class="text-end">@stats.Trades.TradeCount</td>
+                            <td class="text-end">@stats.Trades.WinRate.ToString("N1")%</td>
+                            <td class="text-end @(stats.Trades.ExpectancyR >= 0 ? "text-green" : "text-red")">@stats.Trades.ExpectancyR.ToString("N3")R</td>
+                            <td class="text-end">@stats.GrossExpectancyR.ToString("N3")R</td>
+                            <td class="text-end">@stats.AverageFrictionR.ToString("N3")R</td>
+                            <td class="text-end">@stats.AverageFilledRiskBudgetFraction.ToString("P1")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table></div>
+                <div class="card-footer text-secondary">
+                    Đây là attribution theo đường giá thực tế; không chứng minh limit là nguyên nhân thắng hoặc thua.
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header"><h3 class="card-title">Setup × trạng thái khớp</h3></div>
+                <div class="table-responsive"><table class="table table-sm card-table">
+                    <thead><tr><th>Nhóm</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Net</th><th class="text-end">Gross</th><th class="text-end">Friction</th></tr></thead>
+                    <tbody>
+                    @foreach (var (group, stats) in fills.BySetupAndFillState)
+                    {
+                        <tr>
+                            <td>@group</td>
+                            <td class="text-end">@stats.Trades.TradeCount</td>
+                            <td class="text-end">@stats.Trades.WinRate.ToString("N1")%</td>
+                            <td class="text-end @(stats.Trades.ExpectancyR >= 0 ? "text-green" : "text-red")">@stats.Trades.ExpectancyR.ToString("N3")R</td>
+                            <td class="text-end">@stats.GrossExpectancyR.ToString("N3")R</td>
+                            <td class="text-end">@stats.AverageFrictionR.ToString("N3")R</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table></div>
+            </div>
+        }
+    }
+
+    <div class="row row-cards mb-3">
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Số lệnh</div>
+                <div class="h2 mb-0">@run.TradeCount</div>
+                <div class="text-secondary">lần thử tương đương #@run.ComparableTrialNumber</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Tỷ lệ thắng</div>
+                <div class="h2 mb-0">@run.WinRate.ToString("N1")%</div>
+                <div class="text-secondary">95%: @run.WinRateCiLow.ToString("N1")–@run.WinRateCiHigh.ToString("N1")%</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Kỳ vọng mỗi lệnh</div>
+                <div class="h2 mb-0 @(run.ExpectancyR >= 0 ? "text-green" : "text-red")">@run.ExpectancyR.ToString("N3")R</div>
+                <div class="text-secondary">95%: @run.ExpectancyRCiLow.ToString("N3")–@run.ExpectancyRCiHigh.ToString("N3")R</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Sụt giảm tối đa</div>
+                <div class="h2 mb-0 text-red">@run.MaxDrawdownPercent.ToString("N2")R</div>
+                <div class="text-secondary">chuỗi thua dài nhất @run.LongestLossStreak</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="row row-cards mb-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Phân rã theo Mode</h3></div>
+                <div class="table-responsive">
+                    <table class="table table-sm card-table table-vcenter">
+                        <thead><tr><th>Mode</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Kỳ vọng</th><th>Mẫu</th></tr></thead>
+                        <tbody>
+                        @foreach (var kv in Parse(run.BreakdownByModeJson))
+                        {
+                            var count = kv.Value.GetProperty("TradeCount").GetInt32();
+                            <tr>
+                                <td>@kv.Key</td>
+                                <td class="text-end">@count</td>
+                                <td class="text-end">@kv.Value.GetProperty("WinRate").GetDecimal().ToString("N1")%</td>
+                                <td class="text-end">@kv.Value.GetProperty("ExpectancyR").GetDecimal().ToString("N3")R</td>
+                                <td class="@(count >= 100 ? "text-green" : "text-red")">@(count >= 100 ? "đạt" : "< 100")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Phân rã theo ExitReason</h3></div>
+                <div class="table-responsive">
+                    <table class="table table-sm card-table table-vcenter">
+                        <thead><tr><th>Lý do thoát</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Kỳ vọng</th></tr></thead>
+                        <tbody>
+                        @foreach (var kv in Parse(run.BreakdownByExitReasonJson))
+                        {
+                            <tr>
+                                <td>@kv.Key</td>
+                                <td class="text-end">@kv.Value.GetProperty("TradeCount")</td>
+                                <td class="text-end">@kv.Value.GetProperty("WinRate").GetDecimal().ToString("N1")%</td>
+                                <td class="text-end">@kv.Value.GetProperty("ExpectancyR").GetDecimal().ToString("N3")R</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (ParseStructuralRr(run.StructuralRrDistributionJson) is { } structuralRr)
+    {
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title">Phân phối R:R cấu trúc trước rào</h3>
+                <div class="card-actions text-secondary">
+                    @structuralRr.ObservedCount.ToString("N0")/@structuralRr.EvaluatedCount.ToString("N0") lượt đo được ·
+                    @structuralRr.UnplannableStopCount.ToString("N0") stop không hợp lệ
+                </div>
+            </div>
+            <div class="card-body pb-0">
+                <p>P10 @structuralRr.P10?.ToString("N2")R · P25 @structuralRr.P25?.ToString("N2")R · P50 @structuralRr.Median?.ToString("N2")R · P75 @structuralRr.P75?.ToString("N2")R · P90 @structuralRr.P90?.ToString("N2")R</p>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm card-table">
+                    <thead><tr><th>Rào tối thiểu</th><th class="text-end">Cơ hội còn lại</th><th class="text-end">% toàn bộ lượt đánh giá</th></tr></thead>
+                    <tbody>
+                    @foreach (var threshold in structuralRr.Thresholds)
+                    {
+                        <tr class="@(threshold.PercentOfEvaluated < 40m ? "table-warning" : "")">
+                            <td>≥ @threshold.ThresholdR.ToString("N2")R</td>
+                            <td class="text-end">@threshold.EligibleCount.ToString("N0")</td>
+                            <td class="text-end">@threshold.PercentOfEvaluated.ToString("N1")%</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <div class="row row-cards mb-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Phân rã theo giờ UTC</h3></div>
+                <div class="table-responsive">
+                    <table class="table table-sm card-table table-vcenter">
+                        <thead><tr><th>Giờ UTC</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Kỳ vọng</th></tr></thead>
+                        <tbody>
+                        @foreach (var kv in Parse(run.BreakdownByHourJson).OrderBy(k => int.Parse(k.Key)))
+                        {
+                            <tr>
+                                <td>@kv.Key:00</td>
+                                <td class="text-end">@kv.Value.GetProperty("TradeCount")</td>
+                                <td class="text-end">@kv.Value.GetProperty("WinRate").GetDecimal().ToString("N1")%</td>
+                                <td class="text-end">@kv.Value.GetProperty("ExpectancyR").GetDecimal().ToString("N3")R</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Phân rã theo trạng thái ngày</h3></div>
+                <div class="table-responsive">
+                    <table class="table table-sm card-table table-vcenter">
+                        <thead><tr><th>Trạng thái</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Kỳ vọng</th></tr></thead>
+                        <tbody>
+                        @foreach (var kv in Parse(run.BreakdownByRegimeJson))
+                        {
+                            <tr>
+                                <td>@kv.Key</td>
+                                <td class="text-end">@kv.Value.GetProperty("TradeCount")</td>
+                                <td class="text-end">@kv.Value.GetProperty("WinRate").GetDecimal().ToString("N1")%</td>
+                                <td class="text-end">@kv.Value.GetProperty("ExpectancyR").GetDecimal().ToString("N3")R</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (Model.Runs.Count > 0)
+{
+    <div class="card">
+        <div class="card-header"><h3 class="card-title">Các lần chạy</h3></div>
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr><th>Tên</th><th>Version</th><th>Khoảng</th><th>Mã</th><th class="text-end">Lệnh</th><th class="text-end">Thắng</th><th class="text-end">Kỳ vọng</th><th>Trạng thái</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var r in Model.Runs)
+                {
+                    <tr class="@(Model.Selected?.Id == r.Id ? "table-active" : "")">
+                        <td><a asp-action="Index" asp-route-runId="@r.Id">@r.Name</a></td>
+                        <td>@r.StrategyVersion</td>
+                        <td class="text-secondary small">@r.FromUtc.ToString("dd/MM/yy") → @r.ToUtc.ToString("dd/MM/yy")</td>
+                        <td>@r.Symbols</td>
+                        <td class="text-end">@r.TradeCount</td>
+                        <td class="text-end">@r.WinRate.ToString("N1")%</td>
+                        <td class="text-end">@r.ExpectancyR.ToString("N3")R</td>
+                        <td>@r.Status</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

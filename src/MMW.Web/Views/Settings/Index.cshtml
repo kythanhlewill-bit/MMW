@@ -40,10 +40,18 @@
 
                 <div class="mb-3">
                     <label class="form-check form-switch">
-                        <input asp-for="General.AutoCreateTradeFromSignal" class="form-check-input" type="checkbox" />
-                        <span class="form-check-label">Tự tạo lệnh từ đề xuất đã qua AI</span>
+                        <input asp-for="General.DeterministicEngineEnabled" class="form-check-input" type="checkbox" />
+                        <span class="form-check-label fw-semibold">Bật deterministic engine</span>
                     </label>
-                    <small class="text-secondary">Chỉ áp dụng khi Market Scan sinh đề xuất và AI preflight trả ACCEPT.</small>
+                    <small class="text-secondary">Bật các job lập kế hoạch, chấm điểm và quản lý vị thế. Không tự bật giao dịch thật.</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-check form-switch">
+                        <input asp-for="General.ShadowComparisonEnabled" class="form-check-input" type="checkbox" />
+                        <span class="form-check-label">Bật so sánh AI shadow</span>
+                    </label>
+                    <small class="text-secondary">AI chỉ ghi audit để đối chiếu; không có quyền tạo hoặc gửi lệnh.</small>
                 </div>
 
                 <div class="mb-2">

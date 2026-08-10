@@ -135,4 +135,43 @@ else
             </div>
         </div>
     }
+
+    @if (Model.DisciplineGates.Count > 0)
+    {
+        <div class="card mt-3 @(Model.IsBlocked ? "border-danger" : "")">
+            <div class="card-header">
+                <h3 class="card-title">Rào chắn kỷ luật</h3>
+                <div class="card-subtitle">
+                    @if (Model.IsBlocked)
+                    {
+                        <span class="text-danger fw-bold">Đang chặn mọi lệnh mới</span>
+                        <span>— @Model.BlockReason</span>
+                    }
+                    else if (Model.DisciplineSizeMultiplier < 1.0m)
+                    {
+                        <span class="text-orange">
+                            Cho vào lệnh nhưng nhân kích thước ×@Model.DisciplineSizeMultiplier.ToString("0.##")
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-green">Sáu rào đã kiểm, không rào nào kích hoạt</span>
+                    }
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm card-table table-vcenter">
+                    <tbody>
+                    @foreach (var gate in Model.DisciplineGates)
+                    {
+                        <tr class="@(gate.IsBlocking ? "table-danger" : "")">
+                            <td style="width:1%"><code>@gate.Key</code></td>
+                            <td class="small">@gate.Reason</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
 }

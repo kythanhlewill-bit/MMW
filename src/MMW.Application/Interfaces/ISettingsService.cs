@@ -10,9 +10,10 @@ public interface ISettingsService
     Task UpdateAppSettingAsync(
         long? defaultAccountId,
         bool confirmBeforeCreateTrade,
-        bool autoCreateTradeFromSignal,
         int minSignalScore,
         bool allowOverrideRisk,
+        bool deterministicEngineEnabled,
+        bool shadowComparisonEnabled,
         CancellationToken cancellationToken = default);
 
     /// <summary>Cấu hình rủi ro của một tài khoản (bản mặc định nếu chưa có — chưa lưu).</summary>

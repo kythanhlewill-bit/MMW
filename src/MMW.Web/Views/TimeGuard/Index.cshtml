@@ -1,0 +1,187 @@
+@using MMW.Domain.Enums
+@using MMW.Web.Models
+@model TimeGuardViewModel
+@{
+    ViewData["Title"] = "Chặn theo khung giờ";
+
+    string ImpactBadge(MacroEventImpact impact) => impact switch
+    {
+        MacroEventImpact.Critical => "bg-red",
+        MacroEventImpact.High => "bg-orange",
+        MacroEventImpact.Medium => "bg-yellow",
+        _ => "bg-secondary",
+    };
+
+    string OriginLabel(ScheduledEventOrigin origin) => origin switch
+    {
+        ScheduledEventOrigin.Seeded => "Nạp tay",
+        ScheduledEventOrigin.Derived => "Công thức",
+        _ => "AI phát hiện",
+    };
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Chặn theo khung giờ</h2>
+            <div class="text-secondary mt-1">
+                @Model.HorizonHours giờ tới · @(Model.AccountName ?? "chưa có tài khoản") ·
+                bây giờ là @TimeGuardViewModel.Vn(Model.UtcNow) giờ Việt Nam
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.Freshness.IsStale)
+{
+    <div class="alert alert-danger">
+        <h4 class="alert-title">Lịch sự kiện nạp tay đã quá hạn</h4>
+        <div class="text-secondary">@Model.Freshness.WarningVi</div>
+    </div>
+}
+
+<div class="row row-cards mb-3">
+    <div class="col-md-6">
+        <div class="card @(Model.Current?.IsBlocked == true ? "border-danger" : "")">
+            <div class="card-body">
+                <div class="subheader">Trạng thái hiện tại</div>
+                @if (Model.Current is null)
+                {
+                    <div class="h3 mb-0 text-secondary">Chưa có tài khoản đang hoạt động</div>
+                }
+                else if (Model.Current.IsBlocked)
+                {
+                    <div class="h3 mb-1 text-danger">Đang chặn vào lệnh mới</div>
+                    <div class="text-secondary">@Model.Current.ReasonVi</div>
+                }
+                else
+                {
+                    <div class="h3 mb-1 text-green">Không có cửa sổ chặn nào</div>
+                    <div class="text-secondary">
+                        Tầng khung giờ cho phép. Các tầng còn lại vẫn có thể từ chối — không ra
+                        lệnh nào vẫn là kết quả đúng.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <div class="subheader">Chất lượng khung giờ hiện tại</div>
+                @if (Model.SessionQuality is null)
+                {
+                    <div class="h3 mb-0 text-secondary">—</div>
+                }
+                else
+                {
+                    <div class="h3 mb-1">@Model.SessionQuality.Score/6 · @Model.SessionQuality.Label</div>
+                    <div class="text-secondary">
+                        @if (Model.SessionQuality.IsPersonalised)
+                        {
+                            <span class="badge bg-green-lt">Thống kê của bạn</span>
+                            <span>@Model.SessionQuality.SampleSize lệnh đã đóng trong khung này</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary-lt">Bảng chuẩn</span>
+                            <span>chưa đủ dữ liệu để dùng thống kê cá nhân</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Cửa sổ chặn @Model.HorizonHours giờ tới</h3></div>
+    @if (Model.Windows.Count == 0)
+    {
+        <div class="card-body text-secondary">
+            Không có cửa sổ chặn nào trong @Model.HorizonHours giờ tới.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Từ (giờ VN)</th>
+                        <th>Đến (giờ VN)</th>
+                        <th>Dài</th>
+                        <th>Sự kiện</th>
+                        <th>Tác động</th>
+                        <th>Xử lý vị thế</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var w in Model.Windows)
+                {
+                    <tr class="@(w.Contains(Model.UtcNow) ? "table-danger" : "")">
+                        <td>@TimeGuardViewModel.Vn(w.FromUtc)</td>
+                        <td>@TimeGuardViewModel.Vn(w.ToUtc)</td>
+                        <td>@w.DurationMinutes phút</td>
+                        <td>@w.Title</td>
+                        <td><span class="badge @ImpactBadge(w.Impact)">@w.Impact</span></td>
+                        <td>
+                            @if (w.RequiresPositionAction)
+                            {
+                                <span class="text-orange">Có</span>
+                            }
+                            else
+                            {
+                                <span class="text-secondary">Không</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Lịch sự kiện @Model.HorizonHours giờ tới</h3>
+        <div class="card-subtitle">
+            Chỉ hiện sự kiện đã lưu trong cơ sở dữ liệu. Mốc sinh bằng công thức (phí vốn, đáo
+            hạn quyền chọn, cuối tuần) không nằm ở đây nhưng vẫn có hiệu lực — xem bảng cửa sổ phía trên.
+        </div>
+    </div>
+    @if (Model.Events.Count == 0)
+    {
+        <div class="card-body text-secondary">Không có sự kiện nào đã lưu trong khoảng này.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Thời điểm (giờ VN)</th>
+                        <th>Sự kiện</th>
+                        <th>Loại</th>
+                        <th>Tác động</th>
+                        <th>Nguồn</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var e in Model.Events)
+                {
+                    <tr>
+                        <td>@TimeGuardViewModel.Vn(e.OccursAtUtc)</td>
+                        <td>@e.Title</td>
+                        <td>@e.Kind</td>
+                        <td><span class="badge @ImpactBadge(e.Impact)">@e.Impact</span></td>
+                        <td><span class="text-secondary">@OriginLabel(e.Origin)</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

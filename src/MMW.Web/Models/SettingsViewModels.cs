@@ -12,15 +12,18 @@ public class SettingsGeneralForm
     [Display(Name = "Xác nhận trước khi tạo lệnh")]
     public bool ConfirmBeforeCreateTrade { get; set; } = true;
 
-    [Display(Name = "Tự tạo lệnh từ đề xuất đã qua AI")]
-    public bool AutoCreateTradeFromSignal { get; set; }
-
     [Display(Name = "Điểm tối thiểu sinh đề xuất")]
     [Range(1, 10)]
     public int MinSignalScore { get; set; } = 2;
 
     [Display(Name = "Cho phép đặt lệnh dù vi phạm rule rủi ro")]
     public bool AllowOverrideRisk { get; set; }
+
+    [Display(Name = "Bật deterministic engine")]
+    public bool DeterministicEngineEnabled { get; set; }
+
+    [Display(Name = "Bật so sánh AI shadow")]
+    public bool ShadowComparisonEnabled { get; set; } = true;
 }
 
 public class SettingsViewModel

@@ -8,13 +8,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.8">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.29">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.14" />
     <PackageReference Include="Hangfire.SqlServer" Version="1.8.14" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <!-- Ghim đè transitive: Hangfire.Core 1.8.14 kéo Newtonsoft.Json 11.0.1 dính
+         GHSA-5crp-9r3c-p9vr (mức cao). Hangfire chỉ yêu cầu >= 11.0.1 nên 13.x thoả. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 
   <ItemGroup>

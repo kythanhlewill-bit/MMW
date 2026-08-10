@@ -1,6 +1,7 @@
 using Hangfire;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using System.Text.Json.Serialization;
 using MMW.Application;
 using MMW.Application.Interfaces;
@@ -8,6 +9,7 @@ using MMW.Infrastructure;
 using MMW.Web.Data;
 using MMW.Web.Hubs;
 using MMW.Web.Infrastructure;
+using MMW.Web.Jobs;
 using Serilog;
 using Serilog.Events;
 
@@ -81,8 +83,29 @@ builder.Services.AddControllersWithViews()
 builder.Services.AddSignalR();
 builder.Services.AddScoped<IRealtimeNotificationSender, SignalRNotificationSender>();
 builder.Services.AddScoped<INotificationEmailQueue, HangfireNotificationEmailQueue>();
+builder.Services.AddScoped<IEngineJobs, EngineJobs>();
+
+// Chụp lại danh sách đăng ký để lệnh CLI `backtest` dựng được một scope thay hai cổng.
+builder.Services.AddSingleton<IServiceCollectionSnapshot>(new ServiceCollectionSnapshot(builder.Services));
 
 var app = builder.Build();
+
+// Chế độ dòng lệnh: nạp kho hoặc chạy kiểm thử lịch sử rồi thoát, KHÔNG khởi động web.
+if (BacktestCli.Handles(args))
+{
+    return await BacktestCli.RunAsync(args, app);
+}
+
+// Chạy sau reverse proxy (Nginx): tin cậy X-Forwarded-Proto/For để biết request gốc là https.
+// Không có bước này thì UseHttpsRedirection bên dưới thấy scheme http và đẩy vòng lặp chuyển hướng,
+// đồng thời cookie Secure + SignalR qua websocket không hoạt động.
+var forwardedOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedOptions.KnownNetworks.Clear();
+forwardedOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedOptions);
 
 if (!app.Environment.IsDevelopment())
 {
@@ -122,12 +145,22 @@ try
     // Tạo DB (nếu chưa có), áp migration và seed dữ liệu khởi tạo.
     await SeedData.InitializeAsync(app.Services);
 
-    // Job quét thị trường: định kỳ mỗi 5 phút + chạy ngay 1 lần khi khởi động.
+    // Job quét thị trường bằng LLM: giữ chạy ở chế độ SO SÁNH SONG SONG, không còn là đường
+    // sinh lệnh. Đường sinh lệnh giờ là `signal-eval` bên dưới, hoàn toàn tất định (FR-059).
+    // Hạ nhịp xuống 15 phút cho khớp cây nến vào lệnh và giảm chi phí AI.
     RecurringJob.AddOrUpdate<IMarketScanService>(
-        "market-scan",
+        "market-scan-shadow",
         job => job.ScanAllAsync(CancellationToken.None),
-        "*/5 * * * *");
-    BackgroundJob.Enqueue<IMarketScanService>(job => job.ScanAllAsync(CancellationToken.None));
+        "*/15 * * * *");
+    RecurringJob.RemoveIfExists("market-scan");
+
+    // Job chấm điểm tất định trên cây nến 15m vừa đóng: 0 lời gọi AI (FR-025 → FR-034).
+    // Trễ 1 phút so với mốc nến đóng theo R-011 — gọi đúng 00:00 thì sàn thường chưa chốt
+    // xong cây nến, và nến chưa đóng bị cắt bỏ sẽ khiến chu kỳ chấm trên cây nến cũ.
+    RecurringJob.AddOrUpdate<IEngineJobs>(
+        "signal-eval",
+        job => job.RunSignalEvalAsync(CancellationToken.None),
+        "1,16,31,46 * * * *");
 
     // Job đồng bộ kết quả lệnh từ sàn: mỗi 2 phút.
     RecurringJob.AddOrUpdate<ITradeResultSyncService>(
@@ -154,6 +187,42 @@ try
         job => job.RetryPendingSltpAsync(CancellationToken.None),
         "*/2 * * * *");
 
+    // Job làm phẳng vị thế trước cửa sổ chặn: mỗi phút, 0 lời gọi AI (FR-013, T063).
+    RecurringJob.AddOrUpdate<IEngineJobs>(
+        "position-manage",
+        job => job.RunPositionManageAsync(CancellationToken.None),
+        "*/1 * * * *");
+
+    // Job kiểm tra lịch sự kiện còn hạn không: 23:00 UTC, ngay trước khi lập kế hoạch ngày,
+    // để trader thấy cảnh báo TRƯỚC phiên chứ không phải giữa phiên (FR-014).
+    RecurringJob.AddOrUpdate<IEngineJobs>(
+        "calendar-freshness",
+        job => job.RunCalendarFreshnessAsync(CancellationToken.None),
+        "0 23 * * *");
+    BackgroundJob.Enqueue<IEngineJobs>(job => job.RunCalendarFreshnessAsync(CancellationToken.None));
+
+    // Job chụp kho lịch sử: mỗi giờ. Dữ liệu phái sinh KHÔNG lấy lại được về sau, nên phải
+    // dựng dần từ hôm nay để kiểm thử tương lai chạy được đủ 100 điểm (T139, giảm rủi ro R-003).
+    RecurringJob.AddOrUpdate<IEngineJobs>(
+        "archive-snapshot",
+        job => job.RunArchiveSnapshotAsync(CancellationToken.None),
+        "5 * * * *");
+
+    // Job lập kế hoạch ngày: 23:30 UTC, sinh cho ngày UTC kế tiếp, 1 lời gọi AI (FR-016).
+    RecurringJob.AddOrUpdate<IEngineJobs>(
+        "daily-plan",
+        job => job.RunDailyPlanAsync(CancellationToken.None),
+        "30 23 * * *");
+
+    RecurringJob.AddOrUpdate<IEngineJobs>(
+        "news-scan",
+        job => job.RunNewsScanAsync(CancellationToken.None),
+        "*/15 * * * *");
+
+    // Bù kế hoạch của HÔM NAY khi ứng dụng khởi động giữa ngày mà chưa có bản nào — không có
+    // kế hoạch nghĩa là cả ngày không giao dịch được (FR-023).
+    BackgroundJob.Enqueue<IEngineJobs>(job => job.RunDailyPlanCatchUpAsync(CancellationToken.None));
+
     Log.Information("Starting MMW Web in {Environment}", app.Environment.EnvironmentName);
     app.Run();
 }
@@ -165,3 +234,5 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+return 0;

@@ -136,6 +136,84 @@ public enum FlagType
 // ─────────────────────────────────────────────────────────────────────────
 
 /// <summary>
+/// Phiên bản luật ra quyết định. Giá trị nằm trong cấu hình tài khoản để cùng một mã có thể
+/// chạy live, shadow và backtest theo đúng phiên bản đã được đóng băng.
+/// </summary>
+public enum TradingStrategyVersion
+{
+    AdaptiveV2 = 2,
+    TriggerFirstV3 = 3,
+    CalibratedV5 = 5,
+    AdaptiveSidewaysV6 = 6,
+}
+
+public static class TradingStrategyVersionExtensions
+{
+    public static bool UsesTriggerFirst(this TradingStrategyVersion version) => version is
+        TradingStrategyVersion.TriggerFirstV3
+        or TradingStrategyVersion.CalibratedV5
+        or TradingStrategyVersion.AdaptiveSidewaysV6;
+
+    public static bool UsesV5Admission(this TradingStrategyVersion version) => version is
+        TradingStrategyVersion.CalibratedV5
+        or TradingStrategyVersion.AdaptiveSidewaysV6;
+
+    public static bool UsesSidewaysV6(this TradingStrategyVersion version) =>
+        version == TradingStrategyVersion.AdaptiveSidewaysV6;
+}
+
+/// <summary>Playbook đã được nhận diện trước khi lập kế hoạch thực thi.</summary>
+public enum SetupType
+{
+    None = 0,
+    LegacyV2 = 1,
+    TrendPullback = 2,
+    RangeRejection = 3,
+    StrongTrendBreakout = 4,
+    RectangleRangeFade = 5,
+    RectangleBreakout = 6,
+    TriangleBreakout = 7,
+}
+
+/// <summary>
+/// Funnel setup theo sự kiện. Tách khỏi <see cref="SetupTriggerState"/> vì stage nói một cơ hội
+/// đã đi xa tới đâu, còn state nói lý do cụ thể khiến lần quét hiện tại dừng lại.
+/// </summary>
+public enum SetupFunnelStage
+{
+    NotEligible = 0,
+    EligibleContext = 1,
+    StructureCandidate = 2,
+    TriggerStarted = 3,
+    Confirmed = 4,
+}
+
+/// <summary>Trạng thái trigger dùng cho audit và telemetry; không dùng chuỗi tự do.</summary>
+public enum SetupTriggerState
+{
+    NotEvaluated = 0,
+    LegacyAccepted = 1,
+    NoBreakOfStructure = 2,
+    BreakUnretested = 3,
+    RetestFailed = 4,
+    RetestStale = 5,
+    ImpulseWeak = 6,
+    PullbackVolumeExpanded = 7,
+    ReclaimWeak = 8,
+    RangeNotSwept = 9,
+    RangeRejectionWeak = 10,
+    Confirmed = 11,
+    CostRejected = 12,
+    RangeGeometryWeak = 13,
+    RangeConfirmationMissing = 14,
+    CompressionMissing = 15,
+    BreakoutMissing = 16,
+    BreakoutWeak = 17,
+    BreakoutRetestMissing = 18,
+    StrategyFiltered = 19,
+}
+
+/// <summary>
 /// Mức tác động của một sự kiện vĩ mô. Đặt ở Domain vì thực thể <c>ScheduledEvent</c> dùng nó;
 /// trước đây nằm ở <c>MMW.Application.Models</c>, nơi Domain không với tới được.
 /// </summary>
@@ -255,4 +333,37 @@ public enum VetoReason
     MaxTradesReached = 308,
     InsufficientData = 309,
     DuplicateCandle = 310,
+
+    /// <summary>Đã có vị thế mở trên đúng mã này.</summary>
+    PositionAlreadyOpen = 311,
+
+    /// <summary>Đã chạm trần số vị thế mở đồng thời của tài khoản.</summary>
+    ConcurrentPositionLimit = 312,
+
+    /// <summary>Khoảng cách tới mục tiêu cấu trúc không đủ trả chi phí một vòng lệnh.</summary>
+    InsufficientRoom = 313,
+
+    /// <summary>
+    /// Ngày đi ngang, nhưng giá không nằm ở vùng biên — giữa biên độ, hoặc đã ra hẳn ngoài nó.
+    /// </summary>
+    NotAtRangeEdge = 314,
+
+    /// <summary>
+    /// Lý do lịch sử của V2 bước 3. Gate đã bị loại sau A/B #23/#24; giữ enum để đọc phiếu cũ.
+    /// </summary>
+    /// <remarks>
+    /// Tách khỏi <see cref="BelowThreshold"/> của <c>ScorecardOutcome</c> có chủ ý: "cả hai chiều
+    /// đều yếu" và "hai chiều mạnh ngang nhau" là hai câu chuyện khác nhau, và câu hỏi "ba tháng
+    /// qua vì sao hệ thống đứng ngoài" chỉ trả lời được nếu chúng không bị gộp.
+    /// </remarks>
+    DirectionUnclear = 315,
+
+    /// <summary>V3: bối cảnh có thể tốt nhưng event trigger bắt buộc của setup chưa hoàn tất.</summary>
+    SetupTriggerMissing = 316,
+
+    /// <summary>V3: kế hoạch có gross R:R nhưng lợi thế ròng không đủ trả execution cost.</summary>
+    ExecutionCostTooHigh = 317,
+
+    /// <summary>V5+: trigger hợp lệ nhưng không qua admission đã đóng băng của strategy version.</summary>
+    StrategyAdmissionRejected = 318,
 }

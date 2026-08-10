@@ -19,7 +19,8 @@ public sealed record MarketStructureResult(
     decimal? BrokenLevel,
     int? BreakIndex,
     bool RetestConfirmed,
-    bool RetestFailed);
+    bool RetestFailed,
+    int? RetestIndex = null);
 
 /// <summary>
 /// Xác định phá vỡ cấu trúc và kết quả kiểm định lại theo định nghĩa tất định ở R-007.
@@ -113,16 +114,16 @@ public sealed class MarketStructureAnalyzer
             if (direction == StructureBreak.BullishBreak)
             {
                 if (c.Close < lower)
-                    return new MarketStructureResult(direction, level, breakIndex, false, true);
+                    return new MarketStructureResult(direction, level, breakIndex, false, true, i);
                 if (c.Close > upper)
-                    return new MarketStructureResult(direction, level, breakIndex, true, false);
+                    return new MarketStructureResult(direction, level, breakIndex, true, false, i);
             }
             else
             {
                 if (c.Close > upper)
-                    return new MarketStructureResult(direction, level, breakIndex, false, true);
+                    return new MarketStructureResult(direction, level, breakIndex, false, true, i);
                 if (c.Close < lower)
-                    return new MarketStructureResult(direction, level, breakIndex, true, false);
+                    return new MarketStructureResult(direction, level, breakIndex, true, false, i);
             }
         }
 

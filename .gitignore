@@ -56,3 +56,6 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 .vs/
+
+# Output publish tam (v6-web, ...) — khong dua vao repo
+.artifacts/

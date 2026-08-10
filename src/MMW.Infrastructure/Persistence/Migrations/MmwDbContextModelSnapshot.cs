@@ -52,6 +52,21 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<string>("CreatedUser")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("DeterministicDirection")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("DeterministicOutcome")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int?>("DeterministicScore")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DisagreementReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<decimal?>("Ema20")
                         .HasPrecision(18, 8)
                         .HasColumnType("decimal(18,8)");
@@ -64,10 +79,16 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 8)
                         .HasColumnType("decimal(18,8)");
 
+                    b.Property<long?>("EntryScorecardId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Interval")
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
+
+                    b.Property<bool?>("IsDisagreement")
+                        .HasColumnType("bit");
 
                     b.Property<decimal?>("MacdHistogram")
                         .HasPrecision(18, 8)
@@ -133,6 +154,8 @@ namespace MMW.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IsDisagreement", "ScannedAt");
+
                     b.HasIndex("Symbol", "Interval", "ScannedAt");
 
                     b.ToTable("AiSignalScanRecords", (string)null);
@@ -196,13 +219,24 @@ namespace MMW.Infrastructure.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("BreakdownByExitReasonJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("BreakdownByHourJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BreakdownByModeJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("BreakdownByRegimeJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ComparableTrialNumber")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("CompletedAtUtc")
                         .HasColumnType("datetime2");
@@ -213,6 +247,18 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<string>("CreatedUser")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("DecisionFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("DiagnosticsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DirectionMarginMaterialBlocks")
+                        .HasColumnType("int");
+
                     b.Property<string>("EngineSettingSnapshotJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -221,13 +267,24 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
+                    b.Property<decimal>("ExpectancyRCiHigh")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("ExpectancyRCiLow")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<DateTime>("FromUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<decimal>("GrossExpectancyR")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<string>("Limitations")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("LongestLossStreak")
                         .HasColumnType("int");
@@ -249,15 +306,39 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<int>("StrategyVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StructuralRrDistributionJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StructuralRrVetoObservationsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Symbols")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("TelemetrySchemaVersion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime>("ToUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<decimal>("TotalFeeR")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
                     b.Property<decimal>("TotalFees")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal>("TotalFundingR")
                         .HasPrecision(18, 8)
                         .HasColumnType("decimal(18,8)");
 
@@ -265,8 +346,17 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 8)
                         .HasColumnType("decimal(18,8)");
 
+                    b.Property<decimal>("TotalSlippageR")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
                     b.Property<int>("TradeCount")
                         .HasColumnType("int");
+
+                    b.Property<string>("TradeFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime?>("UpdatedDate")
                         .HasColumnType("datetime2");
@@ -275,6 +365,14 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("WinRate")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("WinRateCiHigh")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("WinRateCiLow")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
@@ -457,7 +555,20 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("AiContextDefaultTtlMinutes")
                         .HasColumnType("int");
 
+                    b.Property<int>("AiMaxNewsCallsPerDay")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AiMaxNewsCallsPerRun")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("BacktestEntrySlippageBps")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<bool>("BacktestLimitFillRequiresThrough")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("BacktestMakerFeePercent")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
@@ -474,6 +585,20 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
 
+                    b.Property<decimal>("BlackoutBreakevenAtR")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("BlackoutLeadMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("BlackoutPartialClosePercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("ClockDriftToleranceSeconds")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
 
@@ -485,15 +610,57 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
 
+                    b.Property<decimal>("ExtremeFundingRate")
+                        .HasPrecision(9, 8)
+                        .HasColumnType("decimal(9,8)");
+
+                    b.Property<decimal>("LeaderCorrelationStrong")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("LimitEntryExpiryBars")
+                        .HasColumnType("int");
+
                     b.Property<int>("LossStreakSizeHalveAt")
                         .HasColumnType("int");
+
+                    b.Property<decimal>("LossStreakSizeMultiplier")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<decimal>("MaxAtrFromConfirmation")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
+                    b.Property<int>("MaxConcurrentPositions")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MaxCorrelatedR")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("MaxSpreadBps")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("MinCandleBodyRatio")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("MinDataCoveragePercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<int>("MinScoreToEnter")
                         .HasColumnType("int");
+
+                    b.Property<decimal>("MinStructuralRr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("OpenInterestStrongChangePercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<decimal>("OversizeBlockMultiple")
                         .HasPrecision(9, 4)
@@ -502,8 +669,15 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("OversizeLookbackTrades")
                         .HasColumnType("int");
 
+                    b.Property<int>("PatternMaxAgeBars")
+                        .HasColumnType("int");
+
                     b.Property<int>("PersonalStatsMinClosedTrades")
                         .HasColumnType("int");
+
+                    b.Property<decimal>("RangeEdgePercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<int>("RetestWindowBars")
                         .HasColumnType("int");
@@ -511,10 +685,21 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("RevengeBlockMinutes")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("RsiLowerBound")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("RsiUpperBound")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<int>("ScoreThresholdFull")
                         .HasColumnType("int");
 
                     b.Property<int>("ScoreThresholdMax")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SessionStatsSmoothingTrades")
                         .HasColumnType("int");
 
                     b.Property<bool>("ShadowAiComparisonEnabled")
@@ -532,8 +717,38 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
+                    b.Property<decimal>("StopAtrMultiple")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("StopAtrMultipleMax")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("StopAtrMultipleMin")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("StopStructureBufferAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("StrategyVersion")
+                        .HasColumnType("int");
+
                     b.Property<int>("SwingPivotBars")
                         .HasColumnType("int");
+
+                    b.Property<string>("Symbols")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("TimeStopBars")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TimeStopMinR")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<long>("TradingAccountId")
                         .HasColumnType("bigint");
@@ -543,6 +758,142 @@ namespace MMW.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("UpdatedUser")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("V3LockedNetRMin")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V3MaxCostToTargetPercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V3MinImpulseVolumeMultiple")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V3MinNetRiskReward")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V3PullbackVolumeMaxFraction")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V3RangeMinRelativeVolume")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V3TriggerFreshBars")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V6BreakoutBufferAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V6BreakoutFreshBars")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V6BreakoutMaxCostToTargetPercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6BreakoutMinNetRiskReward")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6BreakoutMinRelativeVolume")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6CompressionRiskCap")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V6MinSetupQuality")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V6PatternContainmentPercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V6PatternLookbackBars")
+                        .HasColumnType("int");
+
+                    b.Property<int>("V6PatternMinTouchesPerSide")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V6QualityFullMultiplier")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6QualityLowMultiplier")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6QualityMaxMultiplier")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6RangeConfirmationMinRelativeVolume")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6RangeMaxCostToTargetPercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6RangeMinNetRiskReward")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6RangeRiskCap")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6RangeStopBufferAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V6RangeSweepLookbackBars")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V6RectangleMaxDriftAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6RectangleMaxWidthAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6RectangleMinWidthAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V6SetupQualityFull")
+                        .HasColumnType("int");
+
+                    b.Property<int>("V6SetupQualityMax")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V6TrendRiskCap")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V6TriangleMaxEndWidthFraction")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("VolatilitySweetSpotHigh")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("VolatilitySweetSpotLow")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("VolumeBreakoutMultiple")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<int>("WeightLiquidity")
                         .HasColumnType("int");
@@ -576,6 +927,9 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
+                    b.Property<int>("AvailableMaxPoints")
+                        .HasColumnType("int");
+
                     b.Property<long?>("BacktestRunId")
                         .HasColumnType("bigint");
 
@@ -595,11 +949,18 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<long?>("DailyPlanId")
                         .HasColumnType("bigint");
 
+                    b.Property<decimal>("DataMultiplier")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<decimal>("DayRiskMultiplier")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
                     b.Property<int?>("Direction")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DirectionalScore")
                         .HasColumnType("int");
 
                     b.Property<decimal>("DisciplineMultiplier")
@@ -609,8 +970,15 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("DisciplinePenalty")
                         .HasColumnType("int");
 
+                    b.Property<int?>("EffectiveDayRegime")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("EvaluatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("ExpectedCostR")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<decimal>("FinalSizeR")
                         .HasPrecision(9, 4)
@@ -625,7 +993,13 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
 
+                    b.Property<string>("IntradayRegimeReason")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsBacktest")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsIntradayRegimeOverride")
                         .HasColumnType("bit");
 
                     b.Property<int>("LiquidityScore")
@@ -634,14 +1008,64 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("MarketScore")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("NetRiskReward")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int?>("OppositeDirectionalScore")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OppositeScore")
+                        .HasColumnType("int");
+
                     b.Property<int>("Outcome")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("RangePositionPercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
 
                     b.Property<decimal?>("RiskReward")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
+                    b.Property<string>("SetupEventId")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("SetupQualityScore")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("SetupSizeMultiplier")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("SetupStage")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SetupType")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("StopDistanceBps")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("StrategyVersion")
+                        .HasColumnType("int");
+
                     b.Property<decimal?>("SuggestedEntry")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("SuggestedFirstTakeProfit")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("SuggestedLimitEntry")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("SuggestedRunnerTakeProfit")
                         .HasPrecision(18, 8)
                         .HasColumnType("decimal(18,8)");
 
@@ -661,6 +1085,9 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("TechnicalScore")
                         .HasColumnType("int");
 
+                    b.Property<int>("TotalMaxPoints")
+                        .HasColumnType("int");
+
                     b.Property<int>("TotalScore")
                         .HasColumnType("int");
 
@@ -669,6 +1096,13 @@ namespace MMW.Infrastructure.Persistence.Migrations
 
                     b.Property<long>("TradingAccountId")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("TriggerDetail")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("TriggerState")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedDate")
                         .HasColumnType("datetime2");
@@ -739,6 +1173,10 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("StateCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
 
                     b.Property<DateTime?>("UpdatedDate")
                         .HasColumnType("datetime2");

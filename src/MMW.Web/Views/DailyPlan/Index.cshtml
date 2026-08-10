@@ -1,0 +1,185 @@
+@using MMW.Domain.Entities
+@using MMW.Domain.Enums
+@using MMW.Web.Models
+@model DailyPlanViewModel
+@{
+    ViewData["Title"] = "Kế hoạch ngày";
+
+    string DirectionLabel(AllowedDirections d) => d switch
+    {
+        AllowedDirections.LongOnly => "Chỉ mua",
+        AllowedDirections.ShortOnly => "Chỉ bán",
+        AllowedDirections.Both => "Cả hai chiều",
+        _ => "Không chiều nào",
+    };
+
+    string DirectionBadge(AllowedDirections d) => d switch
+    {
+        AllowedDirections.LongOnly => "bg-green",
+        AllowedDirections.ShortOnly => "bg-red",
+        AllowedDirections.Both => "bg-blue",
+        _ => "bg-secondary",
+    };
+
+    string VolBadge(VolatilityRegime v) => v switch
+    {
+        VolatilityRegime.Extreme => "bg-red",
+        VolatilityRegime.High => "bg-orange",
+        VolatilityRegime.Low => "bg-azure",
+        _ => "bg-secondary",
+    };
+
+    string Num(decimal? v, string format = "0.####") => v?.ToString(format) ?? "—";
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Kế hoạch ngày</h2>
+            <div class="text-secondary mt-1">
+                Ngày UTC @Model.TodayUtc.ToString("dd/MM/yyyy") · @(Model.AccountName ?? "chưa có tài khoản") ·
+                bây giờ là @DailyPlanViewModel.Vn(Model.UtcNow) giờ Việt Nam
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.Today is null)
+{
+    <div class="alert alert-danger">
+        <h4 class="alert-title">Chưa có kế hoạch cho hôm nay</h4>
+        <div class="text-secondary">
+            Mọi lệnh mới đang bị chặn. Hệ thống không dùng kế hoạch mặc định — không có kế hoạch
+            nghĩa là không giao dịch. Job <code>daily-plan</code> chạy lúc 23:30 UTC (06:30 giờ
+            Việt Nam) cho ngày kế tiếp, và có một lần chạy bù khi ứng dụng khởi động.
+        </div>
+    </div>
+}
+else
+{
+    var p = Model.Today;
+
+    <div class="row row-cards mb-3">
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Chiều được phép</div>
+                <div class="h2 mb-0"><span class="badge @DirectionBadge(p.AllowedDirections)">@DirectionLabel(p.AllowedDirections)</span></div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Hệ số rủi ro</div>
+                <div class="h2 mb-0">×@Num(p.RiskMultiplier, "0.##")</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Số lệnh tối đa</div>
+                <div class="h2 mb-0">@p.MaxTradesToday</div>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card"><div class="card-body">
+                <div class="subheader">Trạng thái ngày</div>
+                <div class="h2 mb-0">@p.DayRegime</div>
+                <div class="text-secondary">
+                    <span class="badge @VolBadge(p.VolatilityRegime)">@p.VolatilityRegime</span>
+                    @p.BtcStructure
+                </div>
+            </div></div>
+        </div>
+    </div>
+
+    @if (!p.IsComplete)
+    {
+        <div class="alert alert-warning">
+            <h4 class="alert-title">Kế hoạch sinh trong tình trạng thiếu dữ liệu</h4>
+            <div>Thành phần thiếu: <strong>@p.MissingInputs</strong></div>
+            <div class="text-secondary mt-1">
+                Hệ số rủi ro đã bị hạ trần xuống tối đa 0.5. Thiếu dữ liệu là lý do để thận trọng
+                hơn, không bao giờ là lý do để nới ra.
+            </div>
+        </div>
+    }
+
+    <div class="row row-cards mb-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">Mức giá tham chiếu</h3></div>
+                <table class="table card-table table-vcenter">
+                    <tr><td>Đỉnh phiên trước</td><td class="text-end">@Num(p.PreviousDayHigh, "N2")</td></tr>
+                    <tr><td>Đáy phiên trước</td><td class="text-end">@Num(p.PreviousDayLow, "N2")</td></tr>
+                    <tr><td>Giá mở tuần</td><td class="text-end">@Num(p.WeeklyOpen, "N2")</td></tr>
+                    <tr><td>Giá mở ngày</td><td class="text-end">@Num(p.DailyOpen, "N2")</td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Đầu vào đã dùng</h3>
+                    <div class="card-subtitle">Lưu lại để ba tháng sau còn giải thích được vì sao hôm nay hệ số là ×@Num(p.RiskMultiplier, "0.##")</div>
+                </div>
+                <table class="table card-table table-vcenter">
+                    <tr><td>Cấu trúc BTC (20 phiên)</td><td class="text-end">@(p.BtcStructure ?? "—")</td></tr>
+                    <tr><td>Phân vị biến động (90 phiên)</td><td class="text-end">@Num(p.AtrPercentile, "N1")</td></tr>
+                    <tr><td>Phí vốn</td><td class="text-end">@Num(p.FundingRate, "0.######")</td></tr>
+                    <tr><td>Biến động OI 24h</td><td class="text-end">@Num(p.OpenInterestChange24hPercent, "N2")%</td></tr>
+                    <tr><td>Tỷ lệ tài khoản mua/bán</td><td class="text-end">@Num(p.LongShortAccountRatio, "N2")</td></tr>
+                    <tr><td>Chỉ số sợ hãi/tham lam</td><td class="text-end">@(p.FearGreedIndex?.ToString() ?? "—")</td></tr>
+                    <tr><td>Sinh lúc</td><td class="text-end">@DailyPlanViewModel.Vn(p.GeneratedAtUtc) giờ VN</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (Model.Tomorrow is not null)
+{
+    <div class="alert alert-info">
+        Kế hoạch ngày mai (@Model.Tomorrow.PlanDateUtc.ToString("dd/MM")) đã sẵn sàng:
+        <strong>@DirectionLabel(Model.Tomorrow.AllowedDirections)</strong>,
+        hệ số ×@Num(Model.Tomorrow.RiskMultiplier, "0.##"),
+        tối đa @Model.Tomorrow.MaxTradesToday lệnh.
+    </div>
+}
+
+<div class="card">
+    <div class="card-header"><h3 class="card-title">Lịch sử @Model.HistoryDays ngày</h3></div>
+    @if (Model.History.Count == 0)
+    {
+        <div class="card-body text-secondary">Chưa có kế hoạch nào được lưu.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th>Ngày UTC</th>
+                        <th>Trạng thái</th>
+                        <th>Biến động</th>
+                        <th>Chiều</th>
+                        <th class="text-end">Hệ số</th>
+                        <th class="text-end">Tối đa</th>
+                        <th>Thiếu dữ liệu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var h in Model.History)
+                {
+                    <tr class="@(h.PlanDateUtc == Model.TodayUtc ? "table-active" : "")">
+                        <td>@h.PlanDateUtc.ToString("dd/MM/yyyy")</td>
+                        <td>@h.DayRegime</td>
+                        <td><span class="badge @VolBadge(h.VolatilityRegime)">@h.VolatilityRegime</span></td>
+                        <td><span class="badge @DirectionBadge(h.AllowedDirections)">@DirectionLabel(h.AllowedDirections)</span></td>
+                        <td class="text-end">×@Num(h.RiskMultiplier, "0.##")</td>
+                        <td class="text-end">@h.MaxTradesToday</td>
+                        <td class="text-secondary small">@(h.IsComplete ? "—" : h.MissingInputs)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

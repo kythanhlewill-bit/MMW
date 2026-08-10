@@ -1,0 +1,188 @@
+@using MMW.Domain.Enums
+@using MMW.Web.Models
+@model ScorecardListViewModel
+@{
+    ViewData["Title"] = "Phiếu chấm điểm";
+
+    string OutcomeBadge(ScorecardOutcome o) => o switch
+    {
+        ScorecardOutcome.Entered => "bg-green",
+        ScorecardOutcome.BelowThreshold => "bg-yellow",
+        _ => "bg-red",
+    };
+
+    string GroupLabel(ScoreGroup g) => g switch
+    {
+        ScoreGroup.Technical => "Kỹ thuật",
+        ScoreGroup.Market => "Thị trường",
+        ScoreGroup.Liquidity => "Thanh khoản",
+        _ => "Kỷ luật",
+    };
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Phiếu chấm điểm</h2>
+            <div class="text-secondary mt-1">
+                Mọi lần đánh giá đều được lưu, kể cả khi kết luận là không vào lệnh — đó mới là
+                phần trả lời được câu hỏi "tại sao hôm nay hệ thống đứng ngoài".
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">Mã</label>
+                <input name="symbol" value="@Model.Symbol" class="form-control" placeholder="BTCUSDT" style="text-transform:uppercase" />
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Lý do từ chối</label>
+                <select name="veto" class="form-select">
+                    <option value="">— tất cả —</option>
+                    @foreach (var r in Enum.GetValues<VetoReason>())
+                    {
+                        <option value="@r" selected="@(Model.Veto == r)">@ScorecardListViewModel.VetoLabel(r)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Kết cục</label>
+                <select name="outcome" class="form-select">
+                    <option value="">— tất cả —</option>
+                    @foreach (var o in Enum.GetValues<ScorecardOutcome>())
+                    {
+                        <option value="@o" selected="@(Model.Outcome == o)">@ScorecardListViewModel.OutcomeLabel(o)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto"><button class="btn btn-primary">Lọc</button></div>
+            <div class="col-auto"><a asp-action="Index" class="btn btn-link">Xoá lọc</a></div>
+        </form>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Lý do từ chối phổ biến nhất</h3></div>
+            @if (Model.VetoCounts.Count == 0)
+            {
+                <div class="card-body text-secondary">Chưa có phiếu nào bị từ chối.</div>
+            }
+            else
+            {
+                <table class="table card-table table-vcenter">
+                    @foreach (var kv in Model.VetoCounts)
+                    {
+                        <tr>
+                            <td>@ScorecardListViewModel.VetoLabel(kv.Key)</td>
+                            <td class="text-end">@kv.Value</td>
+                        </tr>
+                    }
+                </table>
+            }
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Tiêu chí hay về 0 điểm nhất</h3>
+                <div class="card-subtitle">Đây chính là dữ liệu để cải tiến thuật toán</div>
+            </div>
+            @if (Model.ZeroPointCriteria.Count == 0)
+            {
+                <div class="card-body text-secondary">Chưa có dữ liệu.</div>
+            }
+            else
+            {
+                <table class="table card-table table-vcenter">
+                    @foreach (var kv in Model.ZeroPointCriteria)
+                    {
+                        <tr><td><code>@kv.Key</code></td><td class="text-end">@kv.Value</td></tr>
+                    }
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+@if (Model.Items.Count == 0)
+{
+    <div class="card"><div class="card-body text-secondary">Không có phiếu nào khớp bộ lọc.</div></div>
+}
+
+@foreach (var card in Model.Items)
+{
+    <div class="card mb-2">
+        <div class="card-header">
+            <div class="col">
+                <h3 class="card-title">
+                    @card.Symbol · @card.Interval ·
+                    <span class="text-secondary">nến đóng @ScorecardListViewModel.Vn(card.CandleCloseTimeUtc) giờ VN</span>
+                </h3>
+                <div class="card-subtitle">
+                    <span class="badge @OutcomeBadge(card.Outcome)">@ScorecardListViewModel.OutcomeLabel(card.Outcome)</span>
+                    <strong>@card.TotalScore/100</strong>
+                    (kỹ thuật @card.TechnicalScore · thị trường @card.MarketScore · thanh khoản @card.LiquidityScore · kỷ luật @card.DisciplinePenalty)
+                    @if (card.Direction is not null)
+                    {
+                        <span>· @(card.Direction == TradeDirection.Long ? "mua" : "bán")</span>
+                    }
+                    @if (card.FinalSizeR > 0m)
+                    {
+                        <span>· kích thước @card.FinalSizeR.ToString("0.####")R</span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (card.VetoReason is not null)
+        {
+            <div class="card-body py-2">
+                <div class="alert alert-danger mb-0 py-2">
+                    <strong>@ScorecardListViewModel.VetoLabel(card.VetoReason.Value)</strong>
+                    @if (!string.IsNullOrWhiteSpace(card.VetoDetail))
+                    {
+                        <span>— @card.VetoDetail</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (card.Lines.Count > 0)
+        {
+            <div class="table-responsive">
+                <table class="table table-sm card-table table-vcenter">
+                    <thead>
+                        <tr><th>Tiêu chí</th><th>Nhóm</th><th class="text-end">Điểm</th><th>Lý do</th></tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var line in card.Lines.OrderBy(l => l.Group).ThenBy(l => l.CriterionKey))
+                    {
+                        <tr class="@(line.IsHardVeto ? "table-danger" : line.AwardedPoints == 0 ? "text-secondary" : "")">
+                            <td><code>@line.CriterionKey</code></td>
+                            <td>@GroupLabel(line.Group)</td>
+                            <td class="text-end">@line.AwardedPoints/@line.MaxPoints</td>
+                            <td class="small">
+                                @line.Reason
+                                @if (!line.DataAvailable)
+                                {
+                                    <span class="badge bg-secondary-lt ms-1">thiếu dữ liệu</span>
+                                }
+                                @if (line.IsApproximation)
+                                {
+                                    <span class="badge bg-azure-lt ms-1">xấp xỉ</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}

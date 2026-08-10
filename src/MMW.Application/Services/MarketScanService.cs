@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MMW.Application.Interfaces;
 using MMW.Application.Helpers;
@@ -100,8 +101,8 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
     private readonly IBaseRepository<IndicatorRecord> _history;
     private readonly IBaseRepository<TradeSignal> _signals;
     private readonly IBaseRepository<AiSignalScanRecord> _aiSignalAudits;
+    private readonly IBaseRepository<EntryScorecard> _scorecards;
     private readonly IBaseRepository<TradingAccount> _accounts;
-    private readonly IBaseRepository<Trade> _trades;
     private readonly IMarketDataProvider _marketData;
     private readonly IMarketAnalyzer _analyzer;
     private readonly ITradePreflightAnalysisService _preflightAnalysis;
@@ -109,8 +110,6 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
     private readonly ILlmService _llm;
     private readonly IMacroEventService _macroEvents;
     private readonly INotificationService _notifications;
-    private readonly ITradeService _tradeService;
-    private readonly ILiveOrderService _liveOrders;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<MarketScanService> _logger;
 
@@ -120,8 +119,8 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
         IBaseRepository<IndicatorRecord> history,
         IBaseRepository<TradeSignal> signals,
         IBaseRepository<AiSignalScanRecord> aiSignalAudits,
+        IBaseRepository<EntryScorecard> scorecards,
         IBaseRepository<TradingAccount> accounts,
-        IBaseRepository<Trade> trades,
         IMarketDataProvider marketData,
         IMarketAnalyzer analyzer,
         ITradePreflightAnalysisService preflightAnalysis,
@@ -129,8 +128,6 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
         ILlmService llm,
         IMacroEventService macroEvents,
         INotificationService notifications,
-        ITradeService tradeService,
-        ILiveOrderService liveOrders,
         IUnitOfWork unitOfWork,
         ILogger<MarketScanService> logger)
     {
@@ -139,8 +136,8 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
         _history = history;
         _signals = signals;
         _aiSignalAudits = aiSignalAudits;
+        _scorecards = scorecards;
         _accounts = accounts;
-        _trades = trades;
         _marketData = marketData;
         _analyzer = analyzer;
         _preflightAnalysis = preflightAnalysis;
@@ -148,8 +145,6 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
         _llm = llm;
         _macroEvents = macroEvents;
         _notifications = notifications;
-        _tradeService = tradeService;
-        _liveOrders = liveOrders;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -182,10 +177,19 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
                 await _history.AddAsync(BuildHistory(item, a, now));
                 await UpsertSnapshotAsync(item, a, now);
 
+                // Toàn bộ đường sinh tín hiệu bằng AI nằm sau công tắc shadow. Khi tắt,
+                // không gọi macro/preflight/LLM và không tạo audit AI nào (FR-059).
+                if (!appSetting.ShadowComparisonEnabled)
+                {
+                    await _unitOfWork.CommitAsync(cancellationToken);
+                    scanned++;
+                    continue;
+                }
+
                 TradeSignal? signalEntity = null;
-                var aiAccepted = false;
                 var macroContext = await _macroEvents.GetContextForTradeAsync(item.Symbol, now, cancellationToken);
-                var signal = await GenerateAiSignalAsync(item, candles, a, appSetting.DefaultTradingAccountId, macroContext, minScore, cancellationToken);
+                var (signal, audit) = await GenerateAiSignalAsync(
+                    item, candles, a, appSetting.DefaultTradingAccountId, macroContext, minScore, cancellationToken);
                 if (signal is not null)
                 {
                     signalEntity = BuildSignal(item, signal, now);
@@ -199,7 +203,7 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
                     await _signals.AddAsync(signalEntity);
 
                     // (A) Chỉ auto-tạo lệnh khi AI THẬT trả lời (không phải fallback rule nội bộ) và accept.
-                    aiAccepted = review.AiAnswered
+                    var aiAccepted = review.AiAnswered
                         && string.Equals(review.Decision, "accept", StringComparison.OrdinalIgnoreCase);
                     if (!aiAccepted)
                         _logger.LogInformation(
@@ -207,13 +211,13 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
                             signalEntity.Symbol, signalEntity.Direction, review.AiAnswered, review.Decision, review.Score);
                 }
 
+                await RecordDisagreementAsync(audit, now, cancellationToken);
+
                 await _unitOfWork.CommitAsync(cancellationToken);
 
                 if (signalEntity is not null)
                 {
                     await NotifySignalCreatedAsync(signalEntity, cancellationToken);
-                    if (appSetting.AutoCreateTradeFromSignal && aiAccepted)
-                        await AutoCreateTradeFromSignalAsync(signalEntity, appSetting.DefaultTradingAccountId, cancellationToken);
                 }
 
                 scanned++;
@@ -229,7 +233,7 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
         return new ScanResult(scanned, failed);
     }
 
-    private async Task<SuggestedSignal?> GenerateAiSignalAsync(
+    private async Task<(SuggestedSignal? Signal, AiSignalScanRecord Audit)> GenerateAiSignalAsync(
         WatchItem item,
         IReadOnlyList<Candle> candles,
         MarketAnalysis analysis,
@@ -246,7 +250,7 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
             audit.Status = "NotConfigured";
             audit.RejectReason = "AI API chưa cấu hình.";
             _logger.LogInformation("Không sinh đề xuất cho {Symbol}: AI API chưa cấu hình.", item.Symbol);
-            return null;
+            return (null, audit);
         }
 
         var account = defaultAccountId is long accountId
@@ -279,7 +283,7 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
             audit.Status = "InvalidJson";
             audit.RejectReason = "AI không trả JSON hợp lệ.";
             _logger.LogWarning("AI signal returned invalid JSON for {Symbol}. Raw={Raw}", item.Symbol, TrimRaw(raw));
-            return null;
+            return (null, audit);
         }
 
         var action = NormalizeAction(parsed.Action);
@@ -292,7 +296,7 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
             audit.Status = "Wait";
             audit.RejectReason = "AI chọn WAIT.";
             _logger.LogInformation("AI đề xuất WAIT cho {Symbol}: {Reason}", item.Symbol, parsed.Reason);
-            return null;
+            return (null, audit);
         }
 
         if (parsed.Score < minScore)
@@ -300,7 +304,7 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
             audit.Status = "Rejected";
             audit.RejectReason = $"Score {parsed.Score} thấp hơn min {minScore}.";
             _logger.LogInformation("AI signal {Symbol} bị bỏ qua vì score {Score} < min {MinScore}.", item.Symbol, parsed.Score, minScore);
-            return null;
+            return (null, audit);
         }
 
         if (!TryBuildSuggestedSignal(action, parsed, analysis, risk, out var signal, out var rejectReason))
@@ -308,12 +312,45 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
             audit.Status = "Rejected";
             audit.RejectReason = rejectReason;
             _logger.LogInformation("AI signal {Symbol} bị bỏ qua: {Reason}", item.Symbol, rejectReason);
-            return null;
+            return (null, audit);
         }
 
         audit.Status = "Accepted";
         audit.RiskReward = signal.RiskReward;
-        return signal;
+        return (signal, audit);
+    }
+
+    private async Task RecordDisagreementAsync(
+        AiSignalScanRecord audit, DateTime scannedAt, CancellationToken cancellationToken)
+    {
+        var from = scannedAt.AddHours(-1);
+        var deterministic = await _scorecards.Queryable.AsNoTracking()
+            .Where(x => !x.IsBacktest && x.Symbol == audit.Symbol
+                && x.EvaluatedAtUtc >= from && x.EvaluatedAtUtc <= scannedAt.AddMinutes(2))
+            .OrderByDescending(x => x.EvaluatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (deterministic is null)
+        {
+            audit.IsDisagreement = null;
+            audit.DisagreementReason = "Chưa có phiếu tất định cùng symbol trong cửa sổ 1 giờ.";
+            return;
+        }
+
+        audit.EntryScorecardId = deterministic.Id;
+        audit.DeterministicOutcome = deterministic.Outcome.ToString();
+        audit.DeterministicDirection = deterministic.Direction?.ToString();
+        audit.DeterministicScore = deterministic.TotalScore;
+
+        var aiProposes = audit.Status == "Accepted" && audit.Action is "long" or "short";
+        var deterministicProposes = deterministic.Outcome == ScorecardOutcome.Entered;
+        var sameDirection = !aiProposes || !deterministicProposes
+            || string.Equals(audit.Action, deterministic.Direction?.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        audit.IsDisagreement = aiProposes != deterministicProposes || !sameDirection;
+        audit.DisagreementReason = audit.IsDisagreement == true
+            ? $"AI={audit.Action ?? "wait"}/{audit.Status}; tất định={deterministic.Direction?.ToString() ?? "không hướng"}/{deterministic.Outcome}, điểm {deterministic.TotalScore}."
+            : $"Hai đường đồng thuận: {(aiProposes ? audit.Action : "không vào lệnh")}.";
     }
 
     private static AiSignalScanRecord BuildAiSignalAudit(WatchItem item, MarketAnalysis analysis, DateTime scannedAt) => new()
@@ -463,69 +500,6 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
                 warnings = macroContext.RiskWarnings.Take(3),
             },
         };
-    }
-
-    private async Task AutoCreateTradeFromSignalAsync(TradeSignal signal, long? defaultAccountId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var account = await ResolveTradingAccountAsync(defaultAccountId);
-            if (account is null)
-            {
-                _logger.LogWarning("Auto-create trade skipped for signal {SignalId}: no active trading account", signal.Id);
-                return;
-            }
-
-            // Bỏ qua nếu đã có lệnh TRÙNG TƯƠNG ĐỐI đang mở (cùng symbol + hướng + giá xấp xỉ).
-            var openSame = await _trades.FindListAsync(t =>
-                t.TradingAccountId == account.Id && t.Symbol == signal.Symbol
-                && t.Direction == signal.Direction && t.Status == TradeStatus.Open);
-            if (openSame.Any(t => TradeDuplication.IsNearPrice(t.EntryPrice, signal.Entry)))
-            {
-                _logger.LogInformation(
-                    "Bỏ qua auto-tạo lệnh từ signal {SignalId}: đã có lệnh {Direction} {Symbol} giá ~{Price} đang mở.",
-                    signal.Id, signal.Direction, signal.Symbol, signal.Entry);
-                return;
-            }
-
-            var tradeId = await _tradeService.CreateFromSignalAsync(signal.Id, account.Id, cancellationToken);
-            await _notifications.PublishAsync(new NotificationCreateModel
-            {
-                Type = NotificationType.MarketSignalCreated,
-                Severity = NotificationSeverity.Warning,
-                Title = $"Đã tự tạo lệnh #{tradeId}",
-                Message = $"{signal.Symbol} {signal.Direction} từ đề xuất #{signal.Id} sau khi AI preflight ACCEPT.",
-                Source = "auto_signal_trade",
-                SourceKey = signal.Id.ToString(),
-                RelatedSymbol = signal.Symbol,
-                RelatedUrl = "/Trades",
-                ExpiresAt = DateTime.UtcNow.AddHours(6),
-            }, cancellationToken);
-
-            // Signal đã qua AI ACCEPT → thử gửi lệnh THẬT. LiveOrderService tự chặn
-            // nếu master switch tắt / thiếu key / vượt cap / vi phạm rule Critical.
-            await _liveOrders.PlaceForTradeAsync(tradeId, cancellationToken);
-        }
-        catch (InvalidOperationException ex)
-        {
-            _logger.LogInformation(ex, "Auto-create trade skipped for signal {SignalId} {Symbol}", signal.Id, signal.Symbol);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Auto-create trade failed for signal {SignalId} {Symbol}", signal.Id, signal.Symbol);
-        }
-    }
-
-    private async Task<TradingAccount?> ResolveTradingAccountAsync(long? defaultAccountId)
-    {
-        if (defaultAccountId is long accountId)
-        {
-            var preferred = await _accounts.FindAsync(accountId);
-            if (preferred is { IsActive: true })
-                return preferred;
-        }
-
-        return (await _accounts.FindListAsync(a => a.IsActive)).OrderBy(a => a.Id).FirstOrDefault();
     }
 
     private async Task NotifySignalCreatedAsync(TradeSignal signal, CancellationToken cancellationToken)

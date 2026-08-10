@@ -59,6 +59,21 @@ public class BinanceMarketDataProvider : IMarketDataProvider
         return candles;
     }
 
+    public async Task<IReadOnlyList<Candle>> GetCandleHistoryAsync(
+        string symbol,
+        string interval,
+        DateTime startTimeUtc,
+        int limit = 1000,
+        CancellationToken cancellationToken = default)
+    {
+        var s = Up(symbol);
+        var startMs = new DateTimeOffset(startTimeUtc.ToUniversalTime()).ToUnixTimeMilliseconds();
+        var json = await GetStringAsync(
+            $"{_futuresBase}/fapi/v1/klines?symbol={s}&interval={interval}&startTime={startMs}&limit={limit}",
+            cancellationToken);
+        return BinanceParser.ParseKlines(json);
+    }
+
     public async Task<SymbolPriceFilter?> GetPriceFilterAsync(string symbol, CancellationToken cancellationToken = default)
     {
         symbol = symbol.ToUpperInvariant();
@@ -120,6 +135,24 @@ public class BinanceMarketDataProvider : IMarketDataProvider
     public Task<FundingSnapshot?> GetFundingAsync(string symbol, CancellationToken cancellationToken = default) =>
         FetchAsync($"/fapi/v1/premiumIndex?symbol={Up(symbol)}", symbol, TimeSpan.FromSeconds(30),
             BinanceFuturesDataParser.ParseFunding, cancellationToken);
+
+    public Task<IReadOnlyList<FundingRatePoint>?> GetFundingHistoryAsync(
+        string symbol,
+        DateTime startTimeUtc,
+        int limit = 500,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 500)
+            throw new ArgumentOutOfRangeException(nameof(limit), limit, "Funding history chỉ cho phép limit 1..500.");
+
+        var startMs = new DateTimeOffset(startTimeUtc.ToUniversalTime()).ToUnixTimeMilliseconds();
+        return FetchAsync(
+            $"/fapi/v1/fundingRate?symbol={Up(symbol)}&startTime={startMs}&limit={limit}",
+            symbol,
+            TimeSpan.FromHours(1),
+            BinanceFuturesDataParser.ParseFundingHistory,
+            cancellationToken);
+    }
 
     public Task<OpenInterestSeries?> GetOpenInterestHistAsync(string symbol, string period, int limit, CancellationToken cancellationToken = default)
     {

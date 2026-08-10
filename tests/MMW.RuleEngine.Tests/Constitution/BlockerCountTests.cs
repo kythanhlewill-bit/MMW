@@ -1,5 +1,6 @@
 using MMW.Application.MarketData;
 using MMW.Application.Services;
+using System.Text.Json;
 using Xunit;
 
 namespace MMW.RuleEngine.Tests.Constitution;
@@ -66,5 +67,23 @@ public class BlockerCountTests
 
         Assert.False(options.Enabled);
         Assert.True(options.UseTestnet);
+    }
+
+    [Fact]
+    public void Appsettings_cung_giu_live_TAT_va_testnet_BAT()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MMW.sln")))
+            directory = directory.Parent;
+
+        Assert.NotNull(directory);
+        var path = Path.Combine(directory!.FullName, "src", "MMW.Web", "appsettings.json");
+        using var json = JsonDocument.Parse(File.ReadAllText(path));
+        var live = json.RootElement.GetProperty("LiveTrading");
+        var bootstrap = json.RootElement.GetProperty("BootstrapAdmin");
+
+        Assert.False(live.GetProperty("Enabled").GetBoolean());
+        Assert.True(live.GetProperty("UseTestnet").GetBoolean());
+        Assert.Equal(string.Empty, bootstrap.GetProperty("Password").GetString());
     }
 }

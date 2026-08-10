@@ -1,0 +1,78 @@
+@model MMW.Web.Models.ShadowComparisonViewModel
+@using MMW.Web.Helpers
+@{
+    ViewData["Title"] = "So sánh song song";
+}
+
+<div class="page-header d-print-none">
+    <div class="container-xl">
+        <div class="row g-2 align-items-center">
+            <div class="col">
+                <div class="page-pretitle">AI shadow và engine tất định</div>
+                <h2 class="page-title">So sánh song song</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-body">
+    <div class="container-xl">
+        <div class="alert alert-info">
+            Đường AI chỉ ghi đề xuất để đối chiếu, không tạo hoặc gửi lệnh. Kết quả R bên dưới
+            là tạm tính theo giá snapshot mới nhất, không chứng minh thứ tự SL/TP trong quá khứ.
+        </div>
+
+        <form method="get" class="card mb-3">
+            <div class="card-body row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Từ UTC</label>
+                    <input class="form-control" type="datetime-local" name="fromUtc" value="@Model.FromUtc.ToString("yyyy-MM-ddTHH:mm")" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Đến UTC</label>
+                    <input class="form-control" type="datetime-local" name="toUtc" value="@Model.ToUtc.ToString("yyyy-MM-ddTHH:mm")" />
+                </div>
+                <div class="col-md-auto"><button class="btn btn-primary" type="submit">Áp dụng</button></div>
+            </div>
+        </form>
+
+        <div class="row row-cards mb-3">
+            <div class="col-sm-6 col-lg"><div class="card"><div class="card-body"><div class="subheader">Lượt AI scan</div><div class="h1">@Model.AiScanCount</div></div></div></div>
+            <div class="col-sm-6 col-lg"><div class="card"><div class="card-body"><div class="subheader">AI đề xuất</div><div class="h1">@Model.AiProposalCount</div></div></div></div>
+            <div class="col-sm-6 col-lg"><div class="card"><div class="card-body"><div class="subheader">Tất định đề xuất</div><div class="h1">@Model.DeterministicProposalCount</div></div></div></div>
+            <div class="col-sm-6 col-lg"><div class="card"><div class="card-body"><div class="subheader">Điểm bất đồng</div><div class="h1">@Model.DisagreementCount</div><div class="text-secondary">@(Model.DisagreementRate?.ToString("N2") ?? "—")%</div></div></div></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Kết quả giả định của đề xuất AI</h3></div>
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+                    <thead><tr><th>Thời điểm</th><th>Symbol</th><th>AI</th><th>Tất định</th><th>Bất đồng</th><th class="text-end">Entry / hiện tại</th><th class="text-end">R giả định</th><th>Trạng thái</th></tr></thead>
+                    <tbody>
+                    @if (Model.AiProposals.Count == 0)
+                    {
+                        <tr><td colspan="8" class="text-center text-secondary py-4">Chưa có đề xuất AI trong khoảng đã chọn.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var row in Model.AiProposals)
+                        {
+                            var a = row.Audit;
+                            <tr>
+                                <td class="text-secondary">@VietnamTimeHelper.Format(a.ScannedAt, "dd/MM/yyyy HH:mm")</td>
+                                <td><strong>@a.Symbol</strong><div class="text-secondary small">@a.Interval</div></td>
+                                <td><span class="badge bg-blue-lt">@a.Action?.ToUpperInvariant()</span><div class="small">score @a.Score</div></td>
+                                <td>@(a.DeterministicDirection ?? "—")<div class="small text-secondary">@(a.DeterministicOutcome ?? "Chưa đối chiếu") · @(a.DeterministicScore?.ToString() ?? "—")</div></td>
+                                <td><span class="badge @(a.IsDisagreement == true ? "bg-red text-red-fg" : a.IsDisagreement == false ? "bg-green text-green-fg" : "bg-secondary text-secondary-fg")">@(a.IsDisagreement == true ? "Có" : a.IsDisagreement == false ? "Không" : "N/A")</span><div class="small text-secondary mt-1">@a.DisagreementReason</div></td>
+                                <td class="text-end">@(a.Entry?.ToString("N4") ?? "—")<div class="small text-secondary">@(row.CurrentPrice?.ToString("N4") ?? "—")</div></td>
+                                <td class="text-end fw-bold @(row.HypotheticalResultR > 0 ? "text-green" : row.HypotheticalResultR < 0 ? "text-red" : "")">@(row.HypotheticalResultR?.ToString("N2") ?? "—")</td>
+                                <td>@row.HypotheticalOutcome</td>
+                            </tr>
+                        }
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

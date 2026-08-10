@@ -12,6 +12,18 @@ public interface IMarketDataProvider
     /// <param name="interval">VD: "1m", "5m", "1h", "4h", "1d".</param>
     Task<IReadOnlyList<Candle>> GetCandlesAsync(string symbol, string interval, int limit = 100, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Lấy một trang nến bắt đầu từ <paramref name="startTimeUtc"/> để nạp kho lịch sử.
+    /// Provider không hỗ trợ có thể giữ hành vi cũ; provider Binance phải cài phân trang thật.
+    /// </summary>
+    Task<IReadOnlyList<Candle>> GetCandleHistoryAsync(
+        string symbol,
+        string interval,
+        DateTime startTimeUtc,
+        int limit = 1000,
+        CancellationToken cancellationToken = default) =>
+        GetCandlesAsync(symbol, interval, limit, cancellationToken);
+
     /// <summary>Lấy bước giá (tickSize) của symbol futures để làm tròn giá nhập. Null nếu không lấy được.</summary>
     Task<SymbolPriceFilter?> GetPriceFilterAsync(string symbol, CancellationToken cancellationToken = default);
 
@@ -34,6 +46,14 @@ public interface IMarketDataProvider
 
     /// <summary>Phí vốn hiện tại và giá đánh dấu.</summary>
     Task<FundingSnapshot?> GetFundingAsync(string symbol, CancellationToken cancellationToken = default);
+
+    /// <summary>Một trang phí vốn đã thanh toán, tăng dần từ <paramref name="startTimeUtc"/>.</summary>
+    Task<IReadOnlyList<FundingRatePoint>?> GetFundingHistoryAsync(
+        string symbol,
+        DateTime startTimeUtc,
+        int limit = 500,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<FundingRatePoint>?>(null);
 
     /// <param name="period">Phải thuộc <see cref="FuturesDataPeriods.Allowed"/>, ngược lại ném <see cref="ArgumentException"/>.</param>
     Task<OpenInterestSeries?> GetOpenInterestHistAsync(string symbol, string period, int limit, CancellationToken cancellationToken = default);

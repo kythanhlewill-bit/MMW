@@ -127,28 +127,29 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ### Tests for User Story 1 ⚠️ viết trước, phải đỏ
 
-- [ ] T047 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/DerivedEventGeneratorTests.cs`: 3 mốc thanh toán phí vốn/ngày, đáo hạn tuần thứ Sáu, đáo hạn tháng thứ Sáu **cuối cùng**, khoảng trống Chủ nhật; biên: tháng có 5 thứ Sáu, tuần bắc cầu giao thừa, năm nhuận
-- [ ] T048 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/BlackoutWindowTests.cs`: **8 loại sự kiện × 2 test** — một chứng minh chặn thật trong biên, một chứng minh không chặn nhầm ngay ngoài biên (SC-006, 16 test)
-- [ ] T049 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/WindowMergeTests.cs`: hai cửa sổ chồng lấn hợp nhất thành một khoảng liên tục (FR-012)
-- [ ] T050 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/EmptyCalendarTests.cs`: lịch nạp tay rỗng ⟹ cửa sổ sinh bằng công thức **vẫn cưỡng chế đủ 100%**, và hệ thống phát cảnh báo lịch thiếu (SC-009, FR-014)
-- [ ] T051 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/SessionQualityTests.cs`: dùng bảng chuẩn khi dưới 50 lệnh đóng, chuyển sang thống kê cá nhân khi đạt 50, `IsPersonalised` phản ánh đúng
-- [ ] T052 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/AiWindowCapTests.cs`: cửa sổ AI đề xuất dài 20 tiếng bị cắt về `AiBlackoutMaxMinutes` (FR-011)
+- [x] T047 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/DerivedEventGeneratorTests.cs`: 3 mốc thanh toán phí vốn/ngày, đáo hạn tuần thứ Sáu, đáo hạn tháng thứ Sáu **cuối cùng**, khoảng trống Chủ nhật; biên: tháng có 5 thứ Sáu, tuần bắc cầu giao thừa, năm nhuận
+- [x] T048 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/BlackoutWindowTests.cs`: **8 loại sự kiện × 2 test** — một chứng minh chặn thật trong biên, một chứng minh không chặn nhầm ngay ngoài biên (SC-006, 16 test)
+- [x] T049 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/WindowMergeTests.cs`: hai cửa sổ chồng lấn hợp nhất thành một khoảng liên tục (FR-012)
+- [x] T050 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/EmptyCalendarTests.cs`: lịch nạp tay rỗng ⟹ cửa sổ sinh bằng công thức **vẫn cưỡng chế đủ 100%**, và hệ thống phát cảnh báo lịch thiếu (SC-009, FR-014)
+- [x] T051 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/SessionQualityTests.cs`: dùng bảng chuẩn khi dưới 50 lệnh đóng, chuyển sang thống kê cá nhân khi đạt 50, `IsPersonalised` phản ánh đúng
+- [x] T052 [TEST] [P] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/AiWindowCapTests.cs`: cửa sổ AI đề xuất dài 20 tiếng bị cắt về `AiBlackoutMaxMinutes` (FR-011)
 
 ### Implementation for User Story 1
 
-- [ ] T053 [P] [US1] Tạo `src/MMW.Application/Trading/TimeGuard/BlackoutDecision.cs`: `BlackoutDecision`, `BlackoutWindow` theo [contracts/timeguard.md](./contracts/timeguard.md)
-- [ ] T054 [P] [US1] Tạo `IDerivedEventGenerator.cs` + `DerivedEventGenerator.cs` trong `src/MMW.Application/Trading/TimeGuard/` — **hàm thuần**, không I/O, không đồng hồ
-- [ ] T055 [P] [US1] Tạo `IScheduledEventCalendar.cs` + `ScheduledEventCalendar.cs`; `ImportAsync` bất biến theo `SourceKey`
-- [ ] T056 [US1] Tạo `ISessionQualityProvider.cs` + `SessionQualityProvider.cs`; đọc ngưỡng `PersonalStatsMinClosedTrades` từ `EngineSetting`
-- [ ] T057 [US1] Tạo `ITimeGuardService.cs` + `TimeGuardService.cs`: `CheckAsync`, `GetWindowsAsync` (có hợp nhất), `GetUpcomingAsync`; mọi thời gian qua `IClock`
-- [ ] T058 [US1] Ghi vết cấu trúc mọi lần chặn — loại sự kiện, thời điểm, biên cửa sổ, thời điểm đánh giá (FR-015); thông điệp tiếng Việt nêu giờ Việt Nam
-- [ ] T059 [US1] Cảnh báo lịch quá hạn khi `MAX(OccursAtUtc) WHERE Origin = Seeded` đã ở quá khứ, phát qua `INotificationService` (FR-014)
-- [ ] T060 [US1] Seed `ScheduledEvent` phần còn lại của năm 2026 từ lịch công bố của BLS và Fed vào `src/MMW.Infrastructure/Persistence/SeedData.cs` (R-005)
-- [ ] T061 [TEST] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/PositionManageTests.cs`: vị thế lãi ≥0.5R khi sắp vào blackout → kéo dừng lỗ về hoà vốn; lãi dưới ngưỡng → đóng một nửa; **không trường hợp nào để nguyên trạng** (FR-013)
-- [ ] T062 [US1] Tạo `src/MMW.Application/Services/PositionManageService.cs`: rà soát vị thế đang mở, xử lý giảm rủi ro khi blackout sắp bắt đầu, phát thông báo; cảnh báo khi đồng hồ máy chủ lệch sàn quá 30 giây
-- [ ] T063 [US1] Đăng ký job Hangfire `position-manage` cron `*/1 * * * *` với `[DisableConcurrentExecution]` trong `src/MMW.Web/Program.cs`
-- [ ] T064 [US1] Đăng ký DI cho toàn bộ service TimeGuard trong `src/MMW.Application/DependencyInjection.cs`
-- [ ] T065 [US1] Tạo `src/MMW.Web/Controllers/TimeGuardController.cs` + view: xem lịch sự kiện, các cửa sổ chặn 48 giờ tới, và trạng thái quá hạn của lịch
+- [x] T053 [P] [US1] Tạo `src/MMW.Application/Trading/TimeGuard/BlackoutDecision.cs`: `BlackoutDecision`, `BlackoutWindow` theo [contracts/timeguard.md](./contracts/timeguard.md)
+- [x] T054 [P] [US1] Tạo `IDerivedEventGenerator.cs` + `DerivedEventGenerator.cs` trong `src/MMW.Application/Trading/TimeGuard/` — **hàm thuần**, không I/O, không đồng hồ
+- [x] T055 [P] [US1] Tạo `IScheduledEventCalendar.cs` + `ScheduledEventCalendar.cs`; `ImportAsync` bất biến theo `SourceKey`
+- [x] T056 [US1] Tạo `ISessionQualityProvider.cs` + `SessionQualityProvider.cs`; đọc ngưỡng `PersonalStatsMinClosedTrades` từ `EngineSetting`
+- [x] T057 [US1] Tạo `ITimeGuardService.cs` + `TimeGuardService.cs`: `CheckAsync`, `GetWindowsAsync` (có hợp nhất), `GetUpcomingAsync`; mọi thời gian qua `IClock`
+- [x] T058 [US1] Ghi vết cấu trúc mọi lần chặn — loại sự kiện, thời điểm, biên cửa sổ, thời điểm đánh giá (FR-015); thông điệp tiếng Việt nêu giờ Việt Nam
+- [x] T059 [US1] Cảnh báo lịch quá hạn khi `MAX(OccursAtUtc) WHERE Origin = Seeded` đã ở quá khứ, phát qua `INotificationService` (FR-014)
+- [x] T060 [US1] Seed `ScheduledEvent` phần còn lại của năm 2026 từ lịch công bố của BLS và Fed vào `src/MMW.Web/Data/SeedData.cs` (R-005)
+- [x] T060b [US1] Dán lịch CPI/PPI/PCE/FOMC 2026 từ BLS, BEA và Federal Reserve vào `SeedData.ManualCalendar2026()`; `CalendarFreshness` đo riêng CPI/PPI/PCE/NFP/FOMC statement/họp báo để một loại tương lai không che loại đang thiếu hoặc hết hạn
+- [x] T061 [TEST] [US1] `tests/MMW.RuleEngine.Tests/TimeGuard/PositionManageTests.cs`: vị thế lãi ≥0.5R khi sắp vào blackout → kéo dừng lỗ về hoà vốn; lãi dưới ngưỡng → đóng một nửa; **không trường hợp nào để nguyên trạng** (FR-013)
+- [x] T062 [US1] Tạo `src/MMW.Application/Services/PositionManageService.cs`: rà soát vị thế đang mở, xử lý giảm rủi ro khi blackout sắp bắt đầu, phát thông báo; cảnh báo khi đồng hồ máy chủ lệch sàn quá 30 giây
+- [x] T063 [US1] Đăng ký job Hangfire `position-manage` cron `*/1 * * * *` với `[DisableConcurrentExecution]` trong `src/MMW.Web/Program.cs`
+- [x] T064 [US1] Đăng ký DI cho toàn bộ service TimeGuard trong `src/MMW.Application/DependencyInjection.cs`
+- [x] T065 [US1] Tạo `src/MMW.Web/Controllers/TimeGuardController.cs` + view: xem lịch sự kiện, các cửa sổ chặn 48 giờ tới, và trạng thái quá hạn của lịch
 
 **Checkpoint**: US1 hoạt động độc lập — chạy `dotnet test --filter "FullyQualifiedName~TimeGuard"` phải xanh toàn bộ. Kịch bản 1 của [quickstart.md](./quickstart.md) đạt.
 
@@ -162,20 +163,20 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T066 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/RegimeClassifierTests.cs`: đủ 5 dòng bảng FR-019, mỗi dòng một test
-- [ ] T067 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/RegimeMergeTests.cs`: nhiều dòng cùng khớp → lấy `MIN` hệ số, `MIN` số lệnh, **giao** của các chiều được phép (FR-020); ca kiểm chứng TrendUp + Extreme + ngày có tin ⟹ `0.3 / 2 lệnh / LongOnly`
-- [ ] T068 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/MissingInputPenaltyTests.cs`: thiếu bất kỳ đầu vào nào ⟹ `RiskMultiplier ≤ 0.5`; `Classify` **không ném ngoại lệ** khi thiếu dữ liệu (bất biến 6)
-- [ ] T069 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/DailyPlanIdempotencyTests.cs`: gọi `GenerateAsync` hai lần cùng ngày trả cùng `Id`, không ghi đè
-- [ ] T070 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/NoPlanBlocksTests.cs`: chưa có kế hoạch hợp lệ ⟹ mọi lệnh mới bị chặn với `VetoReason.NoDailyPlan`; **không tồn tại đường dẫn nào trả kế hoạch mặc định cho phép giao dịch** (FR-023)
+- [x] T066 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/RegimeClassifierTests.cs`: đủ 5 dòng bảng FR-019, mỗi dòng một test
+- [x] T067 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/RegimeMergeTests.cs`: nhiều dòng cùng khớp → lấy `MIN` hệ số, `MIN` số lệnh, **giao** của các chiều được phép (FR-020); ca kiểm chứng TrendUp + Extreme + ngày có tin ⟹ `0.3 / 2 lệnh / LongOnly`
+- [x] T068 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/MissingInputPenaltyTests.cs`: thiếu bất kỳ đầu vào nào ⟹ `RiskMultiplier ≤ 0.5`; `Classify` **không ném ngoại lệ** khi thiếu dữ liệu (bất biến 6)
+- [x] T069 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/DailyPlanIdempotencyTests.cs`: gọi `GenerateAsync` hai lần cùng ngày trả cùng `Id`, không ghi đè
+- [x] T070 [TEST] [P] [US2] `tests/MMW.RuleEngine.Tests/DailyPlanning/NoPlanBlocksTests.cs`: chưa có kế hoạch hợp lệ ⟹ mọi lệnh mới bị chặn với `VetoReason.NoDailyPlan`; **không tồn tại đường dẫn nào trả kế hoạch mặc định cho phép giao dịch** (FR-023)
 
 ### Implementation for User Story 2
 
-- [ ] T071 [P] [US2] Tạo `src/MMW.Application/Trading/DailyPlanning/DailyPlanInputs.cs`: `DailyPlanInputs`, `RegimeClassification`
-- [ ] T072 [US2] Tạo `IDayRegimeClassifier.cs` + `DayRegimeClassifier.cs` — **hàm thuần**; 5 bước theo [contracts/daily-plan.md](./contracts/daily-plan.md)
-- [ ] T073 [US2] Tạo `IDailyPlanService.cs` + `DailyPlanService.cs`: thu thập đầu vào (nguồn nào lỗi thì ghi `MissingInputs`, không đổ vỡ), gọi classifier, lưu bất biến theo `(TradingAccountId, PlanDateUtc)`
-- [ ] T074 [US2] Đăng ký job Hangfire `daily-plan` cron `30 23 * * *` trong `src/MMW.Web/Program.cs`; kèm một lần chạy bù khi ứng dụng khởi động giữa ngày mà chưa có kế hoạch
-- [ ] T075 [US2] Đăng ký DI trong `src/MMW.Application/DependencyInjection.cs`
-- [ ] T076 [US2] Tạo `src/MMW.Web/Controllers/DailyPlanController.cs` + view: kế hoạch hôm nay, các đầu vào đã dùng, thành phần bị thiếu, và lịch sử 30 ngày
+- [x] T071 [P] [US2] Tạo `src/MMW.Application/Trading/DailyPlanning/DailyPlanInputs.cs`: `DailyPlanInputs`, `RegimeClassification`
+- [x] T072 [US2] Tạo `IDayRegimeClassifier.cs` + `DayRegimeClassifier.cs` — **hàm thuần**; 5 bước theo [contracts/daily-plan.md](./contracts/daily-plan.md)
+- [x] T073 [US2] Tạo `IDailyPlanService.cs` + `DailyPlanService.cs`: thu thập đầu vào (nguồn nào lỗi thì ghi `MissingInputs`, không đổ vỡ), gọi classifier, lưu bất biến theo `(TradingAccountId, PlanDateUtc)`
+- [x] T074 [US2] Đăng ký job Hangfire `daily-plan` cron `30 23 * * *` trong `src/MMW.Web/Program.cs`; kèm một lần chạy bù khi ứng dụng khởi động giữa ngày mà chưa có kế hoạch
+- [x] T075 [US2] Đăng ký DI trong `src/MMW.Application/DependencyInjection.cs`
+- [x] T076 [US2] Tạo `src/MMW.Web/Controllers/DailyPlanController.cs` + view: kế hoạch hôm nay, các đầu vào đã dùng, thành phần bị thiếu, và lịch sử 30 ngày
 
 **Checkpoint**: US1 + US2 cùng hoạt động độc lập. Kịch bản 2 phần kế hoạch ngày đạt.
 
@@ -189,39 +190,39 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T077 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/TechnicalCriteriaTests.cs`: 5 tiêu chí nhóm Technical, mỗi tiêu chí 3 ca (điểm tối đa / 0 điểm / thiếu dữ liệu); riêng `entry_location` thêm ca giá đã chạy quá 1.5 ATR ⟹ **0 điểm** (FR-027); `htf_alignment` thêm ca ngược kế hoạch ngày ⟹ **veto cứng**
-- [ ] T078 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/MarketCriteriaTests.cs`: 5 tiêu chí nhóm Market, mỗi tiêu chí 3 ca; `day_regime_match` thêm ca veto cứng
-- [ ] T079 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/LiquidityCriteriaTests.cs`: 3 tiêu chí nhóm Liquidity; `zone_position` luôn trả `IsApproximation = true`; ca cụm thanh khoản nằm ngay ngoài dừng lỗ ⟹ trừ về 0
-- [ ] T080 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/MissingDataTests.cs`: mọi tiêu chí có `DataAvailable = false` ⟹ `AwardedPoints = 0`, **không** phải điểm trung bình hay điểm tối đa (FR-006)
-- [ ] T081 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/EntryScorerTests.cs`: dừng sớm khi gặp veto cứng đầu tiên — các tiêu chí sau **không chạy**, phiếu ghi đúng **một** lý do; thứ tự duyệt tất định
-- [ ] T082 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/DeterminismTests.cs`: chấm cùng một `ScoringContext` **100 lần** cho ra 100 kết quả giống hệt đến từng chữ số (SC-002)
-- [ ] T083 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/PositionSizerTests.cs`: bảng ngưỡng 55/70/85; `finalSizeR ≤ baseSizeR` luôn đúng; điểm dưới ngưỡng hoặc bị veto ⟹ `finalSizeR = 0`; ca 88 điểm × hệ số ngày 0.3 ⟹ 0.45R
-- [ ] T084 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/NoAiTests.cs`: `ILlmService.IsConfigured = false` ⟹ `SignalEvalService` chạy trọn một chu kỳ, sinh phiếu đầy đủ, không ngoại lệ (SC-001)
-- [ ] T085 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/NoThresholdRelaxationTests.cs`: cả ngày không setup nào đạt 55 điểm ⟹ **0 lệnh**, và không bản ghi nào cho thấy ngưỡng bị hạ (FR-038)
-- [ ] T086 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/ScorecardPersistenceTests.cs`: phiếu chấm điểm được lưu **kể cả khi không vào lệnh**; khoá duy nhất `(Symbol, CandleCloseTimeUtc)` chặn sinh trùng khi job chạy chồng lấn (FR-051, SC-012)
+- [x] T077 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/TechnicalCriteriaTests.cs`: 5 tiêu chí nhóm Technical, mỗi tiêu chí 3 ca (điểm tối đa / 0 điểm / thiếu dữ liệu); riêng `entry_location` thêm ca giá đã chạy quá 1.5 ATR ⟹ **0 điểm** (FR-027); `htf_alignment` thêm ca ngược kế hoạch ngày ⟹ **veto cứng**
+- [x] T078 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/MarketCriteriaTests.cs`: 5 tiêu chí nhóm Market, mỗi tiêu chí 3 ca; `day_regime_match` thêm ca veto cứng
+- [x] T079 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/LiquidityCriteriaTests.cs`: 3 tiêu chí nhóm Liquidity; `zone_position` luôn trả `IsApproximation = true`; ca cụm thanh khoản nằm ngay ngoài dừng lỗ ⟹ trừ về 0
+- [x] T080 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/MissingDataTests.cs`: mọi tiêu chí có `DataAvailable = false` ⟹ `AwardedPoints = 0`, **không** phải điểm trung bình hay điểm tối đa (FR-006)
+- [x] T081 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/EntryScorerTests.cs`: dừng sớm khi gặp veto cứng đầu tiên — các tiêu chí sau **không chạy**, phiếu ghi đúng **một** lý do; thứ tự duyệt tất định
+- [x] T082 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/DeterminismTests.cs`: chấm cùng một `ScoringContext` **100 lần** cho ra 100 kết quả giống hệt đến từng chữ số (SC-002)
+- [x] T083 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/PositionSizerTests.cs`: bảng ngưỡng 55/70/85; `finalSizeR ≤ baseSizeR` luôn đúng; điểm dưới ngưỡng hoặc bị veto ⟹ `finalSizeR = 0`; ca 88 điểm × hệ số ngày 0.3 ⟹ 0.45R
+- [x] T084 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/NoAiTests.cs`: `ILlmService.IsConfigured = false` ⟹ `SignalEvalService` chạy trọn một chu kỳ, sinh phiếu đầy đủ, không ngoại lệ (SC-001)
+- [x] T085 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/NoThresholdRelaxationTests.cs`: cả ngày không setup nào đạt 55 điểm ⟹ **0 lệnh**, và không bản ghi nào cho thấy ngưỡng bị hạ (FR-038)
+- [x] T086 [TEST] [P] [US3] `tests/MMW.RuleEngine.Tests/Scoring/ScorecardPersistenceTests.cs`: phiếu chấm điểm được lưu **kể cả khi không vào lệnh**; khoá duy nhất `(Symbol, CandleCloseTimeUtc)` chặn sinh trùng khi job chạy chồng lấn (FR-051, SC-012)
 
 ### Implementation for User Story 3
 
-- [ ] T087 [US3] Tạo `src/MMW.Application/Trading/Scoring/IScoreCriterion.cs`, `ScoringContext.cs`, `CriterionResult.cs` theo [contracts/scoring.md](./contracts/scoring.md)
-- [ ] T088 [P] [US3] `Criteria/HtfAlignmentCriterion.cs` — `technical.htf_alignment`, 10đ, veto cứng khi ngược kế hoạch ngày
-- [ ] T089 [P] [US3] `Criteria/MarketStructureCriterion.cs` — `technical.market_structure`, 10đ, dùng `MarketStructureAnalyzer`
-- [ ] T090 [P] [US3] `Criteria/EntryLocationCriterion.cs` — `technical.entry_location`, 8đ, dùng VWAP neo ngày và EMA20
-- [ ] T091 [P] [US3] `Criteria/MomentumCriterion.cs` — `technical.momentum`, 7đ
-- [ ] T092 [P] [US3] `Criteria/VolumeConfirmationCriterion.cs` — `technical.volume_confirmation`, 5đ
-- [ ] T093 [P] [US3] `Criteria/DayRegimeMatchCriterion.cs` — `market.day_regime_match`, 10đ, veto cứng khi ngược trạng thái ngày
-- [ ] T094 [P] [US3] `Criteria/VolatilityRegimeCriterion.cs` — `market.volatility_regime`, 6đ, phân vị 30–70 được điểm tối đa
-- [ ] T095 [P] [US3] `Criteria/SessionQualityCriterion.cs` — `market.session_quality`, 6đ, dùng `ISessionQualityProvider` từ US1
-- [ ] T096 [P] [US3] `Criteria/LeaderCorrelationCriterion.cs` — `market.leader_correlation`, 4đ
-- [ ] T097 [P] [US3] `Criteria/FundingCrowdingCriterion.cs` — `market.funding_crowding`, 4đ, funding cực đoan **cùng chiều lệnh** thì trừ
-- [ ] T098 [P] [US3] `Criteria/OpenInterestCriterion.cs` — `liquidity.open_interest`, 5đ
-- [ ] T099 [P] [US3] `Criteria/LiquidityZoneCriterion.cs` — `liquidity.zone_position`, 5đ, luôn `IsApproximation = true` theo R-010
-- [ ] T100 [P] [US3] `Criteria/SpreadDepthCriterion.cs` — `liquidity.spread_depth`, 5đ
-- [ ] T101 [US3] Tạo `src/MMW.Application/Trading/Scoring/IEntryScorer.cs` + `EntryScorer.cs`: nhận `IEnumerable<IScoreCriterion>` từ DI, duyệt theo `(Group, Key)`, **dừng ngay ở veto cứng đầu tiên**
-- [ ] T102 [US3] Tạo `src/MMW.Application/Trading/Sizing/IPositionSizer.cs` + `ScoreBasedPositionSizer.cs`; ba hệ số nhân đều `≤ 1.0` để bất biến `finalSizeR ≤ baseSizeR` thành tính chất số học
-- [ ] T103 [US3] Tạo `src/MMW.Application/Services/SignalEvalService.cs`: dựng `ScoringContext` (gọi `ClosedOnly()`), gọi TimeGuard → EntryScorer → PositionSizer, lưu `EntryScorecard` + `EntryScorecardLine` **mọi lần**, tạo lệnh khi đạt ngưỡng
-- [ ] T104 [US3] Đăng ký job Hangfire `signal-eval` cron `1,16,31,46 * * * *` (trễ 1 phút theo R-011) với `[DisableConcurrentExecution]`; gỡ `market-scan` `*/5` khỏi vai trò sinh lệnh trong `src/MMW.Web/Program.cs`
-- [ ] T105 [US3] Đăng ký 13 tiêu chí + scorer + sizer trong `src/MMW.Application/DependencyInjection.cs`
-- [ ] T106 [US3] Tạo `src/MMW.Web/Controllers/ScorecardController.cs` + view: danh sách phiếu chấm điểm, chi tiết điểm từng tiêu chí, bộ lọc theo lý do từ chối; tra được lý do một cơ hội bị từ chối trong dưới 30 giây (SC-013)
+- [x] T087 [US3] Tạo `src/MMW.Application/Trading/Scoring/IScoreCriterion.cs`, `ScoringContext.cs`, `CriterionResult.cs` theo [contracts/scoring.md](./contracts/scoring.md)
+- [x] T088 [P] [US3] `Criteria/HtfAlignmentCriterion.cs` — `technical.htf_alignment`, 10đ, veto cứng khi ngược kế hoạch ngày
+- [x] T089 [P] [US3] `Criteria/MarketStructureCriterion.cs` — `technical.market_structure`, 10đ, dùng `MarketStructureAnalyzer`
+- [x] T090 [P] [US3] `Criteria/EntryLocationCriterion.cs` — `technical.entry_location`, 8đ, dùng VWAP neo ngày và EMA20
+- [x] T091 [P] [US3] `Criteria/MomentumCriterion.cs` — `technical.momentum`, 7đ
+- [x] T092 [P] [US3] `Criteria/VolumeConfirmationCriterion.cs` — `technical.volume_confirmation`, 5đ
+- [x] T093 [P] [US3] `Criteria/DayRegimeMatchCriterion.cs` — `market.day_regime_match`, 10đ, veto cứng khi ngược trạng thái ngày
+- [x] T094 [P] [US3] `Criteria/VolatilityRegimeCriterion.cs` — `market.volatility_regime`, 6đ, phân vị 30–70 được điểm tối đa
+- [x] T095 [P] [US3] `Criteria/SessionQualityCriterion.cs` — `market.session_quality`, 6đ, dùng `ISessionQualityProvider` từ US1
+- [x] T096 [P] [US3] `Criteria/LeaderCorrelationCriterion.cs` — `market.leader_correlation`, 4đ
+- [x] T097 [P] [US3] `Criteria/FundingCrowdingCriterion.cs` — `market.funding_crowding`, 4đ, funding cực đoan **cùng chiều lệnh** thì trừ
+- [x] T098 [P] [US3] `Criteria/OpenInterestCriterion.cs` — `liquidity.open_interest`, 5đ
+- [x] T099 [P] [US3] `Criteria/LiquidityZoneCriterion.cs` — `liquidity.zone_position`, 5đ, luôn `IsApproximation = true` theo R-010
+- [x] T100 [P] [US3] `Criteria/SpreadDepthCriterion.cs` — `liquidity.spread_depth`, 5đ
+- [x] T101 [US3] Tạo `src/MMW.Application/Trading/Scoring/IEntryScorer.cs` + `EntryScorer.cs`: nhận `IEnumerable<IScoreCriterion>` từ DI, duyệt theo `(Group, Key)`, **dừng ngay ở veto cứng đầu tiên**
+- [x] T102 [US3] Tạo `src/MMW.Application/Trading/Sizing/IPositionSizer.cs` + `ScoreBasedPositionSizer.cs`; ba hệ số nhân đều `≤ 1.0` để bất biến `finalSizeR ≤ baseSizeR` thành tính chất số học
+- [x] T103 [US3] Tạo `src/MMW.Application/Services/SignalEvalService.cs`: dựng `ScoringContext` (gọi `ClosedOnly()`), gọi TimeGuard → EntryScorer → PositionSizer, lưu `EntryScorecard` + `EntryScorecardLine` **mọi lần**, tạo lệnh khi đạt ngưỡng
+- [x] T104 [US3] Đăng ký job Hangfire `signal-eval` cron `1,16,31,46 * * * *` (trễ 1 phút theo R-011) với `[DisableConcurrentExecution]`; gỡ `market-scan` `*/5` khỏi vai trò sinh lệnh trong `src/MMW.Web/Program.cs`
+- [x] T105 [US3] Đăng ký 13 tiêu chí + scorer + sizer trong `src/MMW.Application/DependencyInjection.cs`
+- [x] T106 [US3] Tạo `src/MMW.Web/Controllers/ScorecardController.cs` + view: danh sách phiếu chấm điểm, chi tiết điểm từng tiêu chí, bộ lọc theo lý do từ chối; tra được lý do một cơ hội bị từ chối trong dưới 30 giây (SC-013)
 
 **Checkpoint**: US1 + US2 + US3 — lõi tất định đã chạy được đầu-cuối, hoàn toàn không cần AI. Kịch bản 2, 3, 7 của quickstart đạt.
 
@@ -235,28 +236,34 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T107 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/LossStreakGateTests.cs`: 2 thua liên tiếp ⟹ nhân 0.5; 3 thua ⟹ dừng ngày; 1 thua ⟹ không tác động
-- [ ] T108 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/DailyLossLimitGateTests.cs`: chạm ngưỡng ⟹ dừng ngày; ngay dưới ngưỡng ⟹ cho qua
-- [ ] T109 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/RevengeWindowGateTests.cs`: 10 phút sau lệnh thua ⟹ chặn; 20 phút ⟹ không chặn
-- [ ] T110 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/OversizedGateTests.cs`: vượt 1.5× trung bình 20 lệnh ⟹ chặn; đúng 1.5× ⟹ không chặn
-- [ ] T111 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/MaxTradesGateTests.cs`: đủ `DailyPlan.MaxTradesToday` ⟹ chặn; thiếu một lệnh ⟹ cho qua
-- [ ] T112 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/WorstHoursGateTests.cs`: đủ 50 lệnh và giờ nằm trong top-2 tệ nhất ⟹ trừ 10 điểm; dưới 50 lệnh ⟹ `Allow` với phạt 0, **không** thưởng điểm
-- [ ] T113 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/GateInvariantTests.cs`: quét mọi `IDisciplineGate` đăng ký, khẳng định **không gate nào** trả `SizeMultiplier > 1.0`
-- [ ] T114 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/DayResetTests.cs`: bộ đếm số lệnh và trạng thái dừng-ngày reset tại 00:00 UTC; vị thế đang mở **không** bị ảnh hưởng
+- [x] T107 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/LossStreakGateTests.cs`: 2 thua liên tiếp ⟹ nhân 0.5; 3 thua ⟹ dừng ngày; 1 thua ⟹ không tác động
+- [x] T108 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/DailyLossLimitGateTests.cs`: chạm ngưỡng ⟹ dừng ngày; ngay dưới ngưỡng ⟹ cho qua
+- [x] T109 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/RevengeWindowGateTests.cs`: 10 phút sau lệnh thua ⟹ chặn; 20 phút ⟹ không chặn
+- [x] T110 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/OversizedGateTests.cs`: vượt 1.5× trung bình 20 lệnh ⟹ chặn; đúng 1.5× ⟹ không chặn
+- [x] T111 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/MaxTradesGateTests.cs`: đủ `DailyPlan.MaxTradesToday` ⟹ chặn; thiếu một lệnh ⟹ cho qua
+- [x] T112 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/WorstHoursGateTests.cs`: đủ 50 lệnh và giờ nằm trong top-2 tệ nhất ⟹ trừ 10 điểm; dưới 50 lệnh ⟹ `Allow` với phạt 0, **không** thưởng điểm
+- [x] T113 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/GateInvariantTests.cs`: quét mọi `IDisciplineGate` đăng ký, khẳng định **không gate nào** trả `SizeMultiplier > 1.0`
+- [x] T114 [TEST] [P] [US4] `tests/MMW.RuleEngine.Tests/Discipline/DayResetTests.cs`: bộ đếm số lệnh và trạng thái dừng-ngày reset tại 00:00 UTC; vị thế đang mở **không** bị ảnh hưởng
 
 ### Implementation for User Story 4
 
-- [ ] T115 [US4] Tạo `src/MMW.Application/Trading/Discipline/IDisciplineGate.cs`, `DisciplineContext.cs`, `GateResult.cs`, `GateAggregate.cs`
-- [ ] T116 [P] [US4] `Gates/LossStreakGate.cs` — tái dùng logic `LossStreakDetector` hiện có, đọc ngưỡng từ `EngineSetting`
-- [ ] T117 [P] [US4] `Gates/DailyLossLimitGate.cs` — đọc `RiskSetting.MaxDailyLossPercent`
-- [ ] T118 [P] [US4] `Gates/RevengeWindowGate.cs` — đọc `EngineSetting.RevengeBlockMinutes` (tách khỏi ngưỡng cảnh báo 30 phút của `RiskSetting`)
-- [ ] T119 [P] [US4] `Gates/OversizedGate.cs` — tái dùng logic `OversizedAfterLossDetector`
-- [ ] T120 [P] [US4] `Gates/MaxTradesGate.cs`
-- [ ] T121 [P] [US4] `Gates/WorstHoursGate.cs` — chỉ hoạt động khi đủ `PersonalStatsMinClosedTrades`
-- [ ] T122 [US4] Tạo `DisciplineGateRunner.cs`: gộp kết quả các gate, `StopForDay` và `BlockTrade` thắng mọi thứ, `SizeMultiplier` lấy tích
-- [ ] T123 [US4] Cắm `DisciplineGateRunner` vào `SignalEvalService` trước bước sizing; ghi kết quả từng gate thành `EntryScorecardLine` nhóm `Discipline`
-- [ ] T124 [US4] Đăng ký 6 gate + runner trong `src/MMW.Application/DependencyInjection.cs`
-- [ ] T125 [US4] Hiển thị trạng thái dừng-ngày và các gate đang kích hoạt trên trang chủ, kèm số liệu thực tế so với ngưỡng (Nguyên tắc I)
+- [x] T115 [US4] Tạo `src/MMW.Application/Trading/Discipline/IDisciplineGate.cs`, `DisciplineContext.cs`, `GateResult.cs`, `GateAggregate.cs`
+- [x] T116 [P] [US4] `Gates/LossStreakGate.cs` — tái dùng logic `LossStreakDetector` hiện có, đọc ngưỡng từ `EngineSetting`
+- [x] T117 [P] [US4] `Gates/DailyLossLimitGate.cs` — đọc `RiskSetting.MaxDailyLossPercent`
+- [x] T118 [P] [US4] `Gates/RevengeWindowGate.cs` — đọc `EngineSetting.RevengeBlockMinutes` (tách khỏi ngưỡng cảnh báo 30 phút của `RiskSetting`)
+- [x] T119 [P] [US4] `Gates/OversizedGate.cs` — tái dùng logic `OversizedAfterLossDetector`
+- [x] T120 [P] [US4] `Gates/MaxTradesGate.cs`
+- [x] T121 [P] [US4] `Gates/WorstHoursGate.cs` — chỉ hoạt động khi đủ `PersonalStatsMinClosedTrades`
+- [x] T122 [US4] Tạo `DisciplineGateRunner.cs`: gộp kết quả các gate, `StopForDay` và `BlockTrade` thắng mọi thứ, `SizeMultiplier` lấy tích
+- [x] T123 [US4] Cắm `DisciplineGateRunner` vào `SignalEvalService` trước bước sizing; ghi kết quả từng gate thành `EntryScorecardLine` nhóm `Discipline`
+- [x] T124 [US4] Đăng ký 6 gate + runner trong `src/MMW.Application/DependencyInjection.cs`
+- [x] T125 [US4] Hiển thị trạng thái dừng-ngày và các gate đang kích hoạt trên trang chủ, kèm số liệu thực tế so với ngưỡng (Nguyên tắc I)
+
+
+> **Ghi chú Phase 6 — hai điểm gộp/lệch so với danh sách.**
+> **Tệp test gộp**: tám tệp T107–T114 gộp thành ba — `Discipline/DisciplineGateTests.cs` (T107–T112, sáu rào × hai chiều), `Discipline/GateInvariantTests.cs` (T113 + bộ gộp), `Discipline/DayResetTests.cs` (T114). Mỗi rào chỉ có hai–ba khẳng định; tách ra sáu tệp bốn mươi dòng làm khó đọc hơn chứ không rõ hơn.
+> **`GateAggregate` nằm ở `Trading.Scoring`** chứ không ở `Trading.Discipline` như T115 ghi: `IPositionSizer` đã nhận nó từ Phase 5, và chuyển namespace chỉ để khớp tên tệp sẽ làm hỏng chữ ký đang chạy.
+> **Phát sinh**: `ITraderStatisticsProvider` + `TraderStatisticsProvider` (`src/MMW.Application/Trading/Discipline/`) — sáu rào cần số liệu hành vi tính sẵn, và tính chúng bên trong rào sẽ phá ràng buộc "rào không gọi I/O".
 
 **Checkpoint**: kịch bản 5 của quickstart đạt — 12 test gate + 1 test bất biến xanh.
 
@@ -270,24 +277,31 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ### Tests for User Story 5 ⚠️
 
-- [ ] T126 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/KlineArchiveTests.cs`: `BackfillAsync` bất biến (nạp lại cùng khoảng không sinh trùng); `FindGapsAsync` phát hiện đúng nến thiếu
-- [ ] T127 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/NoLookAheadTests.cs`: `ArchiveMarketDataProvider.GetCandlesAsync` **không bao giờ** trả nến có `CloseTime > clock.UtcNow`; `BacktestClock.Advance` lùi về quá khứ ⟹ ném ngoại lệ
-- [ ] T128 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/BacktestParityTests.cs`: chuỗi `EntryScorecard` từ `BacktestEngine` **trùng khớp mọi trường** với chuỗi từ `SignalEvalService` chạy chế độ mô phỏng trên cùng dữ liệu (SC-003) — *test đắt nhất và giá trị nhất của feature*. Danh sách loại trừ **có tên rõ ràng** và chỉ đúng một phần tử: `market.funding_crowding` (dự phóng vs đã thanh toán, mục 9b). Loại trừ bằng cách nới lỏng phép so sánh là **sai** — phải là danh sách khoá tường minh, và một test riêng khẳng định danh sách đó không dài hơn một phần tử
-- [ ] T129 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/ReportTests.cs`: `Limitations` **không được rỗng**; phí và trượt giá được tính vào kết quả; ca một nến chạm cả dừng lỗ và chốt lời ⟹ giả định **dừng lỗ khớp trước**
+- [x] T126 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/KlineArchiveTests.cs`: `BackfillAsync` bất biến (nạp lại cùng khoảng không sinh trùng); `FindGapsAsync` phát hiện đúng nến thiếu
+- [x] T127 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/NoLookAheadTests.cs`: `ArchiveMarketDataProvider.GetCandlesAsync` **không bao giờ** trả nến có `CloseTime > clock.UtcNow`; `BacktestClock.Advance` lùi về quá khứ ⟹ ném ngoại lệ
+- [x] T128 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/BacktestParityTests.cs`: chuỗi `EntryScorecard` từ `BacktestEngine` **trùng khớp mọi trường** với chuỗi từ `SignalEvalService` chạy chế độ mô phỏng trên cùng dữ liệu (SC-003) — *test đắt nhất và giá trị nhất của feature*. Danh sách loại trừ **có tên rõ ràng** và chỉ đúng một phần tử: `market.funding_crowding` (dự phóng vs đã thanh toán, mục 9b). Loại trừ bằng cách nới lỏng phép so sánh là **sai** — phải là danh sách khoá tường minh, và một test riêng khẳng định danh sách đó không dài hơn một phần tử
+- [x] T129 [TEST] [P] [US5] `tests/MMW.RuleEngine.Tests/Backtest/ReportTests.cs`: `Limitations` **không được rỗng**; phí và trượt giá được tính vào kết quả; ca một nến chạm cả dừng lỗ và chốt lời ⟹ giả định **dừng lỗ khớp trước**
 
 ### Implementation for User Story 5
 
-- [ ] T130 [P] [US5] Tạo `src/MMW.Application/Backtest/BacktestClock.cs`; `Advance` chỉ tiến, lùi thì ném
-- [ ] T131 [P] [US5] Tạo `IKlineArchiveService.cs` + `KlineArchiveService.cs`: `BackfillAsync`, `GetRangeAsync`, `FindGapsAsync`
-- [ ] T131b [P] [US5] Thêm `BackfillFundingAsync` và `GetFundingAtAsync` vào `KlineArchiveService`: nạp `/fapi/v1/fundingRate` theo trang **500 bản ghi/lần** (không phải 1000), bất biến chống trùng theo `(Symbol, FundingTimeUtc)` — *phát sinh từ T001*
-- [ ] T132 [US5] Tạo `src/MMW.Application/Backtest/ArchiveMarketDataProvider.cs` cài `IMarketDataProvider`; lọc `CloseTime <= clock.UtcNow`; **`GetFundingAsync` đọc từ `FundingRateArchive`**; `GetOpenInterestHistAsync` / `GetGlobalLongShortRatioAsync` / `GetDepthAsync` / `GetTakerBuySellRatioAsync` trả `null` theo R-003
-- [ ] T133 [US5] Tạo `src/MMW.Application/Backtest/Models/BacktestReport.cs`
-- [ ] T134 [US5] Tạo `IBacktestEngine.cs` + `BacktestEngine.cs` theo vòng lặp trong [contracts/backtest.md](./contracts/backtest.md); **từ chối chạy** khi `FindGapsAsync` trả về khoảng thiếu
-- [ ] T135 [US5] Cài mô hình phí và trượt giá theo R-012, đọc từ `EngineSetting`
-- [ ] T136 [US5] Sinh `Limitations` tự động: **10/100 điểm** bị mất (`liquidity.open_interest` + `liquidity.spread_depth`), phí vốn dùng tỷ lệ **đã thanh toán** thay cho tỷ lệ **dự phóng**, giả định dừng lỗ khớp trước, phí và trượt giá đã dùng, số nến thiếu
-- [ ] T137 [US5] Thêm lệnh CLI `backfill` vào `src/MMW.Web/Program.cs` để nạp kho nến **và kho phí vốn** theo tham số
-- [ ] T138 [US5] Tạo `src/MMW.Web/Controllers/BacktestController.cs` + view: chạy kiểm thử, xem báo cáo, phân rã theo giờ và theo trạng thái ngày; **hiển thị `Limitations` nổi bật ngay cạnh các con số kết quả**
-- [ ] T139 [US5] Job snapshot dữ liệu phái sinh hàng giờ để dựng dần kho lịch sử cho kiểm thử đầy đủ 100 điểm về sau (giảm thiểu rủi ro R-003)
+- [x] T130 [P] [US5] Tạo `src/MMW.Application/Backtest/BacktestClock.cs`; `Advance` chỉ tiến, lùi thì ném
+- [x] T131 [P] [US5] Tạo `IKlineArchiveService.cs` + `KlineArchiveService.cs`: `BackfillAsync`, `GetRangeAsync`, `FindGapsAsync`
+- [x] T131b [P] [US5] Thêm `BackfillFundingAsync` và `GetFundingAtAsync` vào `KlineArchiveService`: nạp `/fapi/v1/fundingRate` theo trang **500 bản ghi/lần** (không phải 1000), bất biến chống trùng theo `(Symbol, FundingTimeUtc)` — *phát sinh từ T001*
+- [x] T132 [US5] Tạo `src/MMW.Application/Backtest/ArchiveMarketDataProvider.cs` cài `IMarketDataProvider`; lọc `CloseTime <= clock.UtcNow`; **`GetFundingAsync` đọc từ `FundingRateArchive`**; `GetOpenInterestHistAsync` / `GetGlobalLongShortRatioAsync` / `GetDepthAsync` / `GetTakerBuySellRatioAsync` trả `null` theo R-003
+- [x] T133 [US5] Tạo `src/MMW.Application/Backtest/Models/BacktestReport.cs`
+- [x] T134 [US5] Tạo `IBacktestEngine.cs` + `BacktestEngine.cs` theo vòng lặp trong [contracts/backtest.md](./contracts/backtest.md); **từ chối chạy** khi `FindGapsAsync` trả về khoảng thiếu
+- [x] T135 [US5] Cài mô hình phí và trượt giá theo R-012, đọc từ `EngineSetting`
+- [x] T136 [US5] Sinh `Limitations` tự động: **10/100 điểm** bị mất (`liquidity.open_interest` + `liquidity.spread_depth`), phí vốn dùng tỷ lệ **đã thanh toán** thay cho tỷ lệ **dự phóng**, giả định dừng lỗ khớp trước, phí và trượt giá đã dùng, số nến thiếu
+- [x] T137 [US5] Thêm lệnh CLI `backfill` vào `src/MMW.Web/Program.cs` để nạp kho nến **và kho phí vốn** theo tham số
+- [x] T138 [US5] Tạo `src/MMW.Web/Controllers/BacktestController.cs` + view: chạy kiểm thử, xem báo cáo, phân rã theo giờ và theo trạng thái ngày; **hiển thị `Limitations` nổi bật ngay cạnh các con số kết quả**
+- [x] T139 [US5] Job snapshot dữ liệu phái sinh hàng giờ để dựng dần kho lịch sử cho kiểm thử đầy đủ 100 điểm về sau (giảm thiểu rủi ro R-003)
+
+
+> **Ghi chú Phase 7 — ba điểm lệch so với danh sách.**
+> **Tách `IKlineArchiveReader` khỏi `IKlineArchiveService`** (phát sinh): service nạp kho phụ thuộc `IMarketDataProvider` để gọi sàn, mà ở chế độ kiểm thử `IMarketDataProvider` chính là `ArchiveMarketDataProvider` vốn đọc kho — gộp làm một thì tạo vòng phụ thuộc. Tách ra còn được thêm một tính chất đáng giá: đường đọc của kiểm thử KHÔNG THỂ chạm mạng vì nó không giữ tham chiếu nào tới sàn.
+> **Chạy kiểm thử bằng CLI, không bằng nút bấm trên web** (T138 sửa phạm vi): thay hai cổng cho cả vòng lặp không làm được trong một request web, vì scope của request đang gắn với đồng hồ thật. `src/MMW.Web/Jobs/BacktestCli.cs` xử lý `backfill` và `backtest`; màn hình web xem báo cáo và kiểm tra kho liền mạch.
+> **Backfill lịch sử đã hoàn chỉnh ở T131c:** cả nến và funding đều dùng endpoint có `startTime`, tiến con trỏ theo trang và bất biến khi chạy lại. Job `archive-snapshot` tiếp tục bổ sung dữ liệu mới mỗi giờ.
+- [x] T131c [US5] Thêm `GetFundingHistoryAsync(symbol, startTime, limit)` vào `IMarketDataProvider` (endpoint `/fapi/v1/fundingRate`, **500 bản ghi/trang**) và dùng nó trong `BackfillFundingAsync` để nạp lùi ≥ 2 năm lịch sử phí vốn thay vì chỉ ghi mốc hiện tại
 
 **Checkpoint**: kịch bản 6 của quickstart đạt. Đây là lúc **lần đầu tiên** biết được thuật toán có lợi thế hay không.
 
@@ -301,24 +315,24 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ### Tests for User Story 6 ⚠️
 
-- [ ] T140 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/MarketContextApplierTests.cs`: đủ **12 trường hợp** trong [contracts/ai-context.md](./contracts/ai-context.md); đặc biệt ca 10 — bối cảnh `critical` **thuận chiều** lệnh ⟹ hệ số đúng `1.0`, không lớn hơn
-- [ ] T141 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/DailyBriefValidationTests.cs`: 6 kiểm chứng phía nhận — cắt `confidence` về 0.8, loại sự kiện bịa, cắt cửa sổ quá dài, loại toàn bộ phản hồi khi có khoá gợi ý lệnh, JSON hỏng ⟹ bối cảnh trung tính
-- [ ] T142 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/NewsClassifierValidationTests.cs`: `isRumor` ⟹ severity trần `medium`; `halfLifeMinutes` cắt về `[0, 1440]`; không rõ ràng ⟹ `noise`
-- [ ] T143 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/EnrichGuardTests.cs`: `EnrichAsync` với phản hồi cố tình vi phạm ⟹ `RiskMultiplier`, `MaxTradesToday`, `AllowedDirections` **không đổi** (FR-041)
-- [ ] T144 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/CallBudgetTests.cs`: mô phỏng một ngày giao dịch ⟹ tổng lần gọi AI **< 30** (SC-005); vòng `signal-eval` và `position-manage` gọi **0** lần (FR-049)
+- [x] T140 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/MarketContextApplierTests.cs`: đủ **12 trường hợp** trong [contracts/ai-context.md](./contracts/ai-context.md); đặc biệt ca 10 — bối cảnh `critical` **thuận chiều** lệnh ⟹ hệ số đúng `1.0`, không lớn hơn
+- [x] T141 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/DailyBriefValidationTests.cs`: 6 kiểm chứng phía nhận — cắt `confidence` về 0.8, loại sự kiện bịa, cắt cửa sổ quá dài, loại toàn bộ phản hồi khi có khoá gợi ý lệnh, JSON hỏng ⟹ bối cảnh trung tính
+- [x] T142 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/NewsClassifierValidationTests.cs`: `isRumor` ⟹ severity trần `medium`; `halfLifeMinutes` cắt về `[0, 1440]`; không rõ ràng ⟹ `noise`
+- [x] T143 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/EnrichGuardTests.cs`: `EnrichAsync` với phản hồi cố tình vi phạm ⟹ `RiskMultiplier`, `MaxTradesToday`, `AllowedDirections` **không đổi** (FR-041)
+- [x] T144 [TEST] [P] [US6] `tests/MMW.RuleEngine.Tests/Ai/CallBudgetTests.cs`: mô phỏng một ngày giao dịch ⟹ tổng lần gọi AI **< 30** (SC-005); vòng `signal-eval` và `position-manage` gọi **0** lần (FR-049)
 
 ### Implementation for User Story 6
 
-- [ ] T145 [P] [US6] Tạo `src/MMW.Infrastructure/Ai/ClaudeLlmService.cs` cài `ILlmService`; thêm nhánh `Claude` vào switch provider trong `src/MMW.Infrastructure/DependencyInjection.cs`; khoá đọc từ User Secrets, không vào `appsettings.json`
-- [ ] T146 [P] [US6] Tạo `src/MMW.Application/Ai/Prompts/DailyBriefPrompt.cs` với đủ 5 ràng buộc tuyệt đối trong contract
-- [ ] T147 [P] [US6] Tạo `src/MMW.Application/Ai/Prompts/NewsClassifierPrompt.cs`
-- [ ] T148 [US6] Tạo `src/MMW.Application/Ai/MarketContextApplier.cs`: trả hệ số trong `[0, 1]`; chỉ áp khi bối cảnh liên quan symbol **và ngược chiều lệnh**
-- [ ] T149 [US6] Tạo `IMarketContextService.cs` + `MarketContextService.cs`: `GetActiveAsync` lọc theo `ExpiresAtUtc`, `RunDailyBriefAsync`, `ClassifyNewsAsync` (chỉ xử lý `SourceKey` mới)
-- [ ] T150 [US6] Cài 6 bước kiểm chứng phản hồi Daily Brief và 4 bước của News Classifier; mọi trường bị loại ghi vào `MarketContextRecord.RejectedFields`
-- [ ] T151 [US6] Tạo `IDailyBriefEnricher` + cài đặt; chữ ký nhận `DailyPlan` **đã hoàn chỉnh**, chỉ ghi 3 trường `Ai*`
-- [ ] T152 [US6] Cắm `MarketContextApplier` vào `SignalEvalService` như hệ số thứ tư của công thức sizing
-- [ ] T153 [US6] Đăng ký job Hangfire `news-scan` cron `*/15 * * * *` trong `src/MMW.Web/Program.cs`; nối vào job `daily-plan` bước làm giàu bằng AI
-- [ ] T154 [US6] Đăng ký DI cho lớp AI trong `src/MMW.Application/DependencyInjection.cs`
+- [x] T145 [P] [US6] Tạo `src/MMW.Infrastructure/Ai/ClaudeLlmService.cs` cài `ILlmService`; thêm nhánh `Claude` vào switch provider trong `src/MMW.Infrastructure/DependencyInjection.cs`; khoá đọc từ User Secrets, không vào `appsettings.json`
+- [x] T146 [P] [US6] Tạo `src/MMW.Application/Ai/Prompts/DailyBriefPrompt.cs` với đủ 5 ràng buộc tuyệt đối trong contract
+- [x] T147 [P] [US6] Tạo `src/MMW.Application/Ai/Prompts/NewsClassifierPrompt.cs`
+- [x] T148 [US6] Tạo `src/MMW.Application/Ai/MarketContextApplier.cs`: trả hệ số trong `[0, 1]`; chỉ áp khi bối cảnh liên quan symbol **và ngược chiều lệnh**
+- [x] T149 [US6] Tạo `IMarketContextService.cs` + `MarketContextService.cs`: `GetActiveAsync` lọc theo `ExpiresAtUtc`, `RunDailyBriefAsync`, `ClassifyNewsAsync` (chỉ xử lý `SourceKey` mới)
+- [x] T150 [US6] Cài 6 bước kiểm chứng phản hồi Daily Brief và 4 bước của News Classifier; mọi trường bị loại ghi vào `MarketContextRecord.RejectedFields`
+- [x] T151 [US6] Tạo `IDailyBriefEnricher` + cài đặt; chữ ký nhận `DailyPlan` **đã hoàn chỉnh**, chỉ ghi 3 trường `Ai*`
+- [x] T152 [US6] Cắm `MarketContextApplier` vào `SignalEvalService` như hệ số thứ tư của công thức sizing
+- [x] T153 [US6] Đăng ký job Hangfire `news-scan` cron `*/15 * * * *` trong `src/MMW.Web/Program.cs`; nối vào job `daily-plan` bước làm giàu bằng AI
+- [x] T154 [US6] Đăng ký DI cho lớp AI trong `src/MMW.Application/DependencyInjection.cs`
 
 **Checkpoint**: kịch bản 4 của quickstart đạt — 12 test chống lạm quyền xanh.
 
@@ -332,15 +346,15 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ### Tests for User Story 7 ⚠️
 
-- [ ] T155 [TEST] [P] [US7] `tests/MMW.RuleEngine.Tests/Ai/ShadowModeTests.cs`: đường AI để lại `AiSignalScanRecord` nhưng **không** tạo `Trade` nào; tắt `ShadowComparisonEnabled` ⟹ không lần gọi AI nào cho mục đích sinh tín hiệu
-- [ ] T156 [TEST] [P] [US7] `tests/MMW.RuleEngine.Tests/Ai/DisagreementTests.cs`: AI đề xuất vào lệnh còn đường tất định từ chối ⟹ điểm bất đồng được ghi nhận
+- [x] T155 [TEST] [P] [US7] `tests/MMW.RuleEngine.Tests/Ai/ShadowModeTests.cs`: đường AI để lại `AiSignalScanRecord` nhưng **không** tạo `Trade` nào; tắt `ShadowComparisonEnabled` ⟹ không lần gọi AI nào cho mục đích sinh tín hiệu
+- [x] T156 [TEST] [P] [US7] `tests/MMW.RuleEngine.Tests/Ai/DisagreementTests.cs`: AI đề xuất vào lệnh còn đường tất định từ chối ⟹ điểm bất đồng được ghi nhận
 
 ### Implementation for User Story 7
 
-- [ ] T157 [US7] Sửa `src/MMW.Application/Services/MarketScanService.cs`: gỡ `AutoCreateTradeFromSignalAsync` và lời gọi `_liveOrders.PlaceForTradeAsync` khỏi đường AI; giữ nguyên `GenerateAiSignalAsync` và bản ghi kiểm toán (FR-057)
-- [ ] T158 [US7] Thêm cột ghi nhận điểm bất đồng giữa hai đường vào `AiSignalScanRecord`, kèm migration
-- [ ] T159 [US7] Bọc toàn bộ đường AI sau công tắc `AppSetting.ShadowComparisonEnabled`
-- [ ] T160 [US7] Tạo trang báo cáo so sánh: số đề xuất mỗi bên, số điểm bất đồng, kết quả giả định của các đề xuất bên AI nếu đã thực thi (FR-060)
+- [x] T157 [US7] Sửa `src/MMW.Application/Services/MarketScanService.cs`: gỡ `AutoCreateTradeFromSignalAsync` và lời gọi `_liveOrders.PlaceForTradeAsync` khỏi đường AI; giữ nguyên `GenerateAiSignalAsync` và bản ghi kiểm toán (FR-057)
+- [x] T158 [US7] Thêm cột ghi nhận điểm bất đồng giữa hai đường vào `AiSignalScanRecord`, kèm migration
+- [x] T159 [US7] Bọc toàn bộ đường AI sau công tắc `AppSetting.ShadowComparisonEnabled`
+- [x] T160 [US7] Tạo trang báo cáo so sánh: số đề xuất mỗi bên, số điểm bất đồng, kết quả giả định của các đề xuất bên AI nếu đã thực thi (FR-060)
 
 **Checkpoint**: toàn bộ 7 user story hoạt động độc lập.
 
@@ -348,14 +362,23 @@ Sửa kéo theo: `research.md` R-003/R-004 + bảng rủi ro · `data-model.md` 
 
 ## Phase 10: Polish & Cross-Cutting
 
-- [ ] T161 [P] Cập nhật `SYSTEM_OVERVIEW.md` — tài liệu này đã lạc hậu từ trước feature (ghi nhận trong Sync Impact Report của hiến chương); bổ sung engine mới, 4 job, và các bảng mới
-- [ ] T162 [P] Cập nhật `README.md`: hướng dẫn nạp kho nến và chạy kiểm thử lịch sử
+- [x] T161 [P] Cập nhật `SYSTEM_OVERVIEW.md` — tài liệu này đã lạc hậu từ trước feature (ghi nhận trong Sync Impact Report của hiến chương); bổ sung engine mới, 4 job, và các bảng mới
+- [x] T162 [P] Cập nhật `README.md`: hướng dẫn nạp kho nến và chạy kiểm thử lịch sử
 - [ ] T163 Chạy toàn bộ [quickstart.md](./quickstart.md) — cả 8 kịch bản phải đạt
-- [ ] T164 Kiểm tra hiệu năng: `signal-eval` < 10 giây, `position-manage` < 5 giây, kiểm thử 2 năm < 5 phút, `daily-plan` < 30 giây
-- [ ] T165 Rà bí mật: không khoá nào trong migration, seed, `EntryScorecard.InputSnapshotJson`, `MarketContextRecord.RawResponseJson`, hay log (Cổng chất lượng 5)
-- [ ] T166 Xác nhận `LiveTrading:Enabled = false` và `UseTestnet = true` sau toàn bộ thay đổi (SC-014)
-- [ ] T167 Chạy `dotnet build --configuration Release` — không lỗi, **không cảnh báo mới** (Cổng chất lượng 2)
+- [x] T164 Kiểm tra hiệu năng: `signal-eval` < 10 giây, `position-manage` < 5 giây, kiểm thử 2 năm < 5 phút, `daily-plan` < 30 giây
+- [x] T165 Rà bí mật: không khoá nào trong migration, seed, `EntryScorecard.InputSnapshotJson`, `MarketContextRecord.RawResponseJson`, hay log (Cổng chất lượng 5)
+- [x] T166 Xác nhận `LiveTrading:Enabled = false` và `UseTestnet = true` sau toàn bộ thay đổi (SC-014)
+- [x] T167 Chạy `dotnet build --configuration Release` — không lỗi, **không cảnh báo mới** (Cổng chất lượng 2)
 - [ ] T168 Bật `AppSetting.DeterministicEngineEnabled = true` và chạy **7 ngày mô phỏng** theo mục Nghiệm thu vận hành của quickstart
+
+**Bằng chứng Phase 10 (2026-08-03):**
+
+- T163: cả 8 bộ lọc test tự động đều xanh và không bộ lọc nào rỗng; backfill 2 năm + backtest offline đã đạt. Browser xác nhận route bảo vệ chuyển về login; còn pending kiểm chứng các trang sau đăng nhập vì chưa có credential do người dùng cấp.
+- T164: đạt trên máy nghiệm thu — `signal-eval` tối đa 3,29 giây, `position-manage` 2,97 giây, `daily-plan` 2,69 giây theo TRX; backtest BTCUSDT 2024-01-01→2025-12-31 hoàn tất 3 phút 18,8 giây. Kho gồm 150.586 nến + 4.386 funding records, không có gap.
+- T165: quét prefix bí mật không có kết quả; cấu hình khoá/mật khẩu trong `appsettings.json` đều rỗng; snapshot, phản hồi AI và audit log không chứa khoá thô.
+- T166: có test đọc trực tiếp `appsettings.json` để giữ `LiveTrading:Enabled=false` và `UseTestnet=true`.
+- T167: Release build đạt 0 lỗi; còn 1 cảnh báo NU1903 của AutoMapper 14.0.0 đã tồn tại trước Phase 10, không có cảnh báo mới. Toàn bộ 680 test Release đều xanh, không bỏ qua.
+- T168: công tắc đã có trên `/Settings` và năm job quyết định đã được chặn theo công tắc; cần đủ 7 ngày quan sát thực tế mới được đánh dấu hoàn tất.
 
 ---
 

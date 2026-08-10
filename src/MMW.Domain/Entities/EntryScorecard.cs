@@ -30,6 +30,15 @@ public class EntryScorecard : BaseEntity
     /// <summary>Null khi không xác định được hướng.</summary>
     public TradeDirection? Direction { get; set; }
 
+    // ── Phiên bản/setup/trigger ────────────────────────────────────────
+    public TradingStrategyVersion StrategyVersion { get; set; } = TradingStrategyVersion.AdaptiveV2;
+    public SetupType SetupType { get; set; } = SetupType.None;
+    public SetupTriggerState TriggerState { get; set; } = SetupTriggerState.NotEvaluated;
+    public string? TriggerDetail { get; set; }
+    public SetupFunnelStage SetupStage { get; set; } = SetupFunnelStage.NotEligible;
+    public string? SetupEventId { get; set; }
+    public int SetupQualityScore { get; set; }
+
     // ── Điểm ────────────────────────────────────────────────────────────
     public int TechnicalScore { get; set; }
     public int MarketScore { get; set; }
@@ -40,6 +49,32 @@ public class EntryScorecard : BaseEntity
 
     /// <summary>0–100.</summary>
     public int TotalScore { get; set; }
+
+    // ── Chọn chiều (V2 §4) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Phần điểm đến từ các tiêu chí ĐỔI THEO CHIỀU — con số đã dùng để so hai chiều.
+    /// </summary>
+    /// <remarks>
+    /// Ghi riêng chứ không suy lại từ các dòng phiếu: cờ <c>IsDirectional</c> nằm trong mã và có
+    /// thể đổi, còn phiếu là bản ghi kiểm toán — nó phải nói con số nào ĐÃ ĐƯỢC dùng hôm đó.
+    /// </remarks>
+    public int DirectionalScore { get; set; }
+
+    /// <summary>Tổng điểm của chiều NGƯỢC LẠI. Null khi chiều kia không được chấm hoặc bị veto.</summary>
+    public int? OppositeScore { get; set; }
+
+    /// <summary>Điểm đổi-theo-chiều của chiều ngược lại. Cùng quy ước null như trên.</summary>
+    public int? OppositeDirectionalScore { get; set; }
+
+    /// <summary>
+    /// Vị trí giá trong biên độ khung thiên hướng, <c>0</c> = đáy, <c>100</c> = đỉnh.
+    /// </summary>
+    /// <remarks>
+    /// Chỉ có giá trị trên ngày đi ngang. Ngoài 0–100 nghĩa là giá đã ra ngoài biên độ. Ghi lại
+    /// để trả lời được câu "vì sao hôm đó không lệnh nào vào" mà không phải dựng lại chuỗi nến.
+    /// </remarks>
+    [Precision(9, 4)] public decimal? RangePositionPercent { get; set; }
 
     // ── Quyết định ──────────────────────────────────────────────────────
     public ScorecardOutcome Outcome { get; set; }
@@ -54,14 +89,49 @@ public class EntryScorecard : BaseEntity
     /// <summary>Luôn ≤ 1.0 (FR-042). AI chỉ có một hướng tác động, và hướng đó là xuống.</summary>
     [Precision(9, 4)] public decimal AiMultiplier { get; set; }
 
-    /// <summary>Tích của bốn giá trị trên. Bất biến: <c>FinalSizeR ≤ BaseSizeR</c>.</summary>
+    /// <summary>
+    /// Tỉ lệ điểm ĐO ĐƯỢC trên tổng thang điểm, luôn ≤ 1.0.
+    /// </summary>
+    /// <remarks>
+    /// Ngưỡng vào lệnh được chuẩn hoá theo phần điểm đo được, nên hình phạt thiếu dữ liệu của
+    /// FR-006 phải quay lại ở kích thước thay vì ở ngưỡng. Ghi thành cột riêng chứ không gộp vào
+    /// hệ số ngày: khi xem lại một phiếu cũ, "vào nhỏ vì hôm đó là ngày xấu" và "vào nhỏ vì hôm
+    /// đó mất nguồn dữ liệu" là hai câu chuyện khác nhau.
+    /// </remarks>
+    [Precision(9, 4)] public decimal DataMultiplier { get; set; } = 1m;
+
+    /// <summary>Hệ số riêng của playbook và quality V6; V2–V5 luôn bằng 1.</summary>
+    [Precision(9, 4)] public decimal SetupSizeMultiplier { get; set; } = 1m;
+
+    /// <summary>Số điểm thực sự đo được lần chấm này, trên thang <see cref="TotalMaxPoints"/>.</summary>
+    public int AvailableMaxPoints { get; set; }
+
+    /// <summary>Tổng thang điểm của bộ tiêu chí cộng điểm (85 với bộ hiện tại).</summary>
+    public int TotalMaxPoints { get; set; }
+
+    /// <summary>Tích của năm giá trị trên. Bất biến: <c>FinalSizeR ≤ BaseSizeR</c>.</summary>
     [Precision(9, 4)] public decimal FinalSizeR { get; set; }
 
     // ── Mức giá đề xuất ─────────────────────────────────────────────────
     [Precision(18, 8)] public decimal? SuggestedEntry { get; set; }
     [Precision(18, 8)] public decimal? SuggestedStopLoss { get; set; }
     [Precision(18, 8)] public decimal? SuggestedTakeProfit { get; set; }
+    [Precision(18, 8)] public decimal? SuggestedFirstTakeProfit { get; set; }
+    [Precision(18, 8)] public decimal? SuggestedRunnerTakeProfit { get; set; }
+    [Precision(18, 8)] public decimal? SuggestedLimitEntry { get; set; }
     [Precision(9, 4)] public decimal? RiskReward { get; set; }
+
+    /// <summary>Expected execution cost theo R của đúng plan entry/stop/target.</summary>
+    [Precision(9, 4)] public decimal? ExpectedCostR { get; set; }
+
+    /// <summary>R:R sau expected cost, dùng làm gate ở V3.</summary>
+    [Precision(9, 4)] public decimal? NetRiskReward { get; set; }
+
+    /// <summary>Khoảng entry đầu tới stop theo điểm cơ bản của giá entry.</summary>
+    [Precision(9, 4)] public decimal? StopDistanceBps { get; set; }
+    public DayRegime? EffectiveDayRegime { get; set; }
+    public bool IsIntradayRegimeOverride { get; set; }
+    public string? IntradayRegimeReason { get; set; }
 
     // ── Truy vết ────────────────────────────────────────────────────────
     public long? TradeId { get; set; }

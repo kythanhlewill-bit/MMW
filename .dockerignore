@@ -1,0 +1,28 @@
+# Build output
+**/bin/
+**/obj/
+artifacts/
+
+# IDE / VS
+.vs/
+.idea/
+*.user
+
+# Logs
+**/logs/
+*.log
+
+# Secrets & môi trường local (KHÔNG đưa vào image)
+.env
+**/appsettings.Development.json
+
+# Git & tài liệu
+.git/
+.gitignore
+.github/
+*.md
+docs/
+specs/
+
+# Test project — không cần cho publish
+tests/
