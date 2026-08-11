@@ -34,6 +34,38 @@ public class ShadowModeTests
     }
 
     [Fact]
+    public async Task Quet_lai_trong_cung_cay_nen_thi_khong_goi_AI_lan_hai()
+    {
+        using var h = await ShadowModeHarness.CreateAsync(shadowEnabled: true);
+
+        await h.ScanAsync();
+        var callsAfterFirst = h.Llm.CallCount;
+        Assert.True(callsAfterFirst > 0, string.Join(Environment.NewLine, h.Logs));
+
+        // Cron chạy dày hơn interval của watch item -> lần quét này rơi vào ĐÚNG cây nến vừa hỏi.
+        await h.ScanAsync();
+
+        Assert.Equal(callsAfterFirst, h.Llm.CallCount);
+        Assert.Single(await h.ReadAsync<AiSignalScanRecord>());
+    }
+
+    [Fact]
+    public async Task Sang_cay_nen_moi_thi_goi_AI_lai()
+    {
+        using var h = await ShadowModeHarness.CreateAsync(shadowEnabled: true);
+
+        await h.ScanAsync();
+        var callsAfterFirst = h.Llm.CallCount;
+
+        // Đẩy mốc quét lùi ra trước lúc cây nến đóng: đứng từ vòng quét sau, đây là cây nến chưa hỏi.
+        await h.BackdateAiAuditsAsync(TimeSpan.FromHours(2));
+        await h.ScanAsync();
+
+        Assert.True(h.Llm.CallCount > callsAfterFirst, "Cây nến mới phải được hỏi AI.");
+        Assert.Equal(2, (await h.ReadAsync<AiSignalScanRecord>()).Count);
+    }
+
+    [Fact]
     public void MarketScan_khong_con_nhan_cac_service_co_quyen_tao_hay_gui_lenh()
     {
         var parameters = typeof(MarketScanService).GetConstructors().Single().GetParameters();

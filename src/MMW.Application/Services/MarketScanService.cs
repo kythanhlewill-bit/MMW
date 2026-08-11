@@ -186,6 +186,22 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
                     continue;
                 }
 
+                // Cron chạy mỗi 15 phút nhưng watch item để interval 1h -> 4 lần quét trong cùng
+                // một cây nến. Chỉ báo tính trên nến ĐÃ ĐÓNG nên 4 lần đó có RSI/EMA/MACD GIỐNG
+                // HỆT nhau, chỉ khác giá hiện tại: 3 trong 4 lời gọi AI là hỏi lại y nguyên câu
+                // hỏi cũ. Bỏ qua khi cây nến đóng gần nhất đã được hỏi rồi.
+                //
+                // KHÔNG lọc theo điểm tất định ở đây. Đã đo trên 211 lời gọi thật: tỷ lệ AI chấp
+                // nhận ở |score|=1 (42%) ngang |score|=2 (44%), nên cổng điểm chỉ cắt tín hiệu
+                // thật chứ không cắt được lời gọi thừa. Thang điểm cũng khác nhau — Score ở đây
+                // là -2..+2 CÓ DẤU, còn MinSignalScore áp lên điểm AI thang 0..5.
+                if (await AlreadyScannedThisCandleAsync(item, candles, now, cancellationToken))
+                {
+                    await _unitOfWork.CommitAsync(cancellationToken);
+                    scanned++;
+                    continue;
+                }
+
                 TradeSignal? signalEntity = null;
                 var macroContext = await _macroEvents.GetContextForTradeAsync(item.Symbol, now, cancellationToken);
                 var (signal, audit) = await GenerateAiSignalAsync(
@@ -231,6 +247,48 @@ Ràng buộc: LONG: stopLoss < entry < takeProfit. SHORT: takeProfit < entry < s
         }
 
         return new ScanResult(scanned, failed);
+    }
+
+    /// <summary>
+    /// Đã gọi AI cho cây nến đóng gần nhất của symbol+interval này chưa.
+    /// </summary>
+    /// <remarks>
+    /// Mốc so sánh là bảng audit chứ không phải biến trong bộ nhớ: audit đã ghi mọi lần gọi AI
+    /// nên chặn trùng vẫn đúng sau khi redeploy container, không cần thêm cột hay migration.
+    ///
+    /// Bản ghi audit được tạo NGAY khi bắt đầu gọi AI (kể cả khi sau đó AI trả JSON hỏng), nên
+    /// một cây nến hỏng sẽ không bị hỏi lại — đúng ý đồ: gọi lại cũng ra kết quả như cũ vì chỉ
+    /// báo không đổi, chỉ tốn tiền thêm lần nữa.
+    /// </remarks>
+    private async Task<bool> AlreadyScannedThisCandleAsync(
+        WatchItem item,
+        IReadOnlyList<Candle> candles,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        // Nến cuối chuỗi có thể đang chạy. Lùi về cây đã đóng gần nhất — cùng cây mà
+        // ClosedOnly() bên trong Analyze đã dùng để tính chỉ báo.
+        Candle? lastClosed = null;
+        for (var i = candles.Count - 1; i >= 0; i--)
+        {
+            if (candles[i].CloseTime <= now) { lastClosed = candles[i]; break; }
+        }
+
+        // Chưa có cây nào đóng thì chỉ báo cũng chưa tính được -> để đường AI tự xử lý.
+        if (lastClosed is null) return false;
+
+        var lastScannedAt = await _aiSignalAudits.Queryable.AsNoTracking()
+            .Where(x => x.Symbol == item.Symbol && x.Interval == item.Interval)
+            .OrderByDescending(x => x.ScannedAt)
+            .Select(x => (DateTime?)x.ScannedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (lastScannedAt is null || lastScannedAt <= lastClosed.CloseTime) return false;
+
+        _logger.LogDebug(
+            "Bỏ qua gọi AI cho {Symbol} {Interval}: cây nến đóng lúc {CloseTime:O} đã quét lúc {ScannedAt:O}.",
+            item.Symbol, item.Interval, lastClosed.CloseTime, lastScannedAt);
+        return true;
     }
 
     private async Task<(SuggestedSignal? Signal, AiSignalScanRecord Audit)> GenerateAiSignalAsync(

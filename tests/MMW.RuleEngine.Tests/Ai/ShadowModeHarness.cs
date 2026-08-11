@@ -101,6 +101,18 @@ internal sealed class ShadowModeHarness : IDisposable
         await db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Lùi mốc quét của mọi audit AI về quá khứ — giả lập "đã sang cây nến mới".
+    /// </summary>
+    public async Task BackdateAiAuditsAsync(TimeSpan by)
+    {
+        using var scope = _provider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MmwDbContext>();
+        foreach (var audit in await db.AiSignalScanRecords.ToListAsync())
+            audit.ScannedAt -= by;
+        await db.SaveChangesAsync();
+    }
+
     public async Task<List<T>> ReadAsync<T>() where T : class
     {
         using var scope = _provider.CreateScope();
