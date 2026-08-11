@@ -309,6 +309,26 @@ public enum ScorecardOutcome
     Vetoed = 3,
 }
 
+/// <summary>
+/// Kết cục THỰC TẾ của một phiếu khi chạy tiếp trên giá, bất kể phiếu đó có được vào lệnh hay không.
+/// </summary>
+/// <remarks>
+/// Đây là thước đo các CỔNG, không phải thước đo lệnh. Một phiếu bị veto rồi giá đi ngược nghĩa
+/// là cổng đã cứu; bị veto mà giá chạm mục tiêu nghĩa là cổng chặn nhầm. Không có bản ghi này thì
+/// không câu nào trong hai câu đó trả lời được.
+///
+/// <see cref="OpenAtHorizon"/> KHÔNG phải hoà: nó nói giá không chạm mức nào trong cửa sổ đo, và
+/// đó là một kết quả riêng biệt cần đếm riêng. Thiếu nến thì không sinh bản ghi — không được lẫn
+/// "chưa đo được" vào "đã đo và không chạm gì".
+/// </remarks>
+public enum ScorecardReviewOutcome
+{
+    Target = 1,
+    Stop = 2,
+    TimeStop = 3,
+    OpenAtHorizon = 4,
+}
+
 /// <summary>Loại bản ghi bối cảnh do AI sinh.</summary>
 public enum MarketContextKind
 {

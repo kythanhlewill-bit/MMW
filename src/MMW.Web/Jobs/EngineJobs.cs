@@ -28,6 +28,7 @@ public interface IEngineJobs
     Task RunSignalEvalAsync(CancellationToken ct = default);
     Task RunArchiveSnapshotAsync(CancellationToken ct = default);
     Task RunNewsScanAsync(CancellationToken ct = default);
+    Task RunScorecardOutcomeReviewAsync(CancellationToken ct = default);
 }
 
 public sealed class EngineJobs : IEngineJobs
@@ -42,6 +43,7 @@ public sealed class EngineJobs : IEngineJobs
     private readonly IKlineArchiveService _archive;
     private readonly IDailyBriefEnricher _dailyBrief;
     private readonly IMarketContextService _marketContext;
+    private readonly IScorecardOutcomeReviewService _outcomeReview;
     private readonly ILogger<EngineJobs> _logger;
 
     public EngineJobs(
@@ -55,6 +57,7 @@ public sealed class EngineJobs : IEngineJobs
         IKlineArchiveService archive,
         IDailyBriefEnricher dailyBrief,
         IMarketContextService marketContext,
+        IScorecardOutcomeReviewService outcomeReview,
         ILogger<EngineJobs> logger)
     {
         _db = db;
@@ -67,6 +70,7 @@ public sealed class EngineJobs : IEngineJobs
         _archive = archive;
         _dailyBrief = dailyBrief;
         _marketContext = marketContext;
+        _outcomeReview = outcomeReview;
         _logger = logger;
     }
 
@@ -167,6 +171,24 @@ public sealed class EngineJobs : IEngineJobs
                 _logger.LogError(ex, "Lỗi chấm điểm cho tài khoản {AccountId}.", accountId);
             }
         }
+    }
+
+    /// <summary>
+    /// Chấm kết cục thực tế cho các phiếu đã đủ nến — thước đo các CỔNG veto.
+    /// </summary>
+    /// <remarks>
+    /// Chạy SAU job chụp kho nến trong cùng giờ, vì nó ăn chính dữ liệu job kia vừa nạp.
+    ///
+    /// Không đặt <c>DeterministicEnabled</c> làm điều kiện: engine tắt thì không sinh phiếu MỚI,
+    /// nhưng phiếu CŨ vẫn cần được chấm nốt. Dừng chấm khi tắt engine sẽ để lại một khoảng trống
+    /// vĩnh viễn trong dữ liệu đo, đúng vào giai đoạn người ta hay tắt engine để xem lại nó.
+    /// </remarks>
+    [DisableConcurrentExecution(timeoutInSeconds: 600)]
+    public async Task RunScorecardOutcomeReviewAsync(CancellationToken ct = default)
+    {
+        var created = await _outcomeReview.ResolvePendingAsync(_clock.UtcNow, ct: ct);
+        if (created > 0)
+            _logger.LogInformation("Đã chấm kết cục cho {Count} phiếu.", created);
     }
 
     /// <summary>

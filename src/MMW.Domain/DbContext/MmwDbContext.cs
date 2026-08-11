@@ -41,6 +41,7 @@ public partial class MmwDbContext : Microsoft.EntityFrameworkCore.DbContext
     public virtual DbSet<DailyPlan> DailyPlans => Set<DailyPlan>();
     public virtual DbSet<EntryScorecard> EntryScorecards => Set<EntryScorecard>();
     public virtual DbSet<EntryScorecardLine> EntryScorecardLines => Set<EntryScorecardLine>();
+    public virtual DbSet<ScorecardOutcomeReview> ScorecardOutcomeReviews => Set<ScorecardOutcomeReview>();
     public virtual DbSet<MarketContextRecord> MarketContextRecords => Set<MarketContextRecord>();
     public virtual DbSet<KlineArchive> KlineArchives => Set<KlineArchive>();
     public virtual DbSet<FundingRateArchive> FundingRateArchives => Set<FundingRateArchive>();

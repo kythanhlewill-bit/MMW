@@ -210,6 +210,15 @@ try
         job => job.RunArchiveSnapshotAsync(CancellationToken.None),
         "5 * * * *");
 
+    // Chấm kết cục phiếu: 25 phút sau job chụp kho, để ăn đúng phần nến vừa được nạp về.
+    // Đây là thước đo các CỔNG veto — phiếu bị chặn rồi giá đi ngược nghĩa là cổng cứu được một
+    // lệnh lỗ, bị chặn mà giá chạm mục tiêu nghĩa là cổng chặn nhầm. Không chạy job này thì cả
+    // hai vế đều không có số liệu và mọi tranh luận về cổng quay về cảm nhận.
+    RecurringJob.AddOrUpdate<IEngineJobs>(
+        "scorecard-outcome-review",
+        job => job.RunScorecardOutcomeReviewAsync(CancellationToken.None),
+        "30 * * * *");
+
     // Job lập kế hoạch ngày: 23:30 UTC, sinh cho ngày UTC kế tiếp, 1 lời gọi AI (FR-016).
     RecurringJob.AddOrUpdate<IEngineJobs>(
         "daily-plan",
