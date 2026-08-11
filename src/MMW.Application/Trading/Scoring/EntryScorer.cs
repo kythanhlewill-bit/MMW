@@ -53,6 +53,7 @@ public sealed class EntryScorer : IEntryScorer
         int technical = 0, market = 0, liquidity = 0, discipline = 0;
         var availableMax = 0;
         var directional = 0;
+        CriterionResult? firstVeto = null;
 
         foreach (var criterion in _criteria)
         {
@@ -62,24 +63,18 @@ public sealed class EntryScorer : IEntryScorer
 
             if (result.IsHardVeto)
             {
-                // Dừng NGAY. Đây là hành vi bắt buộc chứ không phải tối ưu hoá: nó giữ cho
-                // phiếu nêu đúng MỘT lý do từ chối thay vì một danh sách gây nhiễu. Chạy tiếp
-                // rồi gom nhiều lý do sẽ khiến câu hỏi "vì sao lệnh này bị loại" có bốn câu
-                // trả lời, và không câu nào là câu quyết định.
-                return new ScoringOutcome(
-                    TotalScore: 0,
-                    TechnicalScore: technical,
-                    MarketScore: market,
-                    LiquidityScore: liquidity,
-                    DisciplinePenalty: discipline,
-                    IsVetoed: true,
-                    VetoReason: result.VetoReason,
-                    VetoDetail: result.Reason,
-                    Lines: lines,
-                    TotalMaxPoints: _totalMaxPoints,
-                    AvailableMaxPoints: availableMax,
-                    DirectionalScore: directional,
-                    DirectionalMaxPoints: _directionalMaxPoints);
+                // Phiếu vẫn nêu đúng MỘT lý do từ chối — nhưng lý do đó chốt ở đây, không phải
+                // bằng cách dừng vòng lặp. Chỉ veto ĐẦU TIÊN theo thứ tự (Group, Key) được ghi;
+                // các veto sau chỉ nằm lại trong Lines để truy vết. Câu hỏi "vì sao lệnh này bị
+                // loại" vẫn có đúng một câu trả lời quyết định.
+                //
+                // Vì sao KHÔNG dừng sớm nữa: dừng sớm làm mọi tiêu chí phía sau không được hỏi,
+                // nên phiếu bị veto mất sạch điểm chẩn đoán. Tệ hơn, `availableMax` cụt tại chỗ
+                // veto khiến DataCoverage đọc ra như một sự cố mất nguồn dữ liệu — ngày
+                // 2026-08-11 mọi phiếu ghi 8/85 (9%) trong khi nguồn dữ liệu hoàn toàn khoẻ.
+                // Con số đó còn chảy thẳng vào sizing qua nhánh trigger-override, nơi veto được
+                // bỏ qua nhưng độ phủ cụt thì không.
+                firstVeto ??= result;
             }
 
             if (criterion.Group != ScoreGroup.Discipline && result.DataAvailable)
@@ -100,6 +95,31 @@ public sealed class EntryScorer : IEntryScorer
         }
 
         var total = Math.Clamp(technical + market + liquidity + discipline, 0, 100);
+
+        // Veto cứng áp SAU KHI đã hỏi hết tiêu chí. Tổng vẫn về 0 — một phiếu bị veto không
+        // được mang điểm, nếu không nó sẽ lọt qua mọi phép so ngưỡng ở tầng sizing. Nhưng điểm
+        // thành phần và `availableMax` bây giờ là số ĐẦY ĐỦ, nên câu hỏi "bỏ cổng này ra thì
+        // setup đó chấm được bao nhiêu" có dữ liệu để trả lời.
+        //
+        // Đặt TRƯỚC phép kiểm độ phủ để giữ nguyên thứ tự ưu tiên cũ: veto cứng thắng
+        // InsufficientData, y như hồi còn thoát sớm.
+        if (firstVeto is not null)
+        {
+            return new ScoringOutcome(
+                TotalScore: 0,
+                TechnicalScore: technical,
+                MarketScore: market,
+                LiquidityScore: liquidity,
+                DisciplinePenalty: discipline,
+                IsVetoed: true,
+                VetoReason: firstVeto.VetoReason,
+                VetoDetail: firstVeto.Reason,
+                Lines: lines,
+                TotalMaxPoints: _totalMaxPoints,
+                AvailableMaxPoints: availableMax,
+                DirectionalScore: directional,
+                DirectionalMaxPoints: _directionalMaxPoints);
+        }
 
         // Quá mù để giao dịch. Chuẩn hoá ngưỡng theo điểm khả dụng là đúng, nhưng nếu để nó chạy
         // không giới hạn thì một tài khoản mất gần hết nguồn dữ liệu vẫn vào lệnh đều đặn chỉ

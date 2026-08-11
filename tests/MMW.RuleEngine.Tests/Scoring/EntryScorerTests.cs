@@ -24,7 +24,7 @@ internal sealed class StubCriterion : IScoreCriterion
     public int MaxPoints { get; }
     public bool IsDirectional { get; }
 
-    /// <summary>Số lần bị gọi — dùng để chứng minh vòng tổng hợp DỪNG chứ không chạy tiếp.</summary>
+    /// <summary>Số lần bị gọi — dùng để chứng minh vòng tổng hợp hỏi HẾT tiêu chí kể cả sau veto.</summary>
     public int CallCount { get; private set; }
 
     public CriterionResult Evaluate(ScoringContext context)
@@ -35,8 +35,8 @@ internal sealed class StubCriterion : IScoreCriterion
 }
 
 /// <summary>
-/// T081 / T080 — vòng tổng hợp: dừng sớm ở veto đầu tiên, thứ tự duyệt tất định, và
-/// thiếu dữ liệu ⟹ 0 điểm.
+/// T081 / T080 — vòng tổng hợp: chạy hết tiêu chí rồi mới áp veto đầu tiên, thứ tự duyệt tất
+/// định, và thiếu dữ liệu ⟹ 0 điểm.
 /// </summary>
 public class EntryScorerTests
 {
@@ -46,10 +46,10 @@ public class EntryScorerTests
     private static StubCriterion Veto(string key, ScoreGroup group, VetoReason reason) =>
         new(key, group, 10, CriterionResult.Veto(reason, $"{key} veto"));
 
-    // ── Dừng sớm ────────────────────────────────────────────────────────
+    // ── Veto áp sau khi đã hỏi hết ──────────────────────────────────────
 
     [Fact]
-    public void Gap_veto_cung_thi_cac_tieu_chi_sau_KHONG_chay()
+    public void Gap_veto_cung_thi_cac_tieu_chi_sau_VAN_chay()
     {
         var first = Veto("market.aaa", ScoreGroup.Market, VetoReason.DirectionNotAllowed);
         var later = Points("market.zzz", ScoreGroup.Market, 10, 10);
@@ -58,14 +58,33 @@ public class EntryScorerTests
 
         Assert.True(outcome.IsVetoed);
         Assert.Equal(1, first.CallCount);
-        Assert.Equal(0, later.CallCount);
+        Assert.Equal(1, later.CallCount);
+    }
+
+    [Fact]
+    public void Veto_KHONG_lam_cut_do_phu_du_lieu()
+    {
+        // Đây là lý do bỏ dừng sớm. Trước đây `availableMax` cụt tại chỗ veto, nên phiếu ghi
+        // độ phủ 10/20 và DataCoverage đọc ra như mất nguồn dữ liệu — trong khi cả hai tiêu chí
+        // đều có dữ liệu. Con số đó chảy thẳng vào hệ số kích thước.
+        var criteria = new IScoreCriterion[]
+        {
+            Veto("market.aaa", ScoreGroup.Market, VetoReason.DirectionNotAllowed),
+            Points("market.zzz", ScoreGroup.Market, 10, 10),
+        };
+
+        var outcome = new EntryScorer(criteria).Score(ScoringFixtures.Context());
+
+        Assert.Equal(20, outcome.AvailableMaxPoints);
+        Assert.Equal(20, outcome.TotalMaxPoints);
+        Assert.Equal(1m, outcome.DataCoverage);
     }
 
     [Fact]
     public void Phieu_ghi_dung_MOT_ly_do_tu_choi()
     {
-        // Chạy tiếp rồi gom nhiều lý do sẽ khiến câu hỏi "vì sao lệnh này bị loại" có bốn câu
-        // trả lời, và không câu nào là câu quyết định.
+        // Nhiều veto cùng lúc vẫn chỉ chốt MỘT lý do — veto đầu tiên theo thứ tự (Group, Key).
+        // Gom cả bốn lý do sẽ khiến câu hỏi "vì sao lệnh này bị loại" không còn câu quyết định.
         var criteria = new IScoreCriterion[]
         {
             Veto("market.aaa", ScoreGroup.Market, VetoReason.DirectionNotAllowed),
@@ -75,7 +94,25 @@ public class EntryScorerTests
         var outcome = new EntryScorer(criteria).Score(ScoringFixtures.Context());
 
         Assert.Equal(VetoReason.DirectionNotAllowed, outcome.VetoReason);
-        Assert.Single(outcome.Lines, l => l.Result.IsHardVeto);
+
+        // Các veto sau vẫn nằm lại trong Lines để truy vết — chỉ lý do CHỐT là duy nhất.
+        Assert.Equal(2, outcome.Lines.Count(l => l.Result.IsHardVeto));
+    }
+
+    [Fact]
+    public void Veto_cung_van_thang_thieu_du_lieu()
+    {
+        // Thứ tự ưu tiên phải giữ nguyên như hồi còn thoát sớm: gặp cả hai thì ghi veto cứng,
+        // không ghi InsufficientData.
+        var criteria = new IScoreCriterion[]
+        {
+            Veto("market.aaa", ScoreGroup.Market, VetoReason.DirectionNotAllowed),
+            new StubCriterion("market.zzz", ScoreGroup.Market, 90, CriterionResult.Missing("chết")),
+        };
+
+        var outcome = new EntryScorer(criteria).Score(ScoringFixtures.Context());
+
+        Assert.Equal(VetoReason.DirectionNotAllowed, outcome.VetoReason);
     }
 
     [Fact]
