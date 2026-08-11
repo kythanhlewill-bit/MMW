@@ -132,7 +132,7 @@
                                 </div>
                             </li>
 
-                            <li class="nav-item dropdown @ActiveAny("Backtest", "ShadowComparison", "Audit")">
+                            <li class="nav-item dropdown @ActiveAny("Backtest", "OutcomeReview", "ShadowComparison", "Audit")">
                                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"
                                    role="button" aria-expanded="false">
                                     <span class="nav-link-icon"><i class="ti ti-timeline"></i></span>
@@ -141,6 +141,9 @@
                                 <div class="dropdown-menu">
                                     <a class="dropdown-item @Active("Backtest")" asp-controller="Backtest" asp-action="Index">
                                         <i class="ti ti-timeline me-2"></i>Kiểm thử lịch sử
+                                    </a>
+                                    <a class="dropdown-item @Active("OutcomeReview")" asp-controller="OutcomeReview" asp-action="Index">
+                                        <i class="ti ti-target-arrow me-2"></i>Kết cục phiếu
                                     </a>
                                     <a class="dropdown-item @Active("ShadowComparison")" asp-controller="ShadowComparison" asp-action="Index">
                                         <i class="ti ti-arrows-diff me-2"></i>So sánh AI

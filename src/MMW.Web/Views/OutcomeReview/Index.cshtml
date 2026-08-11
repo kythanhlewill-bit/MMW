@@ -1,0 +1,243 @@
+@using MMW.Domain.Enums
+@using MMW.Web.Models
+@model ScorecardOutcomeViewModel
+@{
+    ViewData["Title"] = "Kết cục phiếu";
+    var o = Model.Overall;
+    var beGap = o.TargetRate - Model.BreakevenWinRate;
+}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Kết cục phiếu</h2>
+            <div class="text-secondary mt-1">
+                Mọi phiếu — kể cả phiếu bị cổng chặn — đều được cho chạy tiếp trên giá thật 24 giờ.
+                Đây là chỗ duy nhất trả lời được câu <strong>"nếu cổng không chặn thì sao"</strong>.
+            </div>
+        </div>
+        <div class="col-auto text-secondary small text-end">
+            luật phân giải v@Model.ResolverVersion
+            @if (Model.LastResolvedAtUtc is not null)
+            {
+                <br />
+                <span>chấm gần nhất @ScorecardOutcomeViewModel.Vn(Model.LastResolvedAtUtc.Value) giờ VN</span>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">Từ ngày (UTC)</label>
+                <input type="date" name="fromUtc" value="@Model.FromUtc.ToString("yyyy-MM-dd")" class="form-control" />
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Đến ngày (UTC)</label>
+                <input type="date" name="toUtc" value="@Model.ToUtc.ToString("yyyy-MM-dd")" class="form-control" />
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Mã</label>
+                <select name="symbol" class="form-select">
+                    <option value="">— tất cả —</option>
+                    @foreach (var s in Model.KnownSymbols)
+                    {
+                        <option value="@s" selected="@(Model.Symbol == s)">@s</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Cổng đã chặn</label>
+                <select name="veto" class="form-select">
+                    <option value="">— tất cả —</option>
+                    @foreach (var v in Model.KnownVetoes)
+                    {
+                        <option value="@v" selected="@(Model.Veto == v)">@ScorecardListViewModel.VetoLabel(v)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto"><button class="btn btn-primary">Lọc</button></div>
+            <div class="col-auto"><a asp-action="Index" class="btn btn-link">Xoá lọc</a></div>
+        </form>
+    </div>
+</div>
+
+@if (o.Count == 0)
+{
+    <div class="card mb-3">
+        <div class="card-body text-secondary">
+            Chưa có phiếu nào được chấm kết cục trong khoảng này.
+            @if (Model.PendingCount > 0)
+            {
+                <span>Đang chờ đủ nến: <strong>@Model.PendingCount</strong> phiếu.</span>
+            }
+        </div>
+    </div>
+    return;
+}
+
+<div class="row row-cards mb-3">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="subheader">Phiếu đã đo</div>
+                <div class="h1 mb-0">@o.Count</div>
+                <div class="text-secondary small">
+                    còn @Model.PendingCount phiếu chờ đủ nến
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="subheader">Tỉ lệ chạm mục tiêu</div>
+                <div class="h1 mb-0">@o.TargetRate.ToString("P1")</div>
+                <div class="text-secondary small">
+                    @o.TargetCount chạm mục tiêu · @o.StopCount chạm dừng lỗ · @o.OpenCount còn mở
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="subheader">netR trung bình</div>
+                <div class="h1 mb-0 @(o.AvgNetR >= 0m ? "text-green" : "text-danger")">
+                    @o.AvgNetR.ToString("0.000")
+                </div>
+                <div class="text-secondary small">
+                    grossR @o.AvgGrossR.ToString("0.000") − chi phí @o.AvgCostR.ToString("0.000")
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="subheader">Tỉ lệ thắng cần để hoà vốn</div>
+                <div class="h1 mb-0">@Model.BreakevenWinRate.ToString("P1")</div>
+                <div class="text-secondary small @(beGap >= 0m ? "text-green" : "text-danger")">
+                    đang @(beGap >= 0m ? "vượt" : "thiếu") @Math.Abs(beGap).ToString("P1")
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* Đây là câu quan trọng nhất của trang, nên nó được viết ra bằng chữ chứ không để người đọc tự
+   ghép từ bốn ô số phía trên. Lệnh thắng trung bình so với lệnh thua trung bình mới quyết định
+   một tỉ lệ thắng là đủ hay không đủ. *@
+<div class="alert @(o.AvgNetR >= 0m ? "alert-success" : "alert-warning") mb-3">
+    Lệnh lãi trung bình <strong>+@Model.AvgWinR.ToString("0.000")R</strong>,
+    lệnh lỗ trung bình <strong>−@Model.AvgLossR.ToString("0.000")R</strong>.
+    Với cấu trúc đó cần thắng <strong>@Model.BreakevenWinRate.ToString("P1")</strong> mới hoà vốn,
+    thực tế đang thắng <strong>@o.TargetRate.ToString("P1")</strong>.
+    @if (o.AvgNetR < 0m)
+    {
+        <span>
+            Tập phiếu này <strong>lỗ @Math.Abs(o.AvgNetR).ToString("0.000")R mỗi lệnh</strong> —
+            cổng chặn chúng lại là chặn đúng, dù có @o.TargetCount phiếu đã chạm mục tiêu.
+        </span>
+    }
+    else
+    {
+        <span>
+            Tập phiếu này <strong>lãi @o.AvgNetR.ToString("0.000")R mỗi lệnh</strong> —
+            cổng đang chặn nhầm một nguồn lợi nhuận.
+        </span>
+    }
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Theo cổng đã chặn</h3>
+            <div class="card-subtitle">
+                netR âm nghĩa là cổng cứu được tiền; netR dương nghĩa là cổng chặn nhầm
+            </div>
+        </div>
+    </div>
+    @{ ViewData["ColumnHeader"] = "Cổng"; }
+    <partial name="_StatTable" model="Model.ByVeto" view-data="ViewData" />
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Theo dải khoảng dừng lỗ</h3>
+            <div class="card-subtitle">
+                Khối lượng bằng ngân sách rủi ro chia khoảng stop, mà phí thu trên khối lượng —
+                nên stop càng hẹp, cột chi phí càng phình theo tỉ lệ nghịch
+            </div>
+        </div>
+    </div>
+    @{ ViewData["ColumnHeader"] = "Dải stop"; }
+    <partial name="_StatTable" model="Model.ByStopBucket" view-data="ViewData" />
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Theo mã</h3></div>
+    @{ ViewData["ColumnHeader"] = "Mã"; }
+    <partial name="_StatTable" model="Model.BySymbol" view-data="ViewData" />
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">@Model.Recent.Count phiếu gần nhất</h3>
+            <div class="card-subtitle">
+                MFE/MAE là mức lãi/lỗ tối đa từng chạm trong cửa sổ — chỗ để thấy lệnh "suýt thắng"
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm card-table table-vcenter">
+            <thead>
+                <tr>
+                    <th>Thời điểm chấm</th>
+                    <th>Mã</th>
+                    <th>Chiều</th>
+                    <th>Điểm</th>
+                    <th>Cổng đã chặn</th>
+                    <th>Kết cục</th>
+                    <th class="text-end">Số nến</th>
+                    <th class="text-end">grossR</th>
+                    <th class="text-end">netR</th>
+                    <th class="text-end">Stop</th>
+                    <th class="text-end">MFE</th>
+                    <th class="text-end">MAE</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var r in Model.Recent)
+            {
+                <tr>
+                    <td class="text-nowrap">@ScorecardOutcomeViewModel.Vn(r.EvaluatedAtUtc)</td>
+                    <td>@r.Symbol</td>
+                    <td>@(r.Direction == TradeDirection.Long ? "mua" : r.Direction == TradeDirection.Short ? "bán" : "—")</td>
+                    <td>@r.TotalScore</td>
+                    <td class="small">
+                        @(r.Veto is null ? "—" : ScorecardListViewModel.VetoLabel(r.Veto.Value))
+                    </td>
+                    <td>
+                        <span class="badge @ScorecardOutcomeViewModel.OutcomeBadge(r.Outcome)">
+                            @ScorecardOutcomeViewModel.OutcomeLabel(r.Outcome)
+                        </span>
+                    </td>
+                    <td class="text-end">@r.BarsToExit</td>
+                    <td class="text-end text-secondary">@r.GrossR.ToString("0.000")</td>
+                    <td class="text-end fw-bold @(r.NetR >= 0m ? "text-green" : "text-danger")">
+                        @r.NetR.ToString("0.000")
+                    </td>
+                    <td class="text-end text-secondary">@r.StopDistancePercent.ToString("0.000")%</td>
+                    <td class="text-end text-green">@r.MaxFavorableExcursionR.ToString("0.00")</td>
+                    <td class="text-end text-danger">@r.MaxAdverseExcursionR.ToString("0.00")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>

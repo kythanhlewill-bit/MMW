@@ -1,0 +1,52 @@
+@using MMW.Web.Models
+@model IReadOnlyList<OutcomeStat>
+@{
+    var header = ViewData["ColumnHeader"] as string ?? "Nhóm";
+}
+
+@if (Model.Count == 0)
+{
+    <div class="card-body text-secondary">Chưa có dữ liệu trong khoảng đã chọn.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm card-table table-vcenter">
+            <thead>
+                <tr>
+                    <th>@header</th>
+                    <th class="text-end">Số phiếu</th>
+                    <th class="text-end">Chạm mục tiêu</th>
+                    <th class="text-end">Chạm dừng lỗ</th>
+                    <th class="text-end">Tỉ lệ chạm mục tiêu</th>
+                    <th class="text-end">grossR TB</th>
+                    <th class="text-end">Chi phí TB</th>
+                    <th class="text-end">netR TB</th>
+                    <th class="text-end">Tổng netR</th>
+                    <th class="text-end">Stop TB</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var s in Model)
+            {
+                <tr>
+                    <td>@s.Label</td>
+                    <td class="text-end">@s.Count</td>
+                    <td class="text-end text-green">@s.TargetCount</td>
+                    <td class="text-end text-danger">@s.StopCount</td>
+                    <td class="text-end">@s.TargetRate.ToString("P1")</td>
+                    <td class="text-end text-secondary">@s.AvgGrossR.ToString("0.000")</td>
+                    <td class="text-end text-orange">−@s.AvgCostR.ToString("0.000")</td>
+                    <td class="text-end fw-bold @(s.AvgNetR >= 0m ? "text-green" : "text-danger")">
+                        @s.AvgNetR.ToString("0.000")
+                    </td>
+                    <td class="text-end @(s.TotalNetR >= 0m ? "text-green" : "text-danger")">
+                        @s.TotalNetR.ToString("0.00")
+                    </td>
+                    <td class="text-end text-secondary">@s.AvgStopPercent.ToString("0.000")%</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
