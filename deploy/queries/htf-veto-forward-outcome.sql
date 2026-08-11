@@ -27,8 +27,10 @@
 -- ExecutionViabilityPolicy: phí tính theo KHỐI LƯỢNG, mà khối lượng =
 -- rủi ro / khoảng stop ⟹ stop càng hẹp, phí theo R càng lớn.
 --
--- KHO NẾN CHỈ GIỮ ~3 NGÀY. Job archive backfill 2 ngày mỗi giờ, nên phiếu cũ
--- hơn thế sẽ không mô phỏng được. Chạy truy vấn này ĐỀU, đừng để dành.
+-- KHO NẾN TÍCH LUỸ, KHÔNG XOÁ. Không có đường xoá KlineArchives nào trong
+-- source; job archive backfill 2 ngày mỗi giờ chỉ để VÁ chỗ thủng, nến cũ vẫn
+-- nằm nguyên. Nếu kho trông ngắn thì đó là vì job mới chạy lần đầu (khoảng
+-- 2026-08-10) chứ không phải bị dọn — phiếu cũ vẫn mô phỏng lại được sau này.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 SET NOCOUNT ON;
