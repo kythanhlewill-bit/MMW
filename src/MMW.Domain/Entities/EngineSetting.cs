@@ -32,6 +32,14 @@ public class EngineSetting : BaseEntity
     [Precision(9, 4)] public decimal SizeMultiplierMax { get; set; } = 1.5m;
 
     // ── Trọng số nhóm (FR-025) ──────────────────────────────────────────
+    //
+    // CẢNH BÁO: ba trường này KHÔNG được bất cứ đoạn mã chấm điểm nào đọc. Trần điểm mỗi nhóm
+    // suy ra từ chính các IScoreCriterion đã đăng ký, không từ đây. Sửa chúng không đổi được gì.
+    //
+    // Và từ 2026-08-12 chúng còn nói sai: gỡ `liquidity.zone_position` làm nhóm thanh khoản rơi
+    // từ 15 xuống 10 điểm, tổng thực tế là 80 chứ không phải 85. Giữ nguyên giá trị cũ có chủ ý —
+    // hạ xuống 10 sẽ làm Validate() bác mọi bản ghi EngineSettings đang có (chúng đều ghi 15),
+    // mà đổi lại không được gì vì không ai đọc. Muốn dọn thì phải kèm migration cho dữ liệu cũ.
     public int WeightTechnical { get; set; } = 40;
     public int WeightMarket { get; set; } = 30;
     public int WeightLiquidity { get; set; } = 15;

@@ -105,7 +105,8 @@ public static class DependencyInjection
         services.AddSingleton<Trading.Scoring.IScoreCriterion, Trading.Scoring.Criteria.LeaderCorrelationCriterion>();
         services.AddSingleton<Trading.Scoring.IScoreCriterion, Trading.Scoring.Criteria.FundingCrowdingCriterion>();
         services.AddSingleton<Trading.Scoring.IScoreCriterion, Trading.Scoring.Criteria.OpenInterestCriterion>();
-        services.AddSingleton<Trading.Scoring.IScoreCriterion, Trading.Scoring.Criteria.LiquidityZoneCriterion>();
+        // LiquidityZoneCriterion đã gỡ 2026-08-12 — nó trả 0 điểm 90/102 lần trên dữ liệu thật và
+        // không phân biệt được setup. Lý do đầy đủ nằm ở đầu tệp LiquidityCriteria.cs.
         services.AddSingleton<Trading.Scoring.IScoreCriterion, Trading.Scoring.Criteria.SpreadDepthCriterion>();
         services.AddSingleton<Trading.Scoring.IScoreCriterion, Trading.Scoring.Criteria.StructuralRoomCriterion>();
 

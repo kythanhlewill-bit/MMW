@@ -291,7 +291,6 @@ internal static class ScoringFixtures
         new Application.Trading.Scoring.Criteria.LeaderCorrelationCriterion(),
         new Application.Trading.Scoring.Criteria.FundingCrowdingCriterion(),
         new Application.Trading.Scoring.Criteria.OpenInterestCriterion(),
-        new Application.Trading.Scoring.Criteria.LiquidityZoneCriterion(Swings),
         new Application.Trading.Scoring.Criteria.SpreadDepthCriterion(),
         new Application.Trading.Scoring.Criteria.StructuralRoomCriterion(),
     };

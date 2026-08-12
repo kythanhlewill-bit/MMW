@@ -63,10 +63,11 @@ public interface IStructuralLevelPlanner
 /// <para><b>Thứ nhất — chỗ đặt dừng lỗ.</b> Công thức cũ đặt dừng lỗ ở đúng
 /// <c>giá ± 1,5 × ATR</c>, mù hoàn toàn với đáy/đỉnh xoay gần nhất. Nếu đáy đó nằm cách giá
 /// 1,2 ATR thì dừng lỗ 1,5 ATR rơi ngay DƯỚI nơi lệnh dừng của số đông đang nằm — chỗ giá bị
-/// hút tới. Điều oái oăm là hệ thống đã phát hiện được tình huống này:
+/// hút tới. Điều oái oăm là hệ thống đã phát hiện được tình huống này: tiêu chí
 /// <c>liquidity.zone_position</c> trả đúng 0 điểm khi có cụm thanh khoản ngay ngoài dừng lỗ.
 /// Nhưng phản ứng cũ là trừ 5 điểm rồi vẫn vào lệnh với đúng cái dừng lỗ đó. Phản ứng đúng là
-/// DỜI dừng lỗ.</para>
+/// DỜI dừng lỗ — việc mà lớp này làm. Tiêu chí kia đã được gỡ khỏi thang điểm ngày 2026-08-12
+/// vì lớp này đã xử lý đúng tình huống đó; xem đầu tệp <c>Criteria/LiquidityCriteria.cs</c>.</para>
 ///
 /// <para><b>Thứ hai — chi phí tính theo R.</b> Phí giao dịch quy về R tỉ lệ NGHỊCH với độ rộng
 /// dừng lỗ: <c>feeR = giá × phí% / (bội ATR × ATR)</c>. Với ATR bằng 0,18% giá và dừng lỗ

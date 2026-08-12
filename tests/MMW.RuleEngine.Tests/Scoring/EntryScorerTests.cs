@@ -247,17 +247,46 @@ public class EntryScorerTests
     // ── Bộ 13 tiêu chí thật ─────────────────────────────────────────────
 
     [Fact]
-    public void Bo_13_tieu_chi_that_cong_dung_85_diem_toi_da()
+    public void Bo_13_tieu_chi_that_cong_dung_80_diem_toi_da()
     {
         var criteria = ScoringFixtures.AllCriteria();
 
-        // 14 tiêu chí, nhưng vẫn đúng 85 điểm: `technical.structural_room` là một CÁNH CỔNG
-        // 0 điểm, không phải một thang đo. Nhờ vậy ba ngưỡng 55/70/85 không phải tính lại.
-        Assert.Equal(14, criteria.Count);
+        // 13 tiêu chí, 80 điểm. `technical.structural_room` là một CÁNH CỔNG 0 điểm, không phải
+        // một thang đo, nên nó có mặt mà không cộng điểm nào.
+        Assert.Equal(13, criteria.Count);
         Assert.Equal(0, criteria.Single(c => c.Key == "technical.structural_room").MaxPoints);
         Assert.Equal(40, criteria.Where(c => c.Group == ScoreGroup.Technical).Sum(c => c.MaxPoints));
         Assert.Equal(30, criteria.Where(c => c.Group == ScoreGroup.Market).Sum(c => c.MaxPoints));
-        Assert.Equal(15, criteria.Where(c => c.Group == ScoreGroup.Liquidity).Sum(c => c.MaxPoints));
+        Assert.Equal(10, criteria.Where(c => c.Group == ScoreGroup.Liquidity).Sum(c => c.MaxPoints));
+    }
+
+    [Fact]
+    public void Thang_diem_khong_con_tieu_chi_zone_position()
+    {
+        // Gỡ ngày 2026-08-12: đo trên dữ liệu thật thì nó trả 0 điểm 90/102 lần và 1 điểm 12 lần,
+        // chưa lần nào 3 hay 5 — một hằng số đội lốt phép đo. Lý do đầy đủ ở đầu tệp
+        // Criteria/LiquidityCriteria.cs.
+        //
+        // Ghim bằng KHOÁ chứ không bằng số lượng: đăng ký lại nhầm nó thì test này đỏ ngay, còn
+        // nếu chỉ đếm 13 tiêu chí thì việc thêm một tiêu chí khác sẽ che mất.
+        Assert.DoesNotContain(
+            ScoringFixtures.AllCriteria(),
+            c => c.Key == "liquidity.zone_position");
+    }
+
+    [Fact]
+    public void Nguong_55_va_70_van_voi_toi_duoc_tren_thang_80()
+    {
+        // Hệ quả trực tiếp của việc gỡ 5 điểm: trần rơi từ 85 xuống 80. Ngưỡng vào lệnh 55 và
+        // ngưỡng ScoreThresholdFull 70 vẫn với tới được; ScoreThresholdMax = 85 thì KHÔNG — bậc
+        // kích thước cao nhất nay bất khả về mặt số học, không chỉ khó đạt.
+        //
+        // Đây là chiều an toàn (siết chặt hơn) nên không tự ý chỉnh cấu hình rủi ro, nhưng phải
+        // được nói ra ở đâu đó thay vì lặng lẽ nằm trong một cột EngineSettings.
+        var max = ScoringFixtures.AllCriteria().Sum(c => c.MaxPoints);
+
+        Assert.True(max >= 70, "ScoreThresholdFull = 70 phải còn với tới được");
+        Assert.True(max < 85, "ScoreThresholdMax = 85 nay nằm ngoài thang — có chủ ý, xem chú thích");
     }
 
     [Fact]
@@ -271,12 +300,12 @@ public class EntryScorerTests
     }
 
     [Fact]
-    public void Bo_14_tieu_chi_that_chay_tron_ven_tren_boi_canh_day_du()
+    public void Bo_13_tieu_chi_that_chay_tron_ven_tren_boi_canh_day_du()
     {
         var outcome = new EntryScorer(ScoringFixtures.AllCriteria()).Score(ScoringFixtures.Context());
 
-        Assert.Equal(14, outcome.Lines.Count);
-        Assert.InRange(outcome.TotalScore, 0, 85);
+        Assert.Equal(13, outcome.Lines.Count);
+        Assert.InRange(outcome.TotalScore, 0, 80);
         Assert.All(outcome.Lines, l => Assert.False(string.IsNullOrWhiteSpace(l.Result.Reason)));
     }
 
@@ -285,6 +314,6 @@ public class EntryScorerTests
     {
         // Thiết kế có chủ ý: không có setup nào hoàn hảo, và thang điểm không nên gợi ý
         // điều ngược lại.
-        Assert.Equal(85, ScoringFixtures.AllCriteria().Sum(c => c.MaxPoints));
+        Assert.Equal(80, ScoringFixtures.AllCriteria().Sum(c => c.MaxPoints));
     }
 }

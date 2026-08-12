@@ -13,7 +13,7 @@ namespace MMW.RuleEngine.Tests.Scoring;
 /// <remarks>
 /// Mẫu hình chỉ là hợp lưu mềm nên một dương tính giả không tự phát ra lệnh nào. Nhưng nó đẩy
 /// <c>technical.market_structure</c> từ 3 lên 8 điểm và cộng thêm 2 điểm động lượng — chênh 7
-/// trên thang 85, đủ để một setup tầm thường vượt ngưỡng 55. Đó là lý do những ràng buộc dưới
+/// trên thang 80, đủ để một setup tầm thường vượt ngưỡng 55. Đó là lý do những ràng buộc dưới
 /// đây đáng có test riêng thay vì tin vào mắt người đọc mã.
 ///
 /// Bộ nến nền: 60 nến với <c>High − Low = 2</c> và giá đóng phẳng ⟹ ATR(14) = 2, nên mọi ngưỡng

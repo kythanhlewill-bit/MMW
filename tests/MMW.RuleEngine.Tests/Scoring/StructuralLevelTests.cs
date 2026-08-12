@@ -297,12 +297,12 @@ public class StructuralLevelTests
         Assert.False(missing.DataAvailable);
     }
 
-    /// <summary>Rào 0 điểm không được làm xê dịch thang 85.</summary>
+    /// <summary>Rào 0 điểm không được làm xê dịch thang 80.</summary>
     [Fact]
     public void Rao_0_diem_khong_lam_xe_dich_thang_diem()
     {
         var outcome = new EntryScorer(ScoringFixtures.AllCriteria()).Score(ScoringFixtures.Context());
 
-        Assert.Equal(85, outcome.TotalMaxPoints);
+        Assert.Equal(80, outcome.TotalMaxPoints);
     }
 }

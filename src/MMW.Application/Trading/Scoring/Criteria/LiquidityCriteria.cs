@@ -53,95 +53,31 @@ public sealed class OpenInterestCriterion : IScoreCriterion
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// liquidity.zone_position — 5 điểm, LUÔN là xấp xỉ
+// liquidity.zone_position — ĐÃ GỠ KHỎI THANG ĐIỂM (2026-08-12)
 // ─────────────────────────────────────────────────────────────────────────
-
-/// <summary>
-/// Vị trí các cụm thanh khoản so với mức chốt lời và dừng lỗ dự kiến.
-/// </summary>
-/// <remarks>
-/// Luôn đặt <c>IsApproximation = true</c> theo R-010, và đó không phải hình thức. Cụm thanh
-/// khoản thật nằm trong sổ lệnh của sàn, thứ không có API công khai nào cho xem đầy đủ. Ở đây
-/// chúng được XẤP XỈ bằng các đỉnh/đáy xoay gần nhất — nơi dừng lỗ của số đông thường nằm.
-/// Đánh dấu là xấp xỉ để về sau, khi so sánh kiểm thử lịch sử với chạy thật, không ai nhầm
-/// con số này với một phép đo.
-///
-/// Cụm nằm NGAY NGOÀI dừng lỗ là trường hợp xấu nhất: giá chỉ cần chạm tới đó là quét sạch
-/// lệnh rồi quay đầu, và setup đúng vẫn thua.
-/// </remarks>
-public sealed class LiquidityZoneCriterion : IScoreCriterion
-{
-    /// <summary>
-    /// Cụm nằm trong khoảng này (tính theo phần khoảng cách entry→dừng lỗ) kể từ dừng lỗ thì
-    /// coi là "ngay ngoài". Là ĐỊNH NGHĨA của phép xấp xỉ, không phải khẩu vị rủi ro.
-    /// </summary>
-    private const decimal StopHuntBandRatio = 0.3m;
-
-    private readonly ISwingDetector _swings;
-
-    public LiquidityZoneCriterion(ISwingDetector swings) => _swings = swings;
-
-    public string Key => "liquidity.zone_position";
-    public ScoreGroup Group => ScoreGroup.Liquidity;
-    public int MaxPoints => 5;
-    public bool IsDirectional => true;
-
-    public CriterionResult Evaluate(ScoringContext context)
-    {
-        if (context.PlannedStopLoss is not { } stop || context.PlannedTakeProfit is not { } target)
-            return CriterionResult.Missing("Chưa có mức dừng lỗ và chốt lời dự kiến để đối chiếu cụm thanh khoản.");
-
-        var pivotBars = Math.Max(1, context.Settings.SwingPivotBars);
-
-        // Gộp cả ba khung. Trước V2 chỉ khung vào lệnh được nhìn, nên kháng cự 4h và mức ngày
-        // VÔ HÌNH với engine — và vào lệnh mua ngay dưới đỉnh 4h là kịch bản thua kinh điển.
-        // Dữ liệu đã nằm sẵn trong bối cảnh từ đầu, chỉ là chưa ai đọc.
-        var pivots = _swings.Detect(context.EntryCandles, pivotBars)
-            .Concat(_swings.Detect(context.BiasCandles, pivotBars))
-            .Concat(_swings.Detect(context.DailyCandles, pivotBars))
-            .ToList();
-
-        if (pivots.Count == 0)
-            return CriterionResult.Missing("Không tìm được điểm xoay nào để xấp xỉ cụm thanh khoản.");
-
-        var entry = context.CurrentPrice;
-        var isLong = context.Direction == TradeDirection.Long;
-        var risk = Math.Abs(entry - stop);
-        if (risk <= 0m)
-            return CriterionResult.Missing("Khoảng cách tới dừng lỗ bằng 0 — không đối chiếu được.");
-
-        var clusters = pivots.Select(p => p.Price).ToList();
-
-        // Cụm nằm ngay ngoài dừng lỗ — nơi giá bị hút tới để quét lệnh.
-        var band = risk * StopHuntBandRatio;
-        var huntZone = clusters.Any(c => isLong
-            ? c <= stop && c >= stop - band
-            : c >= stop && c <= stop + band);
-
-        if (huntZone)
-        {
-            return new CriterionResult(0,
-                $"Có cụm thanh khoản ngay ngoài dừng lỗ {stop:N2} (trong {StopHuntBandRatio:P0} khoảng rủi ro) — rủi ro bị quét trước khi chạy.",
-                IsApproximation: true);
-        }
-
-        // Cụm chắn giữa đường tới mục tiêu — giá thường dừng lại ở đó.
-        var blocking = clusters.Count(c => isLong
-            ? c > entry && c < target
-            : c < entry && c > target);
-
-        var score = blocking switch
-        {
-            0 => 5,
-            1 => 3,
-            _ => 1,
-        };
-
-        return new CriterionResult(score,
-            $"{blocking} cụm thanh khoản (xấp xỉ từ {pivots.Count} điểm xoay) nằm giữa giá {entry:N2} và mục tiêu {target:N2}.",
-            IsApproximation: true);
-    }
-}
+//
+// Tiêu chí này chấm 5 điểm cho "vị trí cụm thanh khoản so với dừng lỗ và mục tiêu", xấp xỉ cụm
+// bằng các đỉnh/đáy xoay. Đo trên dữ liệu chạy thật ngày 2026-08-12 thì nó trả về 0 điểm 90/102
+// lần và 1 điểm 12 lần — CHƯA LẦN NÀO đạt 3 hay 5. Trung bình 0,12/5.
+//
+// Nguyên nhân là hai con số nhân nhau, và không con nào liên quan tới chất lượng setup:
+//
+//  - Tập điểm xoay quá dày. Ba khung (15m + 4h + 1D) được `Concat` lại, không gộp trùng, không
+//    lọc độ mạnh, không lọc độ mới — 191–200 điểm xoay mỗi lần chấm.
+//  - Dải "quét dừng lỗ" quá hẹp về giá trị tuyệt đối. Dải = 30% khoảng entry→stop, mà stop thực
+//    tế chỉ rộng 0,2% giá: BTC ra 41 điểm (0,065% giá), ETH ra 1,68 USD (0,088% giá).
+//
+// Một cửa sổ 41 điểm giữa 200 điểm xoay thì gần như luôn tóm được một cái. Nhánh `huntZone` vì
+// vậy gần như luôn đúng, và thang 0/1/3/5 co lại thành {0, 1}. Một tiêu chí trả gần như cùng một
+// giá trị cho mọi đầu vào là HẰNG SỐ, không phải phép đo: nó không tách được setup tốt khỏi setup
+// xấu, chỉ trừ đều 5 điểm của mọi phiếu và làm mẫu số 85 nói dối về số điểm thực sự với tới được.
+//
+// Gỡ chứ không sửa, vì phản ứng đúng với "có cụm ngay ngoài dừng lỗ" là DỜI dừng lỗ chứ không
+// phải trừ điểm — và V2 đã làm đúng việc dời đó trong StructuralLevelPlanner. Giữ thêm một khoản
+// trừ điểm cho cùng một tình huống là phạt hai lần một chuyện đã được xử lý.
+//
+// Muốn phục hồi (kèm gộp/lọc pivot, hoặc đổi dải quét sang theo ATR): `git show 7670943 --
+// src/MMW.Application/Trading/Scoring/Criteria/LiquidityCriteria.cs`.
 
 // ─────────────────────────────────────────────────────────────────────────
 // liquidity.spread_depth — 5 điểm

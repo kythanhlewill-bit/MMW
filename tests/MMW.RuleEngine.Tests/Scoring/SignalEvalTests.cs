@@ -84,13 +84,13 @@ public class SignalEvalNoThresholdRelaxationTests
     }
 
     [Fact]
-    public async Task Phieu_co_du_14_dong_tieu_chi_va_9_dong_ky_luat()
+    public async Task Phieu_co_du_13_dong_tieu_chi_va_9_dong_ky_luat()
     {
         using var harness = await HarnessAsync();
 
         var card = await EvaluateAsync(harness);
 
-        // 14 tiêu chí chấm điểm + 9 rào kỷ luật. Ghi cả rào đang cho qua chứ không chỉ rào
+        // 13 tiêu chí chấm điểm + 9 rào kỷ luật. Ghi cả rào đang cho qua chứ không chỉ rào
         // đang chặn: phiếu phải trả lời được "những rào nào đã được kiểm và đều ổn".
         //
         // Con số 9 gồm 8 rào chạy qua `_gates` — trong đó hai rào của V2 là
@@ -100,7 +100,7 @@ public class SignalEvalNoThresholdRelaxationTests
         //
         // Ghim số lượng ở đây có chủ ý — thêm rào mà quên đăng ký DI thì test này đỏ, còn nếu chỉ
         // ghim tên từng rào thì một rào bị bỏ đăng ký sẽ lọt qua im lặng.
-        Assert.Equal(14, card.Lines.Count(l => l.Group != ScoreGroup.Discipline));
+        Assert.Equal(13, card.Lines.Count(l => l.Group != ScoreGroup.Discipline));
         Assert.Equal(9, card.Lines.Count(l => l.Group == ScoreGroup.Discipline));
         Assert.All(card.Lines, l => Assert.False(string.IsNullOrWhiteSpace(l.Reason)));
     }
@@ -121,7 +121,7 @@ public class SignalEvalNoThresholdRelaxationTests
     [Fact]
     public async Task Ca_ngay_khong_setup_nao_dat_nguong_thi_ra_0_lenh()
     {
-        // Đặt ngưỡng vào lệnh lên 100 — cao hơn tổng điểm tối đa 85 mà 13 tiêu chí có thể cho.
+        // Đặt ngưỡng vào lệnh lên 100 — cao hơn tổng điểm tối đa 80 mà 13 tiêu chí có thể cho.
         // Zero lệnh là kết quả ĐÚNG, không phải lỗi.
         using var harness = await HarnessAsync(s => s.MinScoreToEnter = 100);
 
@@ -254,7 +254,7 @@ public class SignalEvalNoThresholdRelaxationTests
         var card = await service.EvaluateAsync(harness.AccountId, Symbol, inBlackout);
 
         // Đủ 14 tiêu chí, không phải "có vài dòng cho có".
-        Assert.Equal(14, card.Lines.Count(l => l.Group != ScoreGroup.Discipline));
+        Assert.Equal(13, card.Lines.Count(l => l.Group != ScoreGroup.Discipline));
 
         // Ba mức giá — chính xác là thứ ScorecardOutcomeReview cần để mô phỏng.
         Assert.NotNull(card.Direction);

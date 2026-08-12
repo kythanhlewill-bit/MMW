@@ -222,7 +222,7 @@ public sealed record DirectionChoice(
 /// <para><b>So bằng điểm ĐỔI THEO CHIỀU.</b> Các tiêu chí không đổi theo chiều cho hai bên đúng
 /// cùng số điểm, nên chúng triệt tiêu trong phép trừ — về mặt số học, so tổng cho ra cùng một
 /// hiệu. Con số riêng vẫn được dùng và được ghi lại vì nó làm ngưỡng có nghĩa đọc được: 8 điểm
-/// trên thang <c>DirectionalMaxPoints</c>, chứ không phải 8 điểm trên thang 85 mà phần lớn không
+/// trên thang <c>DirectionalMaxPoints</c>, chứ không phải 8 điểm trên thang tổng mà phần lớn không
 /// liên quan gì tới chiều.</para>
 ///
 /// <para><b>Một chiều bị veto không được đem ra so.</b> Veto cứng làm vòng chấm dừng giữa chừng,

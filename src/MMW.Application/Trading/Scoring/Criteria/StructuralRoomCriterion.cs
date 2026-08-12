@@ -11,8 +11,8 @@ namespace MMW.Application.Trading.Scoring.Criteria;
 /// </summary>
 /// <remarks>
 /// <b>Tiêu chí 0 điểm — nó là một cánh cổng, không phải một thang đo.</b> Đặt ở đây thay vì gộp
-/// vào một tiêu chí có điểm vì hai lý do: nó giữ nguyên tổng 85 điểm (nên ba ngưỡng 55/70/85
-/// không phải tính lại), và nó bật ra thành một dòng phiếu riêng trả lời đúng một câu hỏi.
+/// vào một tiêu chí có điểm vì hai lý do: nó không đụng vào tổng điểm (nên các ngưỡng không phải
+/// tính lại), và nó bật ra thành một dòng phiếu riêng trả lời đúng một câu hỏi.
 ///
 /// Veto ở hai tình huống, và cả hai đều là "sai rõ" chứ không phải "điểm thấp":
 ///
@@ -27,10 +27,14 @@ namespace MMW.Application.Trading.Scoring.Criteria;
 /// được mức đó một cách bền vững. Vào một lệnh như thế không phải là chấp nhận rủi ro, mà là
 /// trả phí để tung đồng xu.</para>
 ///
-/// Đây cũng là chỗ sửa một mâu thuẫn cũ: <c>liquidity.zone_position</c> đã phát hiện được "có
-/// cụm thanh khoản ngay ngoài dừng lỗ" và trả 0 điểm, nhưng phản ứng chỉ là trừ 5 điểm rồi vẫn
-/// vào lệnh với đúng cái dừng lỗ đó. Nay dừng lỗ được DỜI theo cấu trúc, và nếu dời xong mà
-/// không còn chỗ thì lệnh bị loại hẳn.
+/// Đây cũng là chỗ sửa một mâu thuẫn cũ: tiêu chí <c>liquidity.zone_position</c> đã phát hiện
+/// được "có cụm thanh khoản ngay ngoài dừng lỗ" và trả 0 điểm, nhưng phản ứng chỉ là trừ 5 điểm
+/// rồi vẫn vào lệnh với đúng cái dừng lỗ đó. Nay dừng lỗ được DỜI theo cấu trúc, và nếu dời xong
+/// mà không còn chỗ thì lệnh bị loại hẳn.
+///
+/// Chính vì việc dời đã được làm ở đây mà tiêu chí kia bị gỡ hẳn khỏi thang điểm ngày 2026-08-12:
+/// giữ thêm một khoản trừ điểm cho tình huống đã được xử lý là phạt hai lần. Lý do đo đạc đầy đủ
+/// nằm ở đầu tệp <c>Criteria/LiquidityCriteria.cs</c>.
 /// </remarks>
 public sealed class StructuralRoomCriterion : IScoreCriterion
 {

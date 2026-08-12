@@ -100,8 +100,8 @@ public class MissingDataTests
     /// </summary>
     /// <remarks>
     /// <c>liquidity.open_interest</c> và <c>liquidity.spread_depth</c> luôn bằng 0 khi chạy lịch
-    /// sử, nên trần thực tế là 75 chứ không phải 85. So ngưỡng tuyệt đối làm kiểm thử đòi 73,3%
-    /// còn chạy thật chỉ đòi 64,7% — kiểm thử lọc gắt hơn gần 9 điểm phần trăm, và lệch đó chỉ
+    /// sử, nên trần thực tế là 70 chứ không phải 80. So ngưỡng tuyệt đối làm kiểm thử đòi 78,6%
+    /// còn chạy thật chỉ đòi 68,8% — kiểm thử lọc gắt hơn gần 10 điểm phần trăm, và lệch đó chỉ
     /// có một chiều: làm báo cáo đẹp hơn thực tế.
     /// </remarks>
     [Fact]
@@ -113,24 +113,25 @@ public class MissingDataTests
         var full = new EntryScorer(ScoringFixtures.AllCriteria()).Score(context);
         var partial = new EntryScorer(ScoringFixtures.AllCriteria()).Score(blindToLiquidity);
 
-        // Thang tổng luôn là 85 bất kể đo được bao nhiêu.
-        Assert.Equal(85, full.TotalMaxPoints);
-        Assert.Equal(85, partial.TotalMaxPoints);
+        // Thang tổng luôn là 80 bất kể đo được bao nhiêu.
+        Assert.Equal(80, full.TotalMaxPoints);
+        Assert.Equal(80, partial.TotalMaxPoints);
 
-        // Tắt đúng hai nguồn ⟹ mất đúng 10 điểm thang đo, không hơn không kém.
+        // Tắt đúng hai nguồn ⟹ mất đúng 10 điểm thang đo, không hơn không kém. Sau khi gỡ
+        // `liquidity.zone_position`, hai nguồn này là TOÀN BỘ nhóm thanh khoản.
         Assert.Equal(10, full.AvailableMaxPoints - partial.AvailableMaxPoints);
 
-        // Và đây là điều quan trọng: ngưỡng 55 trên thang 85 tương đương 48,5 trên thang 75.
+        // Và đây là điều quan trọng: ngưỡng 55 trên thang 80 tương đương 48,1 trên thang 70.
         // Một phiếu 49 điểm ở chế độ kiểm thử phải qua được, y như phiếu 55 điểm ở chạy thật.
         var backtestScale = new Func<int, ScoringOutcome>(score =>
-            new ScoringOutcome(score, 0, 0, 0, 0, false, null, null, Array.Empty<ScoredLine>(), 85, 75));
+            new ScoringOutcome(score, 0, 0, 0, 0, false, null, null, Array.Empty<ScoredLine>(), 80, 70));
 
         Assert.False(backtestScale(48).Reaches(55));
         Assert.True(backtestScale(49).Reaches(55));
 
         // So tuyệt đối như trước đây thì phiếu 49 điểm bị loại ở kiểm thử nhưng phiếu 55 điểm
         // lại được nhận ở chạy thật — cùng một chất lượng setup, hai kết luận khác nhau.
-        Assert.True(new ScoringOutcome(55, 0, 0, 0, 0, false, null, null, Array.Empty<ScoredLine>(), 85, 85).Reaches(55));
+        Assert.True(new ScoringOutcome(55, 0, 0, 0, 0, false, null, null, Array.Empty<ScoredLine>(), 80, 80).Reaches(55));
     }
 
     [Fact]

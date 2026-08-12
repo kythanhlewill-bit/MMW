@@ -782,7 +782,7 @@ public sealed class SignalEvalService : ISignalEvalService
     /// Trước đây trường này được gán cứng <c>null</c>, nên <c>market.leader_correlation</c> luôn
     /// trả "thiếu dữ liệu" ⟹ 0/4 điểm cho mọi mã không phải BTC, trong khi BTC nhận đủ 4/4 qua
     /// nhánh <c>IsLeaderSymbol</c>. Kết quả là ETHUSDT khởi điểm thấp hơn BTCUSDT đúng 4 điểm
-    /// trên thang 85, vĩnh viễn — một thiên lệch chưa ai chọn, và một tiêu chí chết vẫn tiêu CPU
+    /// trên thang điểm, vĩnh viễn — một thiên lệch chưa ai chọn, và một tiêu chí chết vẫn tiêu CPU
     /// mỗi lần chấm.
     ///
     /// Ghép theo <c>CloseTime</c> chứ không lấy N nến cuối của mỗi chuỗi: kho nến có thể thiếu

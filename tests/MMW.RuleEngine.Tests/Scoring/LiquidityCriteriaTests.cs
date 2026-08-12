@@ -49,71 +49,9 @@ public class LiquidityCriteriaTests
         Assert.Equal(0, result.AwardedPoints);
     }
 
-    // ── liquidity.zone_position ─────────────────────────────────────────
-
-    private static LiquidityZoneCriterion Zone() => new(ScoringFixtures.Swings);
-
-    [Fact]
-    public void Vung_thanh_khoan_LUON_danh_dau_la_xap_xi()
-    {
-        // R-010: cụm thanh khoản thật nằm trong sổ lệnh của sàn, thứ không có API công khai
-        // nào cho xem đầy đủ. Con số ở đây suy ra từ điểm xoay, và phải nói rõ điều đó.
-        var context = ScoringFixtures.Context(entry: ScoringFixtures.ZigZag(120));
-
-        Assert.True(Zone().Evaluate(context).IsApproximation);
-    }
-
-    [Fact]
-    public void Cum_nam_ngay_ngoai_dung_lo_bi_tru_ve_0()
-    {
-        // Đặt dừng lỗ ngay trên một đáy xoay: giá chỉ cần chạm tới đó là quét sạch lệnh
-        // rồi quay đầu, và setup đúng vẫn thua.
-        var candles = ScoringFixtures.ZigZag(120);
-        var pivots = ScoringFixtures.Swings.Detect(candles, 2);
-        var lowPivot = pivots.Where(p => !p.IsHigh).Select(p => p.Price).DefaultIfEmpty(0m).Max();
-
-        var context = ScoringFixtures.Context(entry: candles) with
-        {
-            CurrentPrice = candles[^1].Close,
-            PlannedStopLoss = lowPivot + (candles[^1].Close - lowPivot) * 0.1m,
-            PlannedTakeProfit = candles[^1].Close * 1.05m,
-        };
-
-        var result = Zone().Evaluate(context);
-
-        Assert.Equal(0, result.AwardedPoints);
-        Assert.True(result.IsApproximation);
-        Assert.Contains("quét", result.Reason);
-    }
-
-    [Fact]
-    public void Duong_toi_muc_tieu_khong_vuong_cum_nao_duoc_diem_toi_da()
-    {
-        // Mục tiêu đặt ngay sát giá hiện tại nên không cụm nào chắn giữa, và dừng lỗ đặt xa
-        // dưới mọi điểm xoay nên không có vùng bị quét.
-        var candles = ScoringFixtures.ZigZag(120);
-        var price = candles[^1].Close;
-
-        var context = ScoringFixtures.Context(entry: candles) with
-        {
-            CurrentPrice = price,
-            PlannedStopLoss = price * 0.5m,
-            PlannedTakeProfit = price * 1.0001m,
-        };
-
-        Assert.Equal(5, Zone().Evaluate(context).AwardedPoints);
-    }
-
-    [Fact]
-    public void Chua_co_muc_dung_lo_thi_bao_thieu_du_lieu()
-    {
-        var context = ScoringFixtures.Context() with { PlannedStopLoss = null };
-
-        var result = Zone().Evaluate(context);
-
-        Assert.False(result.DataAvailable);
-        Assert.Equal(0, result.AwardedPoints);
-    }
+    // liquidity.zone_position đã được gỡ khỏi thang điểm ngày 2026-08-12 cùng bộ kiểm thử của nó.
+    // Lý do đo đạc nằm ở đầu tệp Criteria/LiquidityCriteria.cs. Bất biến thay thế nằm ở
+    // EngineSettingTests.Thang_diem_khong_con_tieu_chi_zone_position.
 
     // ── liquidity.spread_depth ──────────────────────────────────────────
 
