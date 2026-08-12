@@ -23,7 +23,7 @@ public class ScorecardController : Controller
     public ScorecardController(MmwDbContext db) => _db = db;
 
     public async Task<IActionResult> Index(
-        string? symbol, VetoReason? veto, ScorecardOutcome? outcome, CancellationToken ct)
+        string? symbol, VetoReason? veto, ScorecardOutcome? outcome, int? minScore, CancellationToken ct)
     {
         var query = _db.EntryScorecards.AsNoTracking().Where(c => !c.IsBacktest);
 
@@ -33,11 +33,16 @@ public class ScorecardController : Controller
         if (veto is not null) query = query.Where(c => c.VetoReason == veto);
         if (outcome is not null) query = query.Where(c => c.Outcome == outcome);
 
+        // Lọc điểm lớn hơn n. Phiếu bị veto ghi TotalScore = 0 theo hợp đồng của bộ chấm, nên đặt
+        // n ≥ 0 cũng đồng thời loại chúng — đó là điều người lọc theo điểm đang muốn.
+        if (minScore is { } floor) query = query.Where(c => c.TotalScore > floor);
+
         var model = new ScorecardListViewModel
         {
             Symbol = symbol,
             Veto = veto,
             Outcome = outcome,
+            MinScore = minScore,
             Items = await query
                 .Include(c => c.Lines)
                 .OrderByDescending(c => c.EvaluatedAtUtc)

@@ -10,6 +10,9 @@ public class ScorecardListViewModel
     public VetoReason? Veto { get; set; }
     public ScorecardOutcome? Outcome { get; set; }
 
+    /// <summary>Chỉ lấy phiếu có tổng điểm LỚN HƠN giá trị này. Null nghĩa là không lọc.</summary>
+    public int? MinScore { get; set; }
+
     public IReadOnlyList<EntryScorecard> Items { get; set; } = Array.Empty<EntryScorecard>();
 
     /// <summary>Đếm theo lý do từ chối, xếp giảm dần.</summary>

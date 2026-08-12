@@ -59,6 +59,12 @@
                     }
                 </select>
             </div>
+            <div class="col-auto">
+                <label class="form-label">Điểm lớn hơn</label>
+                <input type="number" name="minScore" value="@(Model.MinScore?.ToString())"
+                       class="form-control" style="width:8rem" min="0" max="100" step="1"
+                       placeholder="vd 40" />
+            </div>
             <div class="col-auto"><button class="btn btn-primary">Lọc</button></div>
             <div class="col-auto"><a asp-action="Index" class="btn btn-link">Xoá lọc</a></div>
         </form>
