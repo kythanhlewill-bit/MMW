@@ -254,25 +254,15 @@ public sealed class SignalEvalService : ISignalEvalService
 
         if (existing is not null) return existing;
 
+        // Hỏi cổng chặn giờ ở ĐÂY nhưng áp ở CUỐI. Trước đây chỗ này return thẳng, và phiếu sinh ra
+        // rỗng hoàn toàn: 0 dòng tiêu chí, điểm thành phần bằng 0, không có entry/dừng lỗ/mục tiêu.
+        // Hệ quả là blackout thành cổng DUY NHẤT mà ScorecardOutcomeReview không đo được — không có
+        // ba mức giá thì không mô phỏng được, nên đúng câu hỏi "cổng này chặn đúng hay chặn nhầm"
+        // lại là câu nó miễn nhiễm. Ngày 2026-08-12 có 16 phiếu như vậy, gồm cả cửa sổ CPI 90 phút.
+        //
+        // Chấm trước rồi chặn sau tốn thêm một lượt chấm tất định (0 lời gọi AI) và đổi lại phiếu
+        // đủ dữ kiện để chạy tiếp trên giá. Việc CHẶN không hề nới ra: xem đoạn áp veto ở cuối hàm.
         var blackout = await _timeGuard.CheckAsync(tradingAccountId, symbol, utcNow, ct);
-        if (blackout.IsBlocked)
-        {
-            return await SaveAsync(new EntryScorecard
-            {
-                TradingAccountId = tradingAccountId,
-                DailyPlanId = plan.Id,
-                Symbol = symbol,
-                Interval = setting.EntryTimeframe,
-                CandleCloseTimeUtc = candleClose,
-                EvaluatedAtUtc = utcNow,
-                StrategyVersion = setting.StrategyVersion,
-                Outcome = ScorecardOutcome.Vetoed,
-                VetoReason = VetoReason.InBlackoutWindow,
-                VetoDetail = blackout.ReasonVi,
-                DayRiskMultiplier = plan.RiskMultiplier,
-                InputSnapshotJson = "{}",
-            }, persist, ct);
-        }
 
         var stats = statisticsOverride ?? (persist
             ? await SafeAsync(() => _traderStats.GetAsync(tradingAccountId, utcNow, ct), TraderStatistics.Empty, "traderStats")
@@ -571,6 +561,20 @@ public sealed class SignalEvalService : ISignalEvalService
             });
         }
 
+        // Cổng chặn giờ chạy ngoài _gates nên nó không tự có dòng — thêm tay, kể cả khi cho qua,
+        // theo đúng nguyên tắc ngay trên. Không có dòng này thì phiếu không phân biệt được "đã kiểm
+        // giờ và ngoài mọi cửa sổ" với "chưa bao giờ kiểm giờ".
+        card.Lines.Add(new EntryScorecardLine
+        {
+            CriterionKey = "discipline.time_guard",
+            Group = ScoreGroup.Discipline,
+            MaxPoints = 0,
+            AwardedPoints = 0,
+            IsHardVeto = blackout.IsBlocked,
+            Reason = blackout.ReasonVi ?? "Ngoài mọi cửa sổ chặn giờ.",
+            DataAvailable = true,
+        });
+
         // P0 đo economics cho cả V2 nhưng chỉ V3 được quyền dùng nó làm gate. Planner thuần nên
         // gọi ở đây và gọi lại ở backtest/live cho cùng kết quả; không có nhánh mô phỏng riêng.
         if (card.Outcome == ScorecardOutcome.Entered && card.Direction is { } plannedDirection)
@@ -596,6 +600,26 @@ public sealed class SignalEvalService : ISignalEvalService
                 card.TriggerDetail = economics.DetailVi;
                 card.FinalSizeR = 0m;
             }
+        }
+
+        // ── Cổng chặn giờ: áp SAU CÙNG, thắng mọi lý do khác ────────────────
+        // Nó là ràng buộc ngoài cùng — trong cửa sổ tin thì không setup nào được vào, bất kể phễu
+        // dừng ở đâu. Vì vậy nó ghi đè VetoReason thay vì xếp hàng sau, và FinalSizeR về 0.
+        //
+        // Đặt sau khối economics là có chủ ý, không phải tiện tay: khối đó chỉ chạy khi phiếu đang
+        // là Entered, nên trên phiếu bị chặn giờ, ExpectedCostR khác null chính là dấu hiệu "phiếu
+        // này LẼ RA đã vào lệnh". Không có dấu đó thì sau này không tách được phiếu bị blackout
+        // chặn thật khỏi phiếu dù sao cũng trượt, và bảng thống kê theo cổng sẽ đổ hết cho blackout.
+        if (blackout.IsBlocked)
+        {
+            var alsoBlockedBy = card.Outcome == ScorecardOutcome.Vetoed && card.VetoReason is { } prior
+                ? $" Ngoài ra phiếu cũng bị chặn bởi {prior}: {card.VetoDetail}"
+                : null;
+
+            card.Outcome = ScorecardOutcome.Vetoed;
+            card.VetoReason = VetoReason.InBlackoutWindow;
+            card.VetoDetail = (blackout.ReasonVi ?? "Đang trong cửa sổ chặn giờ.") + alsoBlockedBy;
+            card.FinalSizeR = 0m;
         }
 
         _logger.LogDebug(

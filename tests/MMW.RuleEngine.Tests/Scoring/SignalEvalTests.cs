@@ -84,21 +84,24 @@ public class SignalEvalNoThresholdRelaxationTests
     }
 
     [Fact]
-    public async Task Phieu_co_du_14_dong_tieu_chi_va_8_dong_ky_luat()
+    public async Task Phieu_co_du_14_dong_tieu_chi_va_9_dong_ky_luat()
     {
         using var harness = await HarnessAsync();
 
         var card = await EvaluateAsync(harness);
 
-        // 14 tiêu chí chấm điểm + 8 rào kỷ luật. Ghi cả rào đang cho qua chứ không chỉ rào
+        // 14 tiêu chí chấm điểm + 9 rào kỷ luật. Ghi cả rào đang cho qua chứ không chỉ rào
         // đang chặn: phiếu phải trả lời được "những rào nào đã được kiểm và đều ổn".
         //
-        // Con số 8 gồm hai rào của V2: `discipline.open_position` (chặn vào lại cùng một ý tưởng
-        // trên mã đang có vị thế) và `discipline.correlated_exposure` (cộng dồn rủi ro trên các
-        // mã đi cùng pha). Ghim số lượng ở đây có chủ ý — thêm rào mà quên đăng ký DI thì test
-        // này đỏ, còn nếu chỉ ghim tên từng rào thì một rào bị bỏ đăng ký sẽ lọt qua im lặng.
+        // Con số 9 gồm 8 rào chạy qua `_gates` — trong đó hai rào của V2 là
+        // `discipline.open_position` (chặn vào lại cùng một ý tưởng trên mã đang có vị thế) và
+        // `discipline.correlated_exposure` (cộng dồn rủi ro trên các mã đi cùng pha) — cộng thêm
+        // `discipline.time_guard`, cổng chặn giờ chạy ngoài `_gates` nên được ghi tay.
+        //
+        // Ghim số lượng ở đây có chủ ý — thêm rào mà quên đăng ký DI thì test này đỏ, còn nếu chỉ
+        // ghim tên từng rào thì một rào bị bỏ đăng ký sẽ lọt qua im lặng.
         Assert.Equal(14, card.Lines.Count(l => l.Group != ScoreGroup.Discipline));
-        Assert.Equal(8, card.Lines.Count(l => l.Group == ScoreGroup.Discipline));
+        Assert.Equal(9, card.Lines.Count(l => l.Group == ScoreGroup.Discipline));
         Assert.All(card.Lines, l => Assert.False(string.IsNullOrWhiteSpace(l.Reason)));
     }
 
@@ -233,6 +236,66 @@ public class SignalEvalNoThresholdRelaxationTests
 
         Assert.Equal(ScorecardOutcome.Vetoed, card.Outcome);
         Assert.Equal(VetoReason.InBlackoutWindow, card.VetoReason);
+    }
+
+    [Fact]
+    public async Task Phieu_bi_chan_gio_VAN_duoc_cham_diem_day_du()
+    {
+        // Chặn giờ không được phép làm phiếu rỗng. Phiếu rỗng nghĩa là không có ba mức giá, mà
+        // không có ba mức giá thì ScorecardOutcomeReview không mô phỏng được — và cổng blackout
+        // trở thành cổng duy nhất miễn nhiễm với câu hỏi "chặn đúng hay chặn nhầm".
+        using var harness = await HarnessAsync();
+
+        var inBlackout = new DateTime(2026, 8, 5, 16, 0, 0, DateTimeKind.Utc);
+        harness.Clock.UtcNow = inBlackout;
+
+        using var scope = harness.NewScope();
+        var service = scope.ServiceProvider.GetRequiredService<ISignalEvalService>();
+        var card = await service.EvaluateAsync(harness.AccountId, Symbol, inBlackout);
+
+        // Đủ 14 tiêu chí, không phải "có vài dòng cho có".
+        Assert.Equal(14, card.Lines.Count(l => l.Group != ScoreGroup.Discipline));
+
+        // Ba mức giá — chính xác là thứ ScorecardOutcomeReview cần để mô phỏng.
+        Assert.NotNull(card.Direction);
+        Assert.NotNull(card.SuggestedEntry);
+        Assert.NotNull(card.SuggestedStopLoss);
+        Assert.NotNull(card.SuggestedFirstTakeProfit ?? card.SuggestedTakeProfit);
+    }
+
+    [Fact]
+    public async Task Chan_gio_ghi_de_moi_ly_do_khac_va_dua_kich_thuoc_ve_0()
+    {
+        // Nới lỏng ở đây là nới lỏng một cổng an toàn. Bài kiểm tra này tồn tại để lần sửa sau
+        // không biến "chấm trước rồi chặn" thành "chấm trước rồi quên chặn".
+        using var harness = await HarnessAsync();
+
+        var inBlackout = new DateTime(2026, 8, 5, 16, 0, 0, DateTimeKind.Utc);
+        harness.Clock.UtcNow = inBlackout;
+
+        using var scope = harness.NewScope();
+        var service = scope.ServiceProvider.GetRequiredService<ISignalEvalService>();
+        var card = await service.EvaluateAsync(harness.AccountId, Symbol, inBlackout);
+
+        Assert.Equal(ScorecardOutcome.Vetoed, card.Outcome);
+        Assert.Equal(VetoReason.InBlackoutWindow, card.VetoReason);
+        Assert.Equal(0m, card.FinalSizeR);
+
+        // Cổng chặn giờ cũng phải để lại một dòng, và dòng đó phải được đánh dấu là veto cứng.
+        var line = Assert.Single(card.Lines, l => l.CriterionKey == "discipline.time_guard");
+        Assert.True(line.IsHardVeto);
+    }
+
+    [Fact]
+    public async Task Ngoai_cua_so_chan_van_ghi_mot_dong_cho_cong_gio()
+    {
+        // Phiếu phải phân biệt được "đã kiểm giờ và ngoài mọi cửa sổ" với "chưa bao giờ kiểm giờ".
+        using var harness = await HarnessAsync();
+
+        var card = await EvaluateAsync(harness);
+
+        var line = Assert.Single(card.Lines, l => l.CriterionKey == "discipline.time_guard");
+        Assert.False(line.IsHardVeto);
     }
 
     [Fact]
