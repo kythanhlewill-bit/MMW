@@ -28,11 +28,19 @@ public sealed class OutcomeReviewController : Controller
     public OutcomeReviewController(MmwDbContext db) => _db = db;
 
     public async Task<IActionResult> Index(
-        DateTime? fromUtc, DateTime? toUtc, string? symbol, VetoReason? veto, CancellationToken ct)
+        DateOnly? fromDate, DateOnly? toDate, string? symbol, VetoReason? veto, int? minScore,
+        CancellationToken ct)
     {
-        var to = NormalizeUtc(toUtc ?? DateTime.UtcNow);
-        var from = NormalizeUtc(fromUtc ?? to.AddDays(-30));
-        if (from > to) (from, to) = (to, from);
+        // Người dùng chọn NGÀY VIỆT NAM. Trước đây hai ô này nhận thẳng ngày UTC, nên chọn "13/08"
+        // thật ra lấy khoảng 07:00 sáng 13/08 đến 07:00 sáng 14/08 giờ VN — hai nửa của hai ngày
+        // khác nhau. Sai lệch đó không bao giờ tự lộ ra, nó chỉ làm mọi con số trên trang hơi lệch.
+        var todayVn = ScorecardOutcomeViewModel.TodayVn(DateTime.UtcNow);
+        var toVn = toDate ?? todayVn;
+        var fromVn = fromDate ?? toVn.AddDays(-30);
+        if (fromVn > toVn) (fromVn, toVn) = (toVn, fromVn);
+
+        var from = ScorecardOutcomeViewModel.VnDayStartUtc(fromVn);
+        var to = ScorecardOutcomeViewModel.VnDayEndUtc(toVn);
 
         var normalizedSymbol = string.IsNullOrWhiteSpace(symbol) ? null : symbol.Trim().ToUpperInvariant();
 
@@ -50,6 +58,11 @@ public sealed class OutcomeReviewController : Controller
 
         if (normalizedSymbol is not null) query = query.Where(x => x.c.Symbol == normalizedSymbol);
         if (veto is not null) query = query.Where(x => x.c.VetoReason == veto);
+
+        // Lọc điểm lớn hơn n, giống trang Phiếu chấm điểm. Đặt TRƯỚC mọi phép gộp có chủ ý: mọi
+        // con số trên trang — KPI, ba bảng nhóm, ngưỡng hoà vốn — đều phải nói về cùng một tập
+        // phiếu. Lọc sau khi đã tính sẽ cho ra một trang mà bảng này mâu thuẫn bảng kia.
+        if (minScore is { } floor) query = query.Where(x => x.c.TotalScore > floor);
 
         var rows = await query
             .OrderByDescending(x => x.c.EvaluatedAtUtc)
@@ -76,10 +89,13 @@ public sealed class OutcomeReviewController : Controller
 
         var model = new ScorecardOutcomeViewModel
         {
+            FromDateVn = fromVn,
+            ToDateVn = toVn,
             FromUtc = from,
             ToUtc = to,
             Symbol = normalizedSymbol,
             Veto = veto,
+            MinScore = minScore,
             ResolverVersion = ScorecardOutcomeReviewService.ResolverVersion,
 
             Overall = OutcomeStat.From("Tất cả", rows),
@@ -142,11 +158,4 @@ public sealed class OutcomeReviewController : Controller
 
         return View(model);
     }
-
-    private static DateTime NormalizeUtc(DateTime value) => value.Kind switch
-    {
-        DateTimeKind.Utc => value,
-        DateTimeKind.Local => value.ToUniversalTime(),
-        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
-    };
 }

@@ -23,6 +23,12 @@
                 <br />
                 <span>chấm gần nhất @ScorecardOutcomeViewModel.Vn(Model.LastResolvedAtUtc.Value) giờ VN</span>
             }
+            <br />
+            @* Ngày giao dịch của bộ máy là ngày UTC — hạn mức lỗ và quota lệnh reset lúc 07:00 giờ
+               VN. Lọc theo ngày VN là lựa chọn của người đọc, nên phải hiện cả hai mốc. *@
+            <span title="Bộ máy tính ngày giao dịch theo UTC; hạn mức lỗ và quota lệnh reset lúc 07:00 giờ VN.">
+                khoảng UTC @Model.FromUtc.ToString("dd/MM HH:mm") – @Model.ToUtc.ToString("dd/MM HH:mm")
+            </span>
         </div>
     </div>
 </div>
@@ -31,12 +37,12 @@
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-auto">
-                <label class="form-label">Từ ngày (UTC)</label>
-                <input type="date" name="fromUtc" value="@Model.FromUtc.ToString("yyyy-MM-dd")" class="form-control" />
+                <label class="form-label">Từ ngày (giờ VN)</label>
+                <input type="date" name="fromDate" value="@Model.FromDateVn.ToString("yyyy-MM-dd")" class="form-control" />
             </div>
             <div class="col-auto">
-                <label class="form-label">Đến ngày (UTC)</label>
-                <input type="date" name="toUtc" value="@Model.ToUtc.ToString("yyyy-MM-dd")" class="form-control" />
+                <label class="form-label">Đến ngày (giờ VN)</label>
+                <input type="date" name="toDate" value="@Model.ToDateVn.ToString("yyyy-MM-dd")" class="form-control" />
             </div>
             <div class="col-auto">
                 <label class="form-label">Mã</label>
@@ -57,6 +63,12 @@
                         <option value="@v" selected="@(Model.Veto == v)">@ScorecardListViewModel.VetoLabel(v)</option>
                     }
                 </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Điểm lớn hơn</label>
+                <input type="number" name="minScore" value="@(Model.MinScore?.ToString())"
+                       class="form-control" style="width:8rem" min="0" max="100" step="1"
+                       placeholder="vd 40" />
             </div>
             <div class="col-auto"><button class="btn btn-primary">Lọc</button></div>
             <div class="col-auto"><a asp-action="Index" class="btn btn-link">Xoá lọc</a></div>

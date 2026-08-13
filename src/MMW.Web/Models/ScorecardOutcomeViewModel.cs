@@ -70,10 +70,35 @@ public sealed class OutcomeStat
 public sealed class ScorecardOutcomeViewModel
 {
     // ── Bộ lọc ──────────────────────────────────────────────────────────
+
+    /// <summary>Ngày VIỆT NAM người dùng chọn, không phải ngày UTC. Xem <see cref="FromUtc"/>.</summary>
+    public DateOnly FromDateVn { get; set; }
+
+    /// <inheritdoc cref="FromDateVn"/>
+    public DateOnly ToDateVn { get; set; }
+
+    /// <summary>Biên UTC thực sự dùng để truy vấn, đã dịch từ ngày VN.</summary>
+    /// <remarks>
+    /// Giữ lại để hiện ra màn hình: ngày giao dịch của bộ máy vẫn là ngày UTC (hạn mức lỗ, quota
+    /// lệnh, bảng chất lượng phiên đều reset lúc nửa đêm UTC = 07:00 giờ VN). Lọc theo ngày VN là
+    /// lựa chọn của người ĐỌC, và người đọc cần thấy hai mốc đó không trùng nhau.
+    /// </remarks>
     public DateTime FromUtc { get; set; }
+
+    /// <inheritdoc cref="FromUtc"/>
     public DateTime ToUtc { get; set; }
+
     public string? Symbol { get; set; }
     public VetoReason? Veto { get; set; }
+
+    /// <summary>Chỉ giữ phiếu có điểm LỚN HƠN giá trị này. Cùng ngữ nghĩa với trang Phiếu chấm điểm.</summary>
+    /// <remarks>
+    /// Trên trang này bộ lọc còn một tác dụng riêng: phiếu bị veto được ghi <c>TotalScore = 0</c>
+    /// theo hợp đồng của bộ chấm, nên đặt n ≥ 0 đồng thời loại chúng khỏi phép thống kê. Đó là cách
+    /// tách câu hỏi "cổng chặn đúng không" khỏi câu hỏi "setup đủ điểm thì kết cục ra sao".
+    /// </remarks>
+    public int? MinScore { get; set; }
+
     public int ResolverVersion { get; set; }
 
     public IReadOnlyList<string> KnownSymbols { get; set; } = Array.Empty<string>();
@@ -112,7 +137,21 @@ public sealed class ScorecardOutcomeViewModel
     public decimal BreakevenWinRate =>
         AvgWinR + AvgLossR == 0m ? 0m : AvgLossR / (AvgWinR + AvgLossR);
 
-    public static string Vn(DateTime utc) => utc.AddHours(7).ToString("HH:mm dd/MM");
+    /// <summary>Lệch múi giờ Việt Nam. Cố định — Việt Nam không có giờ mùa hè.</summary>
+    public const int VnOffsetHours = 7;
+
+    public static string Vn(DateTime utc) => utc.AddHours(VnOffsetHours).ToString("HH:mm dd/MM");
+
+    /// <summary>Nửa đêm ngày VN, quy về mốc UTC tương ứng.</summary>
+    public static DateTime VnDayStartUtc(DateOnly dateVn) => DateTime.SpecifyKind(
+        dateVn.ToDateTime(TimeOnly.MinValue).AddHours(-VnOffsetHours), DateTimeKind.Utc);
+
+    /// <summary>Cuối ngày VN (bao gồm cả nó), quy về mốc UTC tương ứng.</summary>
+    public static DateTime VnDayEndUtc(DateOnly dateVn) => DateTime.SpecifyKind(
+        dateVn.ToDateTime(TimeOnly.MaxValue).AddHours(-VnOffsetHours), DateTimeKind.Utc);
+
+    public static DateOnly TodayVn(DateTime utcNow) =>
+        DateOnly.FromDateTime(utcNow.AddHours(VnOffsetHours));
 
     public static string OutcomeLabel(ScorecardReviewOutcome outcome) => outcome switch
     {
