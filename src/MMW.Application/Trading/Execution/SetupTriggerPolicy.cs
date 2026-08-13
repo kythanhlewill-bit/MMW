@@ -1,4 +1,5 @@
 using MMW.Application.MarketData.Models;
+using MMW.Application.Trading.DailyPlanning;
 using MMW.Application.Trading.Scoring;
 using MMW.Application.Trading.Structure;
 using MMW.Domain.Entities;
@@ -74,11 +75,17 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
                 SetupTriggerState.ImpulseWeak,
                 $"V3 cần ít nhất {VolumeLookbackBars + 2} nến đã đóng để xác nhận trigger.");
 
-        return context.DailyPlan.DayRegime == DayRegime.Range
+        // Rẽ theo CẤU TRÚC ngày, không theo nhãn ngày. Trước đây chỗ này so thẳng với
+        // DayRegime.Range, nên hai nhãn nguy hiểm — EventDay và HighVolatility — rơi hết vào
+        // nhánh xu hướng rồi bị EvaluateTrend bác ngay dòng đầu, vì chúng cũng không phải
+        // TrendUp/TrendDown. Kết quả: ngày có tin không có playbook nào cả. Xem DayPlaybook.
+        var structure = DayPlaybook.StructureOf(context.DailyPlan);
+
+        return structure == DayStructure.Range
             ? context.Settings.StrategyVersion.UsesSidewaysV6()
                 ? EvaluateSidewaysV6(context)
                 : EvaluateRange(context, range)
-            : EvaluateTrend(context);
+            : EvaluateTrend(context, structure);
     }
 
     private SetupTriggerDecision EvaluateSidewaysV6(ScoringContext context)
@@ -446,16 +453,16 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
             SetupQualityScore: 70);
     }
 
-    private SetupTriggerDecision EvaluateTrend(ScoringContext context)
+    private SetupTriggerDecision EvaluateTrend(ScoringContext context, DayStructure structure)
     {
-        var trendAligned =
-            (context.DailyPlan.DayRegime == DayRegime.TrendUp && context.Direction == TradeDirection.Long)
-            || (context.DailyPlan.DayRegime == DayRegime.TrendDown && context.Direction == TradeDirection.Short);
-
-        if (!trendAligned)
+        // So với CẤU TRÚC ngày, không với nhãn ngày — nếu không thì một ngày vừa có tin vừa đang
+        // trong xu hướng sẽ không bao giờ qua được dòng này. Nhánh Range đã tách ở Evaluate, nên
+        // tới đây chỉ còn TrendUp/TrendDown và câu hỏi duy nhất là chiều lệnh có thuận không.
+        if (!DayPlaybook.IsTrendAligned(structure, context.Direction))
             return SetupTriggerDecision.Reject(
                 SetupTriggerState.NoBreakOfStructure,
-                $"V3 không có playbook entry cho regime {context.DailyPlan.DayRegime} theo chiều {context.Direction}.");
+                $"Cấu trúc ngày {structure} không thuận chiều {context.Direction} " +
+                $"(nhãn ngày {context.DailyPlan.DayRegime}).");
 
         var atr = AverageTrueRange(context.EntryCandles, 14);
         if (atr <= 0m)

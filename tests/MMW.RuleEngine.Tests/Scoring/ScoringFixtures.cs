@@ -144,7 +144,8 @@ internal static class ScoringFixtures
         VolatilityRegime volatility = VolatilityRegime.Normal,
         decimal? atrPercentile = 50m,
         decimal riskMultiplier = 1.0m,
-        int maxTrades = 5) => new()
+        int maxTrades = 5,
+        string? btcStructure = null) => new()
         {
             Id = 1,
             TradingAccountId = 1,
@@ -156,6 +157,9 @@ internal static class ScoringFixtures
             RiskMultiplier = riskMultiplier,
             MaxTradesToday = maxTrades,
             AtrPercentile = atrPercentile,
+            // Chỉ có nghĩa khi regime là nhãn nguy hiểm (EventDay/HighVolatility) — khi đó nó là
+            // nơi duy nhất còn giữ cấu trúc giá thật. Xem DayPlaybook.
+            BtcStructure = btcStructure,
             IsComplete = true,
         };
 
