@@ -28,7 +28,7 @@ public class HighVolatilityGapTests
         var r = RegimeTable.Resolve(DayStructure.Range, VolatilityRegime.High, hasHighImpactEvent: false);
 
         Assert.Equal(0.6m, r.RiskMultiplier);
-        Assert.Equal(3, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     /// <summary>
@@ -41,7 +41,7 @@ public class HighVolatilityGapTests
 
         Assert.Equal(AllowedDirections.LongOnly, r.AllowedDirections);
         Assert.Equal(0.6m, r.RiskMultiplier);
-        Assert.Equal(3, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     /// <summary>
@@ -58,7 +58,7 @@ public class HighVolatilityGapTests
         var r = RegimeTable.Resolve(DayStructure.Range, VolatilityRegime.Extreme, hasHighImpactEvent: false);
 
         Assert.Equal(0.3m, r.RiskMultiplier);
-        Assert.Equal(2, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class HighVolatilityGapTests
         var r = RegimeTable.Resolve(DayStructure.TrendUp, volatility, hasHighImpactEvent: false);
 
         Assert.Equal(1.0m, r.RiskMultiplier);
-        Assert.Equal(5, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     /// <summary>

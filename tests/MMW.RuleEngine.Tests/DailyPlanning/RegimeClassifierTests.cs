@@ -31,7 +31,7 @@ public class RegimeClassifierTests
 
         Assert.Equal(AllowedDirections.LongOnly, r.AllowedDirections);
         Assert.Equal(1.0m, r.RiskMultiplier);
-        Assert.Equal(5, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class RegimeClassifierTests
 
         Assert.Equal(AllowedDirections.ShortOnly, r.AllowedDirections);
         Assert.Equal(1.0m, r.RiskMultiplier);
-        Assert.Equal(5, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class RegimeClassifierTests
 
         Assert.Equal(AllowedDirections.Both, r.AllowedDirections);
         Assert.Equal(0.5m, r.RiskMultiplier);
-        Assert.Equal(3, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class RegimeClassifierTests
 
         Assert.Equal(AllowedDirections.Both, r.AllowedDirections);
         Assert.Equal(0.3m, r.RiskMultiplier);
-        Assert.Equal(2, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class RegimeClassifierTests
 
         Assert.Equal(AllowedDirections.Both, r.AllowedDirections);
         Assert.Equal(0.4m, r.RiskMultiplier);
-        Assert.Equal(2, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     // ── Dòng nền: ngày trend chỉ được đánh một chiều, bất kể biến động ──
@@ -98,7 +98,7 @@ public class RegimeClassifierTests
 
         Assert.Equal(AllowedDirections.Both, r.AllowedDirections);
         Assert.Equal(1.0m, r.RiskMultiplier);
-        Assert.Equal(5, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     // ── Vùng biến động theo phân vị ─────────────────────────────────────
@@ -239,7 +239,7 @@ public class RegimeClassifierTests
 
         var result = Classifier.Classify(inputs, DailyPlanFixtures.Settings());
 
-        Assert.Equal(expectEventDay, result.MaxTradesToday == 2);
+        Assert.Equal(expectEventDay, result.Regime == DayRegime.EventDay);
     }
 
     // ── Bất biến 1 và 2 của contract ────────────────────────────────────

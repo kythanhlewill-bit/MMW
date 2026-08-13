@@ -337,9 +337,21 @@ public class LiveOrderService : ILiveOrderService
         _trades.Update(trade);
         await _unitOfWork.CommitAsync(cancellationToken);
 
+        // Ghi thẳng dừng lỗ và chốt lời vào thông báo. Trước đây chỉ có giá vào, nên muốn biết
+        // lệnh đang rủi ro bao nhiêu phải mở web — mà thời điểm cần biết điều đó chính là lúc
+        // nhận thông báo. Rủi ro tính theo % để đọc được ngay không cần nhẩm.
+        var stopText = trade.StopLoss is { } stopPrice
+            ? $"{stopPrice}"
+              + (trade.EntryPrice > 0m
+                  ? $" ({Math.Abs(trade.EntryPrice - stopPrice) / trade.EntryPrice * 100m:N2}%)"
+                  : string.Empty)
+            : "CHƯA ĐẶT";
+        var targetText = trade.TakeProfit is { } targetPrice ? $"{targetPrice}" : "CHƯA ĐẶT";
+
         await NotifyAsync(account, NotificationSeverity.Info,
-            $"Đã đặt lệnh {(_options.UseTestnet ? "TESTNET" : "THẬT")} #{tradeId}",
-            $"{trade.Symbol} {trade.Direction} qty {effectiveQty} @ {trade.EntryPrice} (lev {leverage}x).{sltpNote}",
+            $"Vào lệnh {(_options.UseTestnet ? "TESTNET" : "THẬT")} #{tradeId} · {trade.Symbol} {trade.Direction}",
+            $"Vào {trade.EntryPrice} · Dừng lỗ {stopText} · Chốt lời {targetText}"
+            + $" · qty {effectiveQty}, đòn bẩy {leverage}x.{sltpNote}",
             trade.Symbol, cancellationToken);
     }
 

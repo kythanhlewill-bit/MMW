@@ -11,9 +11,13 @@ public sealed record AdaptiveRegimeLimits(decimal RiskMultiplier, int MaxTradesT
 public static class AdaptiveRegimePolicy
 {
     private const decimal RangeRiskCap = 0.6m;
-    private const int RangeMaxTrades = 3;
     private const decimal WeekendRiskCap = 0.5m;
-    private const int WeekendMaxTrades = 2;
+
+    // Hai trần dưới đây vốn là 3 (ngày đi ngang) và 2 (cuối tuần). Nâng tạm cho giai đoạn quan
+    // sát testnet 2026-08-13 — nếu để nguyên thì hằng số 20 của RegimeTable không có tác dụng,
+    // vì Resolve lấy MIN. Hạ lại cùng lúc với RegimeTable.ObservationMaxTradesPerDay.
+    private const int RangeMaxTrades = RegimeTable.ObservationMaxTradesPerDay;
+    private const int WeekendMaxTrades = RegimeTable.ObservationMaxTradesPerDay;
 
     public static AdaptiveRegimeLimits Apply(
         DateOnly planDateUtc,

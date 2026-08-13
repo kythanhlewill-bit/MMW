@@ -10,10 +10,10 @@ public sealed class AdaptiveRegimePolicyTests
     public void Range_ngay_thuong_giam_nhip_nhung_khong_cam()
     {
         var result = AdaptiveRegimePolicy.Apply(
-            new DateOnly(2026, 8, 3), DayRegime.Range, 1m, 5);
+            new DateOnly(2026, 8, 3), DayRegime.Range, 1m, RegimeTable.ObservationMaxTradesPerDay);
 
         Assert.Equal(0.6m, result.RiskMultiplier);
-        Assert.Equal(3, result.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, result.MaxTradesToday);
     }
 
     [Theory]
@@ -22,10 +22,10 @@ public sealed class AdaptiveRegimePolicyTests
     public void Cuoi_tuan_giam_con_hai_setup_chu_khong_cam_tuyet_doi(int y, int m, int d)
     {
         var result = AdaptiveRegimePolicy.Apply(
-            new DateOnly(y, m, d), DayRegime.TrendUp, 1m, 5);
+            new DateOnly(y, m, d), DayRegime.TrendUp, 1m, RegimeTable.ObservationMaxTradesPerDay);
 
         Assert.Equal(0.5m, result.RiskMultiplier);
-        Assert.Equal(2, result.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, result.MaxTradesToday);
     }
 
     [Fact]

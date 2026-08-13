@@ -23,7 +23,7 @@ public class RegimeMergeTests
         var r = RegimeTable.Resolve(DayStructure.TrendUp, VolatilityRegime.Extreme, hasHighImpactEvent: true);
 
         Assert.Equal(0.3m, r.RiskMultiplier);
-        Assert.Equal(2, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
         Assert.Equal(AllowedDirections.LongOnly, r.AllowedDirections);
     }
 
@@ -35,7 +35,7 @@ public class RegimeMergeTests
         var r = RegimeTable.Resolve(DayStructure.TrendUp, VolatilityRegime.Normal, hasHighImpactEvent: true);
 
         Assert.Equal(0.4m, r.RiskMultiplier);
-        Assert.Equal(2, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class RegimeMergeTests
         var r = RegimeTable.Resolve(DayStructure.Range, VolatilityRegime.Extreme, hasHighImpactEvent: true);
 
         Assert.Equal(0.3m, r.RiskMultiplier);
-        Assert.Equal(2, r.MaxTradesToday);
+        Assert.Equal(RegimeTable.ObservationMaxTradesPerDay, r.MaxTradesToday);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class RegimeMergeTests
             var r = RegimeTable.Resolve(structure, vol, hasEvent);
 
             Assert.InRange(r.RiskMultiplier, 0m, 1.0m);
-            Assert.InRange(r.MaxTradesToday, 0, 5);
+            Assert.InRange(r.MaxTradesToday, 0, RegimeTable.ObservationMaxTradesPerDay);
         }
     }
 }

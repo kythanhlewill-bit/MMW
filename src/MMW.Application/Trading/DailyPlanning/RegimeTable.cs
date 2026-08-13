@@ -21,6 +21,25 @@ public sealed record RegimeParameters(
 public static class RegimeTable
 {
     /// <summary>
+    /// Trần số lệnh mỗi ngày trong GIAI ĐOẠN QUAN SÁT TESTNET (đặt 2026-08-13).
+    /// </summary>
+    /// <remarks>
+    /// <b>Đây là giá trị tạm, PHẢI hạ lại trước khi chạy tiền thật.</b>
+    ///
+    /// Bậc thang thật của bảng FR-019 là 5 / 3 / 2 tuỳ mức nguy hiểm của ngày. Bậc thang đó bị
+    /// làm phẳng ở đây có chủ ý: tính tới 2026-08-13 hệ thống chạy 4 ngày và sinh ra <b>0 lệnh</b>,
+    /// nên không có gì để quan sát. Trần thấp không bảo vệ được gì khi chưa lệnh nào vào, mà lại
+    /// chặn đúng thứ đang cần: một mẫu đủ lớn để đo.
+    ///
+    /// Rủi ro thật của việc nâng nằm ở tiền, và tiền đang là tiền ảo (<c>UseTestnet=true</c>).
+    /// Các rào còn lại — cap notional, cổng chi phí, cổng chặn giờ, gate chống trùng vị thế —
+    /// giữ nguyên, nên nâng trần KHÔNG mở thêm đường nào ngoài số lượng.
+    ///
+    /// Hạ lại: đổi hằng số này về 5 và trả ba dòng dưới về 3 / 2 / 2.
+    /// </remarks>
+    public const int ObservationMaxTradesPerDay = 20;
+
+    /// <summary>
     /// Dòng NỀN, luôn khớp. Không có nó thì các tổ hợp ngoài bảng FR-019 — ví dụ "xu hướng
     /// tăng + biến động cao", vốn rất thường gặp — sẽ không khớp dòng nào và rơi vào trạng
     /// thái không xác định.
@@ -38,19 +57,19 @@ public static class RegimeTable
             _ => AllowedDirections.Both,
         },
         RiskMultiplier: 1.0m,
-        MaxTradesToday: 5);
+        MaxTradesToday: ObservationMaxTradesPerDay);
 
     /// <summary>Bảng FR-019. Mỗi phần tử: điều kiện khớp và tham số nó áp đặt.</summary>
     private static readonly (Func<DayStructure, VolatilityRegime, bool, bool> Matches, RegimeParameters Parameters)[] Rows =
     {
         ((s, v, _) => s == DayStructure.TrendUp && v == VolatilityRegime.Normal,
-            new RegimeParameters(AllowedDirections.LongOnly, 1.0m, 5)),
+            new RegimeParameters(AllowedDirections.LongOnly, 1.0m, ObservationMaxTradesPerDay)),
 
         ((s, v, _) => s == DayStructure.TrendDown && v == VolatilityRegime.Normal,
-            new RegimeParameters(AllowedDirections.ShortOnly, 1.0m, 5)),
+            new RegimeParameters(AllowedDirections.ShortOnly, 1.0m, ObservationMaxTradesPerDay)),
 
         ((s, v, _) => s == DayStructure.Range && v == VolatilityRegime.Low,
-            new RegimeParameters(AllowedDirections.Both, 0.5m, 3)),
+            new RegimeParameters(AllowedDirections.Both, 0.5m, ObservationMaxTradesPerDay)),
 
         // Vùng biến động CAO (phân vị 75–90) trước đây không khớp dòng nào và rơi vào BaseRow:
         // rủi ro 1.0 và 5 lệnh, y hệt một ngày yên bình. Đó là lỗ hổng nguy hiểm nhất của bảng.
@@ -60,13 +79,13 @@ public static class RegimeTable
         // lớn để bị gọi là Extreme và tự thu nhỏ. Vùng Extreme ít nguy hiểm hơn CHÍNH VÌ nó đã
         // bị cap 0.3 từ dòng dưới.
         ((_, v, _) => v == VolatilityRegime.High,
-            new RegimeParameters(AllowedDirections.Both, 0.6m, 3)),
+            new RegimeParameters(AllowedDirections.Both, 0.6m, ObservationMaxTradesPerDay)),
 
         ((_, v, _) => v == VolatilityRegime.Extreme,
-            new RegimeParameters(AllowedDirections.Both, 0.3m, 2)),
+            new RegimeParameters(AllowedDirections.Both, 0.3m, ObservationMaxTradesPerDay)),
 
         ((_, _, hasEvent) => hasEvent,
-            new RegimeParameters(AllowedDirections.Both, 0.4m, 2)),
+            new RegimeParameters(AllowedDirections.Both, 0.4m, ObservationMaxTradesPerDay)),
     };
 
     /// <summary>

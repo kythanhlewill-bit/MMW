@@ -152,10 +152,11 @@ public class DayPlaybookTests
         var withEvent = RegimeTable.Resolve(DayStructure.TrendDown, VolatilityRegime.Normal, hasHighImpactEvent: true);
         var without = RegimeTable.Resolve(DayStructure.TrendDown, VolatilityRegime.Normal, hasHighImpactEvent: false);
 
+        // Trần SỐ LỆNH đang bị làm phẳng cho giai đoạn quan sát testnet, nên nó không còn nói lên
+        // điều gì về mức thận trọng. Hệ số rủi ro mới là thứ còn giữ nguyên bậc thang, và cũng là
+        // thứ thật sự quyết định mất bao nhiêu tiền mỗi lệnh.
         Assert.Equal(0.4m, withEvent.RiskMultiplier);
-        Assert.Equal(2, withEvent.MaxTradesToday);
         Assert.True(withEvent.RiskMultiplier < without.RiskMultiplier);
-        Assert.True(withEvent.MaxTradesToday < without.MaxTradesToday);
         Assert.NotEqual(AllowedDirections.None, withEvent.AllowedDirections);
     }
 }

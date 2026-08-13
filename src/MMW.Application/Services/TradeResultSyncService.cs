@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
+using MMW.Application.Models;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -20,6 +21,7 @@ public class TradeResultSyncService : ITradeResultSyncService
     private readonly ITradeWorkflowService _workflow;
     private readonly IUnitOfWork _unitOfWork;
     private readonly LiveTradingOptions _liveTrading;
+    private readonly INotificationService _notifications;
 
     public TradeResultSyncService(
         IBaseRepository<TradingAccount> accounts,
@@ -28,7 +30,8 @@ public class TradeResultSyncService : ITradeResultSyncService
         IExchangeOrderProviderFactory orderFactory,
         ITradeWorkflowService workflow,
         IUnitOfWork unitOfWork,
-        IOptions<LiveTradingOptions> liveTrading)
+        IOptions<LiveTradingOptions> liveTrading,
+        INotificationService notifications)
     {
         _accounts = accounts;
         _trades = trades;
@@ -37,6 +40,7 @@ public class TradeResultSyncService : ITradeResultSyncService
         _workflow = workflow;
         _unitOfWork = unitOfWork;
         _liveTrading = liveTrading.Value;
+        _notifications = notifications;
     }
 
     public async Task<SyncResult> SyncAllAccountsAsync(CancellationToken cancellationToken = default)
@@ -120,10 +124,76 @@ public class TradeResultSyncService : ITradeResultSyncService
             foreach (var trade in openTrades.Where(t => t.Status == TradeStatus.Closed))
             {
                 try { await _workflow.ProcessTradeAsync(trade.Id); } catch { }
+                await NotifyClosedAsync(trade, cancellationToken);
             }
         }
 
         return new SyncResult(synced, failed, skipped);
+    }
+
+    /// <summary>Báo lệnh đã đóng, và đóng vì chạm chốt lời hay dừng lỗ.</summary>
+    /// <remarks>
+    /// Phân loại bằng cách so giá thoát với hai mức, KHÔNG bằng lãi/lỗ: một lệnh chạm chốt lời
+    /// vẫn có thể lỗ sau phí, và gọi nó là "dừng lỗ" thì thông báo nói sai chuyện đã xảy ra.
+    ///
+    /// Chỉ dám khẳng định chạm mức khi giá thoát nằm trong 25% khoảng vào–dừng quanh mức đó.
+    /// Ngoài dải ấy thì lệnh đóng vì lý do khác (đóng tay, làm phẳng trước cửa sổ tin, sàn thanh
+    /// lý) và thông báo phải nói đúng như vậy thay vì gán bừa cho mức gần nhất.
+    ///
+    /// Nuốt mọi ngoại lệ: không gửi được thông báo là chuyện nhỏ, còn để nó ném ra sẽ chặn vòng
+    /// đồng bộ của những lệnh còn lại — mất dữ liệu thật để đổi lấy một dòng thông báo.
+    /// </remarks>
+    private async Task NotifyClosedAsync(Trade trade, CancellationToken ct)
+    {
+        try
+        {
+            var (label, severity) = ClassifyExit(trade);
+            var pnl = trade.RealizedPnl ?? 0m;
+            var sign = pnl >= 0m ? "+" : "";
+
+            await _notifications.PublishAsync(new NotificationCreateModel
+            {
+                Type = NotificationType.TradeRiskWarning,
+                Severity = severity,
+                Title = $"Đóng lệnh #{trade.Id} · {trade.Symbol} {trade.Direction} · {label}",
+                Message = $"Vào {trade.EntryPrice} → ra {trade.ExitPrice?.ToString() ?? "—"} · "
+                          + $"lãi/lỗ {sign}{pnl:N2} USDT (đã trừ phí {trade.Fee:N2}) · "
+                          + $"dừng lỗ {trade.StopLoss?.ToString() ?? "—"}, "
+                          + $"chốt lời {trade.TakeProfit?.ToString() ?? "—"}.",
+                Source = "trade_sync",
+                SourceKey = $"close:{trade.Id}",
+                RelatedSymbol = trade.Symbol,
+                RelatedUrl = "/Trades",
+                ExpiresAt = DateTime.UtcNow.AddHours(24),
+            }, ct);
+        }
+        catch
+        {
+            // Xem chú thích trên: thông báo hỏng không được phép làm hỏng việc đồng bộ.
+        }
+    }
+
+    /// <summary>Giá thoát nằm ở đâu so với hai mức đã đặt.</summary>
+    internal static (string Label, NotificationSeverity Severity) ClassifyExit(Trade trade)
+    {
+        if (trade.ExitPrice is not { } exit) return ("đã đóng", NotificationSeverity.Info);
+
+        // Không có dừng lỗ thì không có thước đo khoảng cách, nên không khẳng định gì cả. Đoán
+        // bừa ở đây sẽ sinh ra thông báo "CHẠM DỪNG LỖ" cho một lệnh chưa từng đặt dừng lỗ.
+        if (trade.StopLoss is not { } stop) return ("đã đóng", NotificationSeverity.Info);
+
+        var risk = Math.Abs(trade.EntryPrice - stop);
+        if (risk <= 0m) return ("đã đóng", NotificationSeverity.Info);
+
+        var tolerance = risk * 0.25m;
+
+        if (Math.Abs(exit - stop) <= tolerance)
+            return ("CHẠM DỪNG LỖ", NotificationSeverity.Warning);
+
+        if (trade.TakeProfit is { } target && Math.Abs(exit - target) <= tolerance)
+            return ("CHẠM CHỐT LỜI", NotificationSeverity.Info);
+
+        return ("đóng ngoài hai mức", NotificationSeverity.Info);
     }
 
     /// <summary>
