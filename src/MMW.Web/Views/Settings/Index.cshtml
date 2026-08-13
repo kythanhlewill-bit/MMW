@@ -46,14 +46,9 @@
                     <small class="text-secondary">Bật các job lập kế hoạch, chấm điểm và quản lý vị thế. Không tự bật giao dịch thật.</small>
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-check form-switch">
-                        <input asp-for="General.ShadowComparisonEnabled" class="form-check-input" type="checkbox" />
-                        <span class="form-check-label">Bật so sánh AI shadow</span>
-                    </label>
-                    <small class="text-secondary">AI chỉ ghi audit để đối chiếu; không có quyền tạo hoặc gửi lệnh.</small>
-                </div>
-
+@* Công tắc "so sánh AI shadow" đã gỡ 2026-08-13 cùng với đường AI đề xuất lệnh. Một công tắc
+   không còn điều khiển gì tệ hơn là không có công tắc: người dùng sẽ tắt nó rồi tin rằng vừa
+   thay đổi một điều gì đó. *@
                 <div class="mb-2">
                     <label class="form-label" asp-for="General.MinSignalScore"></label>
                     <input asp-for="General.MinSignalScore" class="form-control" type="number" min="1" max="10" />

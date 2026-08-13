@@ -28,8 +28,12 @@ public class AppSetting : BaseEntity
     public bool DeterministicEngineEnabled { get; set; }
 
     /// <summary>
-    /// Giữ đường AI cũ chạy song song ở chế độ shadow: chỉ ghi bản ghi để so sánh,
-    /// KHÔNG tạo lệnh (FR-059).
+    /// KHÔNG CÒN TÁC DỤNG từ 2026-08-13 — đường AI đề xuất lệnh đã gỡ, không mã nào đọc cờ này.
     /// </summary>
+    /// <remarks>
+    /// Giữ lại cột thay vì bỏ hẳn vì bỏ cần một migration, mà cột <c>bit</c> thừa thì vô hại.
+    /// Ô bật/tắt tương ứng đã gỡ khỏi trang Cấu hình để không ai tưởng nó còn điều khiển gì.
+    /// Dọn hẳn thì gộp vào lần migration kế tiếp.
+    /// </remarks>
     public bool ShadowComparisonEnabled { get; set; } = true;
 }

@@ -149,7 +149,8 @@ public static class DependencyInjection
         services.AddScoped<IMarketAnalyzer, MarketAnalyzer>();
         services.AddScoped<ISignalGenerator, SignalGenerator>();
         services.AddScoped<IMarketImportService, MarketImportService>();
-        services.AddScoped<IMarketScanService, MarketScanService>();
+        // MarketScanService (đề xuất lệnh bằng LLM) đã gỡ 2026-08-13 — 157 đề xuất, 0 lệnh.
+        // Lý do đầy đủ ở chỗ gỡ job trong Program.cs.
 
         // Trade result sync (auto-fetch PnL từ sàn)
         services.AddScoped<ITradeResultSyncService, TradeResultSyncService>();

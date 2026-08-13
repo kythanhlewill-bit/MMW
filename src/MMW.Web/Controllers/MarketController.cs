@@ -1,4 +1,3 @@
-using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 using MMW.Application.Interfaces;
 using MMW.Domain.Entities;
@@ -50,13 +49,4 @@ public class MarketController : Controller
         return View(new IndicatorHistoryViewModel { Symbol = symbol, Records = records });
     }
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public IActionResult ScanNow()
-    {
-        // Đẩy job quét chạy nền ngay lập tức.
-        BackgroundJob.Enqueue<IMarketScanService>(job => job.ScanAllAsync(CancellationToken.None));
-        TempData["Message"] = "Đã kích hoạt quét thị trường. Làm mới sau vài giây để xem kết quả.";
-        return RedirectToAction(nameof(Index));
-    }
 }

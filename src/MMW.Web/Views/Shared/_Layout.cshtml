@@ -113,7 +113,7 @@
                                 </a>
                             </li>
 
-                            <li class="nav-item dropdown @ActiveAny("Market", "Watchlist", "Signals")">
+                            <li class="nav-item dropdown @ActiveAny("Market", "Watchlist")">
                                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"
                                    role="button" aria-expanded="false">
                                     <span class="nav-link-icon"><i class="ti ti-chart-candle"></i></span>
@@ -126,13 +126,10 @@
                                     <a class="dropdown-item @Active("Watchlist")" asp-controller="Watchlist" asp-action="Index">
                                         <i class="ti ti-eye me-2"></i>Watchlist
                                     </a>
-                                    <a class="dropdown-item @Active("Signals")" asp-controller="Signals" asp-action="Index">
-                                        <i class="ti ti-bulb me-2"></i>Đề xuất AI
-                                    </a>
                                 </div>
                             </li>
 
-                            <li class="nav-item dropdown @ActiveAny("Backtest", "OutcomeReview", "ShadowComparison", "Audit")">
+                            <li class="nav-item dropdown @ActiveAny("Backtest", "OutcomeReview", "Audit")">
                                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"
                                    role="button" aria-expanded="false">
                                     <span class="nav-link-icon"><i class="ti ti-timeline"></i></span>
@@ -144,9 +141,6 @@
                                     </a>
                                     <a class="dropdown-item @Active("OutcomeReview")" asp-controller="OutcomeReview" asp-action="Index">
                                         <i class="ti ti-target-arrow me-2"></i>Kết cục phiếu
-                                    </a>
-                                    <a class="dropdown-item @Active("ShadowComparison")" asp-controller="ShadowComparison" asp-action="Index">
-                                        <i class="ti ti-arrows-diff me-2"></i>So sánh AI
                                     </a>
                                     <a class="dropdown-item @Active("Audit")" asp-controller="Audit" asp-action="Index">
                                         <i class="ti ti-history me-2"></i>Audit

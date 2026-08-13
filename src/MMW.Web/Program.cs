@@ -145,14 +145,16 @@ try
     // Tạo DB (nếu chưa có), áp migration và seed dữ liệu khởi tạo.
     await SeedData.InitializeAsync(app.Services);
 
-    // Job quét thị trường bằng LLM: giữ chạy ở chế độ SO SÁNH SONG SONG, không còn là đường
-    // sinh lệnh. Đường sinh lệnh giờ là `signal-eval` bên dưới, hoàn toàn tất định (FR-059).
-    // Hạ nhịp xuống 15 phút cho khớp cây nến vào lệnh và giảm chi phí AI.
-    RecurringJob.AddOrUpdate<IMarketScanService>(
-        "market-scan-shadow",
-        job => job.ScanAllAsync(CancellationToken.None),
-        "*/15 * * * *");
+    // Job quét thị trường bằng LLM đã GỠ ngày 2026-08-13. Nó từng là đường sinh lệnh, rồi bị hạ
+    // xuống vai so sánh song song khi `signal-eval` tiếp quản. Đo trên 4 ngày dữ liệu thật: 467
+    // lượt gọi, 157 đề xuất lệnh, 0 lệnh sinh ra từ chúng — và chỉ 223/467 bản ghi ghép được với
+    // một phiếu để so, vì nó quét 4 mã trong khi engine chỉ chấm 2. Nửa số tiền AI chi ra không
+    // có gì để đối chứng.
+    //
+    // Không xoá bảng `AiSignalScanRecords` và `TradeSignals`: chúng giữ lịch sử đo được, và trang
+    // Nhật ký vẫn đọc bảng đầu. Gỡ ở đây chỉ dừng phần SINH RA dữ liệu mới.
     RecurringJob.RemoveIfExists("market-scan");
+    RecurringJob.RemoveIfExists("market-scan-shadow");
 
     // Job chấm điểm tất định trên cây nến 15m vừa đóng: 0 lời gọi AI (FR-025 → FR-034).
     // Trễ 1 phút so với mốc nến đóng theo R-011 — gọi đúng 00:00 thì sàn thường chưa chốt
