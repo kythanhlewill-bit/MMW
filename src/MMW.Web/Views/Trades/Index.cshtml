@@ -184,6 +184,8 @@
                                         MMW.Domain.Enums.LiveOrderStatus.Blocked => ("bg-yellow text-yellow-fg", "BLOCKED"),
                                         MMW.Domain.Enums.LiveOrderStatus.Error => ("bg-red text-red-fg", "LỖI SÀN"),
                                         MMW.Domain.Enums.LiveOrderStatus.Canceled => ("bg-secondary", "HUỶ"),
+                                        MMW.Domain.Enums.LiveOrderStatus.EntryPending => ("bg-purple text-purple-fg", "CHỜ KHỚP"),
+                                        MMW.Domain.Enums.LiveOrderStatus.SltpPending => ("bg-orange text-orange-fg", "THIẾU SL/TP"),
                                         _ => ("bg-secondary", t.LiveStatus.ToString())
                                     };
                                     <span class="badge @liveBadge.Item1 ms-1" title="@t.LiveNote">@liveBadge.Item2</span>

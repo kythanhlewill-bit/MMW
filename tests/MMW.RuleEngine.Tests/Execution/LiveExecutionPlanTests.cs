@@ -36,7 +36,7 @@ public sealed class LiveExecutionPlanTests
     // ── Kế hoạch chạy thật đúng bằng cái sẽ gửi sàn ──────────────────────
 
     [Fact]
-    public void PlanLive_la_mot_chan_thi_truong_dung_ba_muc_gia_cua_phieu()
+    public void PlanLive_vao_bang_lenh_cho_khi_co_muc_thu_dong()
     {
         var card = Card();
 
@@ -44,8 +44,9 @@ public sealed class LiveExecutionPlanTests
 
         Assert.Equal(TradeExecutionPlanner.LiveMode, plan.Mode);
         Assert.Single(plan.Entries);
-        Assert.False(plan.Entries[0].IsLimit);
-        Assert.Equal(card.SuggestedEntry, plan.Entries[0].Price);
+        Assert.True(plan.Entries[0].IsLimit);
+        Assert.Equal(card.SuggestedLimitEntry, plan.Entries[0].Price);
+        Assert.Equal(TradeExecutionPlanner.LiveLimitExpiryBars, plan.LimitEntryExpiryBars);
         Assert.Equal(card.SuggestedStopLoss, plan.StopLoss);
         Assert.Equal(card.SuggestedTakeProfit, plan.FirstTakeProfit);
 
@@ -53,6 +54,51 @@ public sealed class LiveExecutionPlanTests
         Assert.Null(plan.RunnerTakeProfit);
         Assert.Equal(1m, plan.FirstTakeProfitFraction);
         Assert.False(plan.MoveRunnerStopToBreakeven);
+    }
+
+    /// <summary>
+    /// Mức chờ phải nằm đúng phía KHÔNG khớp ngay của sổ lệnh, nếu không thì lùi về lệnh thị trường.
+    /// </summary>
+    /// <remarks>
+    /// Một lệnh chờ đặt sai phía sổ sẽ cắt qua và khớp thành taker. Nếu kế hoạch vẫn khai
+    /// <c>IsLimit</c> trong tình huống đó thì cổng chi phí tính phí maker cho một cú khớp taker —
+    /// tái lập đúng loại sai lệch mà <c>PlanLive</c> sinh ra để chấm dứt. Thà vào bằng lệnh thị
+    /// trường và bị chấm đắt, còn hơn được chấm rẻ rồi trả đắt.
+    /// </remarks>
+    [Theory]
+    // Bán: mức chờ phải CAO hơn giá hiện tại.
+    [InlineData(TradeDirection.Short, 1876.00, false)]   // thấp hơn ⟹ khớp ngay
+    [InlineData(TradeDirection.Short, 1878.31, false)]   // đúng bằng giá ⟹ cắt sổ
+    [InlineData(TradeDirection.Short, 1880.55, true)]
+    [InlineData(TradeDirection.Short, 1884.50, false)]   // sát dừng lỗ ⟹ khối lượng nổ
+    // Mua: mức chờ phải THẤP hơn giá hiện tại.
+    [InlineData(TradeDirection.Long, 1880.00, false)]
+    [InlineData(TradeDirection.Long, 1876.07, true)]
+    [InlineData(TradeDirection.Long, 1872.20, false)]    // sát dừng lỗ
+    public void Muc_cho_sai_phia_hoac_sat_dung_lo_thi_lui_ve_lenh_thi_truong(
+        TradeDirection direction, double limitEntry, bool expectLimit)
+    {
+        var card = Card(direction);
+        card.SuggestedLimitEntry = (decimal)limitEntry;
+
+        var plan = _planner.PlanLive(card)!;
+
+        Assert.Equal(expectLimit, plan.Entries[0].IsLimit);
+        Assert.Equal(expectLimit ? (decimal)limitEntry : card.SuggestedEntry, plan.Entries[0].Price);
+        Assert.Equal(expectLimit, plan.LimitEntryExpiryBars is not null);
+    }
+
+    [Fact]
+    public void Khong_co_muc_cho_thi_vao_bang_lenh_thi_truong()
+    {
+        var card = Card();
+        card.SuggestedLimitEntry = null;
+
+        var plan = _planner.PlanLive(card)!;
+
+        Assert.False(plan.Entries[0].IsLimit);
+        Assert.Equal(card.SuggestedEntry, plan.Entries[0].Price);
+        Assert.Null(plan.LimitEntryExpiryBars);
     }
 
     /// <summary>
@@ -107,49 +153,54 @@ public sealed class LiveExecutionPlanTests
         var card = Card();
 
         var planned = Evaluate(_planner.Plan(card, card.DailyPlan!, _settings), card);
-        var live = Evaluate(_planner.PlanLive(card)!, card);
 
-        // Kế hoạch 2 chân: 60% thị trường + 40% lệnh chờ maker, chốt tại 1,5R.
+        // Kế hoạch 2 chân của backtest: 60% thị trường + 40% lệnh chờ maker, chốt tại 1,5R.
+        // Bốn con số này đúng bằng những gì đã ghi vào phiếu trên máy chủ chạy thật.
         Assert.Equal(1.960m, Math.Round(planned.GrossFirstTargetR, 3));
         Assert.Equal(0.188m, Math.Round(planned.TargetCostR, 3));
         Assert.Equal(0.377m, Math.Round(planned.StopCostR, 3));
         Assert.Equal(1.287m, Math.Round(planned.NetRiskReward, 3));
 
-        // Cái thật sự chạy: một lệnh thị trường, chốt tại SuggestedTakeProfit.
-        Assert.Equal(1.608m, Math.Round(live.GrossFirstTargetR, 3));
-        Assert.Equal(1.019m, Math.Round(live.NetRiskReward, 3));
-
-        // Chiều của sai lệch mới là điều nguy hiểm: cổng cũ LẠC QUAN hơn thực tế, nên nó có thể
-        // cho qua lệnh mà kinh tế thật không gánh nổi — chứ không phải chỉ khắt khe thừa.
-        Assert.True(planned.NetRiskReward > live.NetRiskReward);
-        Assert.True(planned.CostToTargetPercent < live.CostToTargetPercent);
+        // Cái sẽ thật sự chạy nếu bỏ lệnh chờ đi: một lệnh thị trường tại SuggestedEntry. Kém hơn
+        // hẳn con số cổng cũ báo — tức là cổng cũ LẠC QUAN, nó có thể cho qua lệnh mà kinh tế
+        // thật không gánh nổi chứ không phải chỉ khắt khe thừa.
+        var market = Evaluate(MarketVariant(card), card);
+        Assert.Equal(1.608m, Math.Round(market.GrossFirstTargetR, 3));
+        Assert.Equal(1.019m, Math.Round(market.NetRiskReward, 3));
+        Assert.True(planned.NetRiskReward > market.NetRiskReward);
     }
 
     /// <summary>
-    /// Vào bằng lệnh chờ rẻ hơn — nhưng một mình nó chưa qua nổi cổng ở bề rộng dừng lỗ này.
+    /// Vào bằng lệnh chờ tại mức retest cải thiện mạnh netRR — nhưng cổng phí/mục tiêu vẫn chặn.
     /// </summary>
     /// <remarks>
-    /// Đo trước khi làm để khỏi kỳ vọng nhầm: chuyển sang maker cắt được ~28% chi phí, nhưng hai
-    /// phần ba chi phí nằm ở phía thoát lệnh dừng lỗ — vốn bắt buộc là taker — nên netRR chỉ lên
-    /// 1,188 so với mức cần 1,50. Bề rộng dừng lỗ mới là biến quyết định.
+    /// Ghi lại để khỏi kỳ vọng nhầm về mục 2. Lệnh chờ ăn tiền không phải nhờ phí maker rẻ hơn
+    /// (phí vào chỉ chiếm 1/3 chi phí; 2/3 nằm ở phía thoát dừng lỗ vốn bắt buộc là taker) mà
+    /// nhờ VÀO ĐƯỢC GIÁ TỐT HƠN: vào tại 1880,55 thay vì 1878,31 đẩy R:R hình học từ 1,61 lên
+    /// 2,81, và netRR từ 1,019 lên 1,913 — vượt xa mức cần 1,50.
+    ///
+    /// Cổng còn lại là phí/mục tiêu, và nó có dạng rất gọn: phí/mục tiêu = ma sát ÷ khoảng cách
+    /// tới chốt lời. Với ~10 bps ma sát, cổng 10% đòi chốt lời cách ít nhất 100 bps; thế này chỉ
+    /// cách 72,7 bps nên ra 13,8%. Bề rộng dừng lỗ KHÔNG ảnh hưởng tỉ lệ này — cả tử và mẫu cùng
+    /// tỉ lệ nghịch với nó.
     /// </remarks>
     [Fact]
-    public void Vao_bang_lenh_cho_re_hon_nhung_chua_du_qua_cong()
+    public void Lenh_cho_cai_thien_manh_netRR_nhung_cong_phi_tren_muc_tieu_van_chan()
     {
         var card = Card();
-        var live = _planner.PlanLive(card)!;
-        var maker = live with { Entries = [live.Entries[0] with { IsLimit = true }] };
 
-        var asMarket = Evaluate(live, card);
-        var asLimit = Evaluate(maker, card);
+        var market = Evaluate(MarketVariant(card), card);
+        var limit = Evaluate(_planner.PlanLive(card)!, card);
 
-        Assert.True(asLimit.ExpectedCostR < asMarket.ExpectedCostR);
-        Assert.Equal(0.265m, Math.Round(asLimit.ExpectedCostR, 3));
-        Assert.Equal(1.188m, Math.Round(asLimit.NetRiskReward, 3));
+        Assert.Equal(2.806m, Math.Round(limit.GrossFirstTargetR, 3));
+        Assert.Equal(1.913m, Math.Round(limit.NetRiskReward, 3));
+        Assert.True(limit.NetRiskReward > market.NetRiskReward);
 
-        // Cả hai vẫn trượt cổng — mục 2 của kế hoạch không tự nó mở được lệnh nào.
-        Assert.False(asMarket.Passed);
-        Assert.False(asLimit.Passed);
+        // netRR đã qua ngưỡng 1,50 — cổng chặn giờ chỉ còn là phí/mục tiêu.
+        Assert.True(limit.NetRiskReward >= _settings.V3MinNetRiskReward);
+        Assert.Equal(13.8m, Math.Round(limit.CostToTargetPercent, 1));
+        Assert.True(limit.CostToTargetPercent > _settings.V3MaxCostToTargetPercent);
+        Assert.False(limit.Passed);
     }
 
     // ── Backtest giữ nguyên đường cũ ────────────────────────────────────
@@ -170,6 +221,14 @@ public sealed class LiveExecutionPlanTests
     }
 
     // ── Dựng phiếu ──────────────────────────────────────────────────────
+
+    /// <summary>Cùng phiếu đó nhưng không có mức chờ — tức là phải vào bằng lệnh thị trường.</summary>
+    private TradeExecutionPlan MarketVariant(EntryScorecard card)
+    {
+        var clone = Card(card.Direction!.Value);
+        clone.SuggestedLimitEntry = null;
+        return _planner.PlanLive(clone)!;
+    }
 
     private ExecutionViability Evaluate(TradeExecutionPlan plan, EntryScorecard card) =>
         _viability.Evaluate(

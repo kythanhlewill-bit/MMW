@@ -100,19 +100,56 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
         if (card.SuggestedEntry is not { } entry || entry <= 0m) return null;
         if (card.SuggestedStopLoss is not { } stop || stop <= 0m) return null;
         if (card.SuggestedTakeProfit is not { } target || target <= 0m) return null;
+        if (card.Direction is not { } direction) return null;
         if (Math.Abs(entry - stop) <= 0m) return null;
 
-        // Một chân, toàn bộ ngân sách rủi ro, lệnh thị trường — đúng bằng những gì
-        // ScorecardExecutionService gửi sàn. Không runner, không chốt từng phần: Trade không có
-        // chỗ lưu chúng, nên hứa hẹn ở đây sẽ lại thành một lời hứa suông nữa.
+        // Vào bằng lệnh chờ khi có một mức THỤ ĐỘNG dùng được, còn không thì lệnh thị trường.
+        // Không bịa ra mức chờ: một lệnh chờ đặt sai phía sổ sẽ khớp ngay như lệnh thị trường,
+        // và mô hình chi phí lại tính phí maker cho một cú khớp taker — đúng loại nói dối mà
+        // `PlanLive` sinh ra để chấm dứt.
+        var passive = PassiveLimitEntry(card.SuggestedLimitEntry, entry, stop, direction);
+
         return new TradeExecutionPlan(
-            [new PlannedEntryTranche(entry, 1m, IsLimit: false)],
+            [new PlannedEntryTranche(passive ?? entry, 1m, IsLimit: passive is not null)],
             stop,
             target,
             RunnerTakeProfit: null,
             FirstTakeProfitFraction: 1m,
             MoveRunnerStopToBreakeven: false,
-            Mode: LiveMode);
+            Mode: LiveMode,
+            LimitEntryExpiryBars: passive is not null ? LiveLimitExpiryBars : null);
+    }
+
+    /// <summary>Số nến chờ trước khi huỷ lệnh chờ chưa khớp của đường chạy thật.</summary>
+    /// <remarks>
+    /// Bốn nến 15 phút = một giờ. Setup đã được chấm trên một cây nến cụ thể; để lệnh chờ nằm
+    /// lâu hơn nghĩa là chấp nhận khớp vào một thị trường đã khác hẳn thị trường lúc chấm điểm.
+    /// </remarks>
+    public const int LiveLimitExpiryBars = 4;
+
+    /// <summary>
+    /// Mức đặt lệnh chờ nằm đúng phía THỤ ĐỘNG của sổ lệnh, hoặc <c>null</c> nếu không có.
+    /// </summary>
+    /// <remarks>
+    /// Phía thụ động là phía mà lệnh KHÔNG khớp ngay: mua thì phải thấp hơn giá hiện tại, bán
+    /// thì phải cao hơn. Đặt sai phía, hoặc đặt đúng bằng giá hiện tại, thì lệnh cắt qua sổ và
+    /// thành taker.
+    ///
+    /// Mức chờ cũng phải cách dừng lỗ một quãng: khối lượng = rủi ro / |vào − dừng|, nên một
+    /// mức chờ sát dừng lỗ làm khối lượng nổ ra ngoài ý muốn. Dùng chung sàn 25% khoảng rủi ro
+    /// với <see cref="SafeLimitEntry"/>, nhưng ở đây LOẠI mức vi phạm thay vì kéo nó về — kéo
+    /// về sẽ đẻ ra một mức chờ mà chính bộ chấm điểm chưa từng nhìn thấy.
+    /// </remarks>
+    private static decimal? PassiveLimitEntry(
+        decimal? suggested, decimal entry, decimal stop, TradeDirection direction)
+    {
+        if (suggested is not { } candidate || candidate <= 0m) return null;
+
+        var floor = Math.Abs(entry - stop) * 0.25m;
+
+        return direction == TradeDirection.Long
+            ? candidate < entry && candidate >= stop + floor ? candidate : null
+            : candidate > entry && candidate <= stop - floor ? candidate : null;
     }
 
     public TradeExecutionPlan Plan(EntryScorecard card, DailyPlan dailyPlan, EngineSetting settings)

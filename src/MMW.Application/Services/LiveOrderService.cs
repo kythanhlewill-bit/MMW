@@ -267,6 +267,10 @@ public class LiveOrderService : ILiveOrderService
                 Price = trade.OrderType == OrderType.Market ? null : trade.EntryPrice,
                 PositionSide = positionSide,
                 NewClientOrderId = clientId,
+                // GTX = post-only: sàn TỪ CHỐI lệnh nếu nó cắt qua sổ và khớp thành taker.
+                // Cổng chi phí đã chấm phiếu này theo phí maker, nên một cú khớp taker âm thầm
+                // sẽ làm mọi con số kinh tế của phiếu thành sai. Thà bị từ chối và không vào.
+                TimeInForce = trade.OrderType == OrderType.Market ? "GTC" : "GTX",
             }, cancellationToken);
         }
         catch (Exception ex)
@@ -279,6 +283,28 @@ public class LiveOrderService : ILiveOrderService
             await _unitOfWork.CommitAsync(cancellationToken);
             await NotifyAsync(account, NotificationSeverity.Critical,
                 $"Lỗi đặt lệnh #{tradeId} (đã huỷ)", Truncate(ex.Message, 200), trade.Symbol, cancellationToken);
+            return;
+        }
+
+        // Lệnh chờ chưa khớp thì CHƯA có vị thế nào để bảo vệ — dừng ở đây, để job đối soát đặt
+        // SL/TP ngay khi nó khớp, hoặc huỷ khi hết hạn. Xem chú thích LiveOrderStatus.EntryPending.
+        if (trade.OrderType == OrderType.Limit)
+        {
+            trade.IsLive = true;
+            trade.Source = TradeSource.Api;
+            trade.LiveStatus = LiveOrderStatus.EntryPending;
+            trade.ExchangeOrderId = result.OrderId;
+            trade.ExchangeClientOrderId = result.ClientOrderId ?? clientId;
+            trade.ExternalId ??= result.OrderId;
+            trade.LiveNote = $"Lệnh chờ maker đặt lúc {DateTime.UtcNow:HH:mm:ss} UTC — chờ khớp.";
+            _trades.Update(trade);
+            await _unitOfWork.CommitAsync(cancellationToken);
+
+            await NotifyAsync(account, NotificationSeverity.Info,
+                $"Đặt lệnh chờ {(_options.UseTestnet ? "TESTNET" : "THẬT")} #{tradeId} · {trade.Symbol} {trade.Direction}",
+                $"Chờ khớp tại {trade.EntryPrice} · qty {effectiveQty}, đòn bẩy {leverage}x. "
+                + "SL/TP sẽ đặt ngay khi khớp.",
+                trade.Symbol, cancellationToken);
             return;
         }
 
@@ -472,6 +498,151 @@ public class LiveOrderService : ILiveOrderService
     private static string Truncate(string s, int max) =>
         string.IsNullOrEmpty(s) || s.Length <= max ? s : s[..max];
 
+    /// <summary>Thời gian tối đa một lệnh chờ maker được nằm trên sổ.</summary>
+    /// <remarks>
+    /// Quy đổi <see cref="Trading.Execution.TradeExecutionPlanner.LiveLimitExpiryBars"/> sang thời
+    /// gian thật theo nến 15 phút của vòng chấm điểm. Hết hạn thì huỷ chứ không gia hạn: phiếu đã
+    /// được chấm trên một cây nến cụ thể, và một setup quá một giờ tuổi không còn là setup đó nữa.
+    /// </remarks>
+    private static readonly TimeSpan LimitEntryLifetime =
+        TimeSpan.FromMinutes(15 * Trading.Execution.TradeExecutionPlanner.LiveLimitExpiryBars);
+
+    /// <summary>
+    /// Đối soát các lệnh chờ maker đang treo: khớp rồi thì đặt SL/TP, hết hạn thì huỷ.
+    /// </summary>
+    /// <remarks>
+    /// Đây là nửa còn lại của việc vào bằng lệnh chờ. Không có nó, một lệnh chờ không khớp sẽ nằm
+    /// <c>Open</c> vĩnh viễn trong bảng mà không có vị thế nào tương ứng: nó ăn mất một suất trong
+    /// trần lệnh/ngày, chặn gate chống trùng vị thế của chính symbol đó, và có thể khớp nhiều giờ
+    /// sau vào một thị trường đã khác hẳn lúc chấm điểm.
+    ///
+    /// Phân biệt "đã khớp" với "bị huỷ ngoài hệ thống" bằng VỊ THẾ chứ không bằng việc lệnh biến
+    /// mất khỏi sổ: cả hai trường hợp đều làm lệnh rời sổ, nhưng chỉ một trường hợp cần SL/TP.
+    /// </remarks>
+    private async Task ReconcilePendingEntriesAsync(CancellationToken cancellationToken)
+    {
+        var waiting = await _trades.FindListAsync(t =>
+            t.IsLive && t.LiveStatus == LiveOrderStatus.EntryPending && t.Status == TradeStatus.Open);
+
+        if (waiting.Count == 0) return;
+
+        _logger.LogInformation("ReconcilePendingEntries: {Count} lệnh chờ đang treo.", waiting.Count);
+
+        foreach (var trade in waiting)
+        {
+            var account = await _accounts.FindAsync(trade.TradingAccountId);
+            if (account is null || string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret))
+                continue;
+
+            try
+            {
+                var provider = _orderFactory.Create(account.ApiKey!, account.ApiSecret!, _options.UseTestnet);
+
+                var openOrders = await provider.GetOpenOrdersAsync(trade.Symbol, cancellationToken);
+                var stillOnBook = trade.ExchangeOrderId is { } id
+                                  && openOrders.Any(o => o.OrderId == id);
+
+                if (stillOnBook)
+                {
+                    var age = DateTime.UtcNow - (trade.OpenedAt ?? trade.CreatedDate);
+                    if (age < LimitEntryLifetime) continue;
+
+                    await provider.CancelOrderAsync(trade.Symbol, trade.ExchangeOrderId!, cancellationToken);
+                    await CloseUnfilledAsync(trade, account,
+                        $"Lệnh chờ quá {LimitEntryLifetime.TotalMinutes:N0} phút chưa khớp — đã huỷ.",
+                        cancellationToken);
+                    continue;
+                }
+
+                // Rời sổ rồi: khớp hay bị huỷ? Vị thế mới là bằng chứng.
+                var positions = await provider.GetOpenPositionsAsync(trade.Symbol, cancellationToken);
+                var filled = positions.Any(p =>
+                    p.Symbol == trade.Symbol
+                    && (trade.Direction == TradeDirection.Long ? p.IsLong : p.IsShort));
+
+                if (!filled)
+                {
+                    await CloseUnfilledAsync(trade, account,
+                        "Lệnh chờ rời sổ mà không tạo vị thế — coi như đã huỷ ngoài hệ thống.",
+                        cancellationToken);
+                    continue;
+                }
+
+                await ProtectFilledEntryAsync(trade, account, provider, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Giữ nguyên EntryPending để vòng sau thử lại. Không tự huỷ khi lỗi mạng: huỷ nhầm
+                // một lệnh đã khớp sẽ để lại vị thế không có dừng lỗ, tệ hơn nhiều so với chờ thêm.
+                _logger.LogError(ex, "ReconcilePendingEntries: lệnh #{TradeId} {Symbol} lỗi — giữ nguyên.",
+                    trade.Id, trade.Symbol);
+            }
+        }
+    }
+
+    /// <summary>Lệnh chờ không thành vị thế: đóng sổ để nó trả lại suất trong trần lệnh/ngày.</summary>
+    private async Task CloseUnfilledAsync(
+        Trade trade, TradingAccount account, string reason, CancellationToken cancellationToken)
+    {
+        trade.Status = TradeStatus.Cancelled;
+        trade.LiveStatus = LiveOrderStatus.Canceled;
+        trade.LiveNote = Truncate($"{reason} ({DateTime.UtcNow:HH:mm:ss} UTC)", 500);
+        _trades.Update(trade);
+        await _unitOfWork.CommitAsync(cancellationToken);
+
+        _logger.LogInformation("ReconcilePendingEntries: lệnh #{TradeId} {Symbol} — {Reason}",
+            trade.Id, trade.Symbol, reason);
+
+        await NotifyAsync(account, NotificationSeverity.Info,
+            $"Lệnh chờ #{trade.Id} không khớp · {trade.Symbol} {trade.Direction}",
+            reason, trade.Symbol, cancellationToken);
+    }
+
+    /// <summary>Lệnh chờ đã khớp: đặt SL/TP ngay, và báo tin như một lệnh vào bình thường.</summary>
+    private async Task ProtectFilledEntryAsync(
+        Trade trade, TradingAccount account, IExchangeOrderProvider provider, CancellationToken cancellationToken)
+    {
+        var closeSide = trade.Direction == TradeDirection.Long ? OrderSide.Sell : OrderSide.Buy;
+        var positionSide = trade.Direction == TradeDirection.Long ? FuturesPositionSide.Long : FuturesPositionSide.Short;
+        var clientId = $"mmw-{trade.Id}-f{DateTime.UtcNow:HHmmss}";
+
+        try
+        {
+            if (trade.StopLoss is decimal sl && sl > 0m)
+                await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
+                    FuturesOrderKind.StopMarket, sl, $"{clientId}-sl", cancellationToken), 3, 500, cancellationToken);
+
+            if (trade.TakeProfit is decimal tp && tp > 0m)
+                await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
+                    FuturesOrderKind.TakeProfitMarket, tp, $"{clientId}-tp", cancellationToken), 3, 500, cancellationToken);
+
+            trade.LiveStatus = LiveOrderStatus.Filled;
+            trade.LiveNote = $"Lệnh chờ khớp lúc {DateTime.UtcNow:HH:mm:ss} UTC, SL/TP đã đặt.";
+        }
+        catch (Exception ex)
+        {
+            // Vị thế đã tồn tại thật mà chưa có SL — chuyển sang đường retry sẵn có, đừng bỏ lửng.
+            _logger.LogWarning(ex, "ReconcilePendingEntries: lệnh #{TradeId} khớp nhưng SL/TP lỗi.", trade.Id);
+            trade.LiveStatus = LiveOrderStatus.SltpPending;
+            trade.LiveNote = Truncate($"Lệnh chờ đã khớp nhưng SL/TP lỗi: {ex.Message}", 500);
+        }
+
+        _trades.Update(trade);
+        await _unitOfWork.CommitAsync(cancellationToken);
+
+        var severity = trade.LiveStatus == LiveOrderStatus.Filled
+            ? NotificationSeverity.Info
+            : NotificationSeverity.Warning;
+        var sltpText = trade.LiveStatus == LiveOrderStatus.Filled
+            ? $"Dừng lỗ {trade.StopLoss?.ToString() ?? "CHƯA ĐẶT"} · Chốt lời {trade.TakeProfit?.ToString() ?? "CHƯA ĐẶT"}."
+            : "SL/TP CHƯA ĐẶT ĐƯỢC — job sẽ retry.";
+
+        await NotifyAsync(account, severity,
+            $"Lệnh chờ đã khớp #{trade.Id} · {trade.Symbol} {trade.Direction}",
+            $"Vào {trade.EntryPrice} · qty {trade.Quantity}. {sltpText}",
+            trade.Symbol, cancellationToken);
+    }
+
     /// <summary>
     /// Quét tất cả lệnh có LiveStatus = SltpPending, thử đặt lại SL/TP lên sàn.
     /// Gọi bởi Hangfire job định kỳ (vd mỗi 2 phút).
@@ -479,6 +650,8 @@ public class LiveOrderService : ILiveOrderService
     public async Task RetryPendingSltpAsync(CancellationToken cancellationToken = default)
     {
         if (!_options.Enabled) return;
+
+        await ReconcilePendingEntriesAsync(cancellationToken);
 
         var pending = await _trades.FindListAsync(t =>
             t.IsLive && t.LiveStatus == LiveOrderStatus.SltpPending && t.Status == TradeStatus.Open);

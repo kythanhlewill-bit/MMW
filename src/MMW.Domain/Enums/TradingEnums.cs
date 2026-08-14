@@ -57,6 +57,18 @@ public enum LiveOrderStatus
     Canceled = 5,
     /// <summary>Entry đã vào sàn nhưng SL/TP đặt lỗi — đang chờ job retry đặt lại.</summary>
     SltpPending = 6,
+
+    /// <summary>
+    /// Lệnh chờ maker đang nằm trên sổ, CHƯA khớp — nên chưa có vị thế nào để bảo vệ.
+    /// </summary>
+    /// <remarks>
+    /// Phải tách khỏi <see cref="Submitted"/> vì hai trạng thái đòi hỏi hành động trái ngược:
+    /// lệnh thị trường đã gửi thì vị thế coi như có và SL/TP phải đặt NGAY, còn lệnh chờ thì
+    /// chưa có gì để đóng. Đặt STOP_MARKET/TAKE_PROFIT_MARKET kèm closePosition lên một vị thế
+    /// chưa tồn tại là tự đặt bẫy: giá chạm mức dừng lỗ sẽ kích hoạt và tiêu mất lệnh bảo vệ
+    /// trong khi ta còn chưa vào, để rồi lúc lệnh chờ khớp thật thì vị thế trần trụi.
+    /// </remarks>
+    EntryPending = 7,
 }
 
 public enum TradeOutcome
