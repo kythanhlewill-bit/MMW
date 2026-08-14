@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using MMW.Application.Interfaces;
 using MMW.Application.Models;
+using MMW.Application.Trading.Execution;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -39,6 +40,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
     private readonly IBaseRepository<EntryScorecard> _scorecards;
     private readonly IBaseRepository<TradingAccount> _accounts;
     private readonly IBaseRepository<RiskSetting> _riskSettings;
+    private readonly ITradeExecutionPlanner _executionPlanner;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ScorecardExecutionService> _logger;
 
@@ -49,6 +51,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         IBaseRepository<EntryScorecard> scorecards,
         IBaseRepository<TradingAccount> accounts,
         IBaseRepository<RiskSetting> riskSettings,
+        ITradeExecutionPlanner executionPlanner,
         IUnitOfWork unitOfWork,
         ILogger<ScorecardExecutionService> logger)
     {
@@ -58,6 +61,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         _scorecards = scorecards;
         _accounts = accounts;
         _riskSettings = riskSettings;
+        _executionPlanner = executionPlanner;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -101,11 +105,11 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
             return false;
         }
 
-        // Ba mức giá là điều kiện cần: LiveOrderService chặn thẳng lệnh thiếu SL hoặc TP, nên tạo
-        // lệnh rồi mới biết thiếu chỉ để lại một bản ghi Cancelled vô nghĩa trong nhật ký.
-        if (card.SuggestedEntry is not decimal entry || entry <= 0m ||
-            card.SuggestedStopLoss is not decimal stop || stop <= 0m ||
-            card.SuggestedTakeProfit is not decimal target || target <= 0m)
+        // Lấy kế hoạch từ ĐÚNG hàm mà cổng chi phí đã dùng để chấm phiếu này. Đọc thẳng các mức
+        // giá trên phiếu như trước là chỗ hai bên lệch nhau: cổng chấm một kế hoạch còn sàn nhận
+        // một lệnh khác. Đi qua planner thì không còn hai nguồn sự thật để mà lệch.
+        var plan = _executionPlanner.PlanLive(card);
+        if (plan is null)
         {
             _logger.LogWarning(
                 "Phiếu #{ScorecardId} {Symbol} kết luận vào lệnh nhưng thiếu mức giá (entry={Entry}, sl={Sl}, tp={Tp}) — bỏ qua.",
@@ -119,12 +123,11 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
             return false;
         }
 
+        var tranche = plan.Entries[0];
+        var entry = tranche.Price;
+        var stop = plan.StopLoss;
+        var target = plan.FirstTakeProfit;
         var stopDistance = Math.Abs(entry - stop);
-        if (stopDistance <= 0m)
-        {
-            _logger.LogWarning("Phiếu #{ScorecardId} {Symbol} có entry trùng stop — bỏ qua.", card.Id, card.Symbol);
-            return false;
-        }
 
         var account = await _accounts.FindAsync(card.TradingAccountId);
         if (account is null || !account.IsActive)
@@ -170,7 +173,9 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
             Direction = direction,
             Status = TradeStatus.Open,
             Source = TradeSource.Api,
-            OrderType = OrderType.Market,
+            // Kiểu lệnh theo kế hoạch, không ghi cứng: đây là chỗ DUY NHẤT cần đổi khi chuyển
+            // sang vào bằng lệnh chờ, và cổng chi phí sẽ tự tính phí maker theo cùng cờ đó.
+            OrderType = tranche.IsLimit ? OrderType.Limit : OrderType.Market,
             EntryPrice = entry,
             StopLoss = stop,
             TakeProfit = target,

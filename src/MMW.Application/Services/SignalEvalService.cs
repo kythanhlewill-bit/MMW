@@ -577,28 +577,55 @@ public sealed class SignalEvalService : ISignalEvalService
 
         // P0 đo economics cho cả V2 nhưng chỉ V3 được quyền dùng nó làm gate. Planner thuần nên
         // gọi ở đây và gọi lại ở backtest/live cho cùng kết quả; không có nhánh mô phỏng riêng.
+        //
+        // Phiếu chạy thật đo trên `PlanLive` — kế hoạch mà bộ đặt lệnh thực hiện được nguyên
+        // văn — còn phiếu backtest đo trên `Plan` vì trình mô phỏng thực hiện đủ nhiều chân.
+        // Trước 2026-08-14 cả hai cùng dùng `Plan`, nên cổng chi phí của đường thật chấm một kế
+        // hoạch 2 chân trong khi sàn chỉ nhận một lệnh thị trường: netRR bị đo cao hơn thực tế
+        // 26% trên phiếu 13:31 ngày 14/08. Xem chú thích `ITradeExecutionPlanner.PlanLive`.
         if (card.Outcome == ScorecardOutcome.Entered && card.Direction is { } plannedDirection)
         {
-            var execution = _executionPlanner.Plan(card, effectivePlan, setting);
-            var economics = _executionViability.Evaluate(
-                execution,
-                plannedDirection,
-                setting,
-                enforceV3Gates: setting.StrategyVersion.UsesTriggerFirst(),
-                setupType: card.SetupType);
+            var execution = card.IsBacktest
+                ? _executionPlanner.Plan(card, effectivePlan, setting)
+                : _executionPlanner.PlanLive(card);
 
-            card.ExpectedCostR = economics.ExpectedCostR;
-            card.NetRiskReward = economics.NetRiskReward;
-            card.StopDistanceBps = economics.StopDistanceBps;
-
-            if (!economics.Passed)
+            if (execution is null)
             {
+                // Không dựng nổi kế hoạch chạy thật ⟹ ScorecardExecutionService cũng sẽ bỏ qua
+                // phiếu này. Kết luận "vào lệnh" mà không có lệnh nào là trạng thái sai lệch
+                // nhất có thể ghi vào nhật ký, nên chặn thẳng thay vì để nó nằm im ở Entered.
+                _logger.LogWarning(
+                    "Phiếu {Symbol} kết luận vào lệnh nhưng thiếu mức giá để dựng kế hoạch chạy thật "
+                    + "(entry={Entry}, sl={Sl}, tp={Tp}) — chuyển sang veto.",
+                    symbol, card.SuggestedEntry, card.SuggestedStopLoss, card.SuggestedTakeProfit);
+
                 card.Outcome = ScorecardOutcome.Vetoed;
-                card.VetoReason = VetoReason.ExecutionCostTooHigh;
-                card.VetoDetail = economics.DetailVi;
-                card.TriggerState = SetupTriggerState.CostRejected;
-                card.TriggerDetail = economics.DetailVi;
+                card.VetoReason = VetoReason.InsufficientRoom;
+                card.VetoDetail = "Thiếu mức giá vào/dừng lỗ/chốt lời nên không dựng được lệnh thật.";
                 card.FinalSizeR = 0m;
+            }
+            else
+            {
+                var economics = _executionViability.Evaluate(
+                    execution,
+                    plannedDirection,
+                    setting,
+                    enforceV3Gates: setting.StrategyVersion.UsesTriggerFirst(),
+                    setupType: card.SetupType);
+
+                card.ExpectedCostR = economics.ExpectedCostR;
+                card.NetRiskReward = economics.NetRiskReward;
+                card.StopDistanceBps = economics.StopDistanceBps;
+
+                if (!economics.Passed)
+                {
+                    card.Outcome = ScorecardOutcome.Vetoed;
+                    card.VetoReason = VetoReason.ExecutionCostTooHigh;
+                    card.VetoDetail = economics.DetailVi;
+                    card.TriggerState = SetupTriggerState.CostRejected;
+                    card.TriggerDetail = economics.DetailVi;
+                    card.FinalSizeR = 0m;
+                }
             }
         }
 

@@ -45,6 +45,30 @@ public sealed record TradeExecutionPlan(
 public interface ITradeExecutionPlanner
 {
     TradeExecutionPlan Plan(EntryScorecard card, DailyPlan dailyPlan, EngineSetting settings);
+
+    /// <summary>
+    /// Kế hoạch mà đường chạy THẬT thực hiện được đúng như mô tả, hoặc <c>null</c> nếu phiếu
+    /// thiếu mức giá nên không đặt được lệnh nào.
+    /// </summary>
+    /// <remarks>
+    /// Tồn tại vì <see cref="Plan"/> mô tả một thứ mà bộ đặt lệnh thật CHƯA làm được: kế hoạch
+    /// nhiều chân, chân sau là lệnh chờ. Trình mô phỏng backtest thực hiện đầy đủ (nó theo dõi
+    /// khớp từng chân, phí maker/taker riêng, hết hạn lệnh chờ), còn <c>Trade</c> chỉ có MỘT
+    /// <c>EntryPrice</c> và MỘT <c>Quantity</c> nên chạy thật luôn gộp về một lệnh thị trường.
+    ///
+    /// Hệ quả đo được trên phiếu 13:31 ngày 14/08/2026: cổng chi phí chấm kế hoạch 2 chân và
+    /// thấy gross 1,960R / netRR 1,287, trong khi lệnh sẽ thật sự chạy chỉ có gross 1,608R /
+    /// netRR 1,019 — cổng lạc quan hơn thực tế 26%. Một cổng đo thứ không chạy thì con số nó
+    /// tạo ra không dùng để kết luận được điều gì.
+    ///
+    /// Vì vậy: backtest tiếp tục dùng <see cref="Plan"/> (giữ nguyên để mọi số liệu lịch sử còn
+    /// so sánh được), còn đường thật dùng hàm này cho CẢ cổng chi phí LẪN lúc đặt lệnh — cùng
+    /// một đối tượng, nên hai bên không thể lệch nhau nữa.
+    ///
+    /// Đây cũng là chỗ duy nhất cần sửa để chuyển sang vào bằng lệnh chờ: đổi <c>IsLimit</c>
+    /// của chân duy nhất, cổng và bộ đặt lệnh tự khớp theo.
+    /// </remarks>
+    TradeExecutionPlan? PlanLive(EntryScorecard card);
 }
 
 /// <summary>
@@ -60,6 +84,36 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
     private const decimal TrendPartialFraction = 0.5m;
     private const decimal ScaleInStepR = 0.25m;
     private const int StrongStructurePoints = 8;
+
+    /// <summary>Nhãn <see cref="TradeExecutionPlan.Mode"/> của kế hoạch chạy thật.</summary>
+    public const string LiveMode = "LiveSingleMarket";
+
+    /// <inheritdoc />
+    public TradeExecutionPlan? PlanLive(EntryScorecard card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+
+        // Ba mức giá là điều kiện cần của chính bộ đặt lệnh: LiveOrderService chặn thẳng lệnh
+        // thiếu dừng lỗ hoặc chốt lời. Trả null thay vì ném để một phiếu thiếu giá không giết
+        // cả chu kỳ chấm điểm — và để cổng chi phí lẫn bộ đặt lệnh cùng đọc MỘT câu trả lời cho
+        // câu hỏi "phiếu này có chạy thật được không".
+        if (card.SuggestedEntry is not { } entry || entry <= 0m) return null;
+        if (card.SuggestedStopLoss is not { } stop || stop <= 0m) return null;
+        if (card.SuggestedTakeProfit is not { } target || target <= 0m) return null;
+        if (Math.Abs(entry - stop) <= 0m) return null;
+
+        // Một chân, toàn bộ ngân sách rủi ro, lệnh thị trường — đúng bằng những gì
+        // ScorecardExecutionService gửi sàn. Không runner, không chốt từng phần: Trade không có
+        // chỗ lưu chúng, nên hứa hẹn ở đây sẽ lại thành một lời hứa suông nữa.
+        return new TradeExecutionPlan(
+            [new PlannedEntryTranche(entry, 1m, IsLimit: false)],
+            stop,
+            target,
+            RunnerTakeProfit: null,
+            FirstTakeProfitFraction: 1m,
+            MoveRunnerStopToBreakeven: false,
+            Mode: LiveMode);
+    }
 
     public TradeExecutionPlan Plan(EntryScorecard card, DailyPlan dailyPlan, EngineSetting settings)
     {
