@@ -305,4 +305,99 @@ public class StructuralLevelTests
 
         Assert.Equal(80, outcome.TotalMaxPoints);
     }
+
+    // ── Sàn dừng lỗ theo phần trăm giá ──────────────────────────────────
+
+    /// <summary>
+    /// Thị trường bất động: sàn ATR co lại theo, sàn phần trăm phải giữ dừng lỗ khỏi dính sát giá.
+    /// </summary>
+    /// <remarks>
+    /// Đây là lỗ hổng đã trả giá bằng dữ liệu thật tuần 10–17/08/2026. ATR ở phân vị 1–2 nên
+    /// <c>StopAtrMultipleMin × ATR</c> chỉ còn vài phần vạn, và bộ dựng mức cho ra dừng lỗ
+    /// <b>1–7 bps</b>. Ở bề rộng đó, phí một vòng lệnh ăn 1,5–9,6R — tức gấp nhiều lần số tiền
+    /// đem ra mạo hiểm.
+    /// </remarks>
+    [Fact]
+    public void Thi_truong_phang_thi_san_phan_tram_giu_dung_lo()
+    {
+        // Đáy xoay chỉ cách giá 0,05% (1885 → 1884). ATR 0,5 nên sàn ATR chỉ 0,5 (≈0,027%).
+        var candles = Path(new decimal[]
+        {
+            1885, 1884.8m, 1884.6m, 1884.4m, 1884.2m, 1884,   // đáy xoay tại chỉ số 5
+            1884.2m, 1884.4m, 1884.6m, 1884.8m, 1885, 1885, 1885, 1885, 1885,
+        });
+
+        var settings = Settings(s =>
+        {
+            s.MinStopDistancePercent = 0.40m;
+            s.StopAtrMultipleMax = 20m;      // nới trần để cô lập đúng tác dụng của SÀN
+        });
+
+        var levels = Planner.Plan(Request(candles, price: 1885m, atr: 0.5m, settings: settings));
+
+        Assert.NotNull(levels);
+        var distancePercent = (1885m - levels!.StopLoss) / 1885m * 100m;
+        Assert.True(distancePercent >= 0.40m,
+            $"Dừng lỗ phải cách ít nhất 0,40%, thực tế {distancePercent:N4}%.");
+    }
+
+    /// <summary>Sàn ATR vẫn thắng khi thị trường động — sàn phần trăm chỉ là mức tối thiểu.</summary>
+    [Fact]
+    public void Thi_truong_dong_thi_san_ATR_van_thang()
+    {
+        var candles = Path(new decimal[]
+        {
+            100, 99, 98, 97, 96, 95, 94, 93, 92, 90,
+            92, 94, 96, 98, 99, 100, 100, 100, 100, 100,
+        });
+
+        // 0,4% của 100 chỉ là 0,4 — nhỏ hơn hẳn cấu trúc thật (đáy 90 + đệm). Không được đụng vào.
+        var levels = Planner.Plan(Request(candles, price: 100m, atr: 4m,
+            settings: Settings(s => s.MinStopDistancePercent = 0.40m)));
+
+        Assert.NotNull(levels);
+        Assert.Equal(88.8m, levels!.StopLoss);
+        Assert.True(levels.StopIsStructural);
+    }
+
+    /// <summary>
+    /// Sàn cao hơn trần thì KHÔNG vào lệnh — nới rồi vẫn không hợp lệ là câu trả lời "đứng ngoài".
+    /// </summary>
+    /// <remarks>
+    /// Đúng ý định: cấu trúc nhỏ tới mức không thể vừa nằm trong trần ATR vừa đủ rộng để trả phí
+    /// thì không có lệnh nào đáng vào. Đây là cách sàn này làm hệ thống giao dịch ÍT đi, không
+    /// phải nhiều lên.
+    /// </remarks>
+    [Fact]
+    public void San_vuot_tran_thi_khong_dung_duoc_muc_nao()
+    {
+        var candles = Path(new decimal[]
+        {
+            1885, 1884.8m, 1884.6m, 1884.4m, 1884.2m, 1884,
+            1884.2m, 1884.4m, 1884.6m, 1884.8m, 1885, 1885, 1885, 1885, 1885,
+        });
+
+        // ATR 0,5 ⟹ trần 3 ATR = 1,5 (≈0,08%). Sàn 0,40% = 7,54. Sàn > trần.
+        var levels = Planner.Plan(Request(candles, price: 1885m, atr: 0.5m,
+            settings: Settings(s => s.MinStopDistancePercent = 0.40m)));
+
+        Assert.Null(levels);
+    }
+
+    /// <summary>Đặt sàn về 0 thì hành vi quay lại y như trước — không khoá cứng con số nào.</summary>
+    [Fact]
+    public void San_bang_0_thi_giu_nguyen_hanh_vi_cu()
+    {
+        var candles = Path(new decimal[]
+        {
+            1885, 1884.8m, 1884.6m, 1884.4m, 1884.2m, 1884,
+            1884.2m, 1884.4m, 1884.6m, 1884.8m, 1885, 1885, 1885, 1885, 1885,
+        });
+
+        var levels = Planner.Plan(Request(candles, price: 1885m, atr: 0.5m,
+            settings: Settings(s => s.MinStopDistancePercent = 0m)));
+
+        Assert.NotNull(levels);
+        Assert.True((1885m - levels!.StopLoss) / 1885m * 100m < 0.40m);
+    }
 }

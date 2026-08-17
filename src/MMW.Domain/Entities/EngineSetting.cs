@@ -87,6 +87,30 @@ public class EngineSetting : BaseEntity
     [Precision(9, 4)] public decimal StopStructureBufferAtr { get; set; } = 0.30m;
 
     /// <summary>
+    /// Sàn khoảng cách dừng lỗ tính theo PHẦN TRĂM GIÁ. Lấy giá trị lớn hơn giữa sàn này và
+    /// <see cref="StopAtrMultipleMin"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sàn theo ATR một mình là chưa đủ, và đây là lý do đo được: trong tuần 10–17/08/2026 thị
+    /// trường bất động (ATR ở phân vị 1–2), nên sàn ATR co lại theo và dừng lỗ ra tới <b>1–7
+    /// bps</b>. Khối lượng hợp đồng bằng rủi ro chia khoảng dừng lỗ, nên dừng lỗ 1 bps nghĩa là
+    /// mỗi 1R rủi ro cõng khoảng 6.700R giá trị hợp đồng — và phí tính trên con số đó.
+    ///
+    /// Số đo trên 1.229 phiếu đã có kết cục, gộp theo bề rộng dừng lỗ:
+    /// <code>
+    /// &lt;0,15%        : phí 1,538R  net −1,497R
+    /// 0,15–0,30%    : phí 0,580R  net −0,659R
+    /// 0,30–0,50%    : phí 0,318R  net −0,175R   ← vùng duy nhất gần hoà vốn
+    /// </code>
+    ///
+    /// Sàn này KHÔNG tự làm lệnh có lãi. Nới dừng lỗ mà giữ nguyên mục tiêu thì R to ra và mục
+    /// tiêu tính theo R co lại — <c>StructuralRoomCriterion</c> sẽ bác phiếu khi tỉ lệ tụt dưới
+    /// <see cref="MinStructuralRr"/>. Tác dụng thật của nó là LOẠI những setup có cấu trúc quá
+    /// nhỏ để trả nổi phí, thay vì để chúng chạy hết phễu rồi chết ở cổng chi phí.
+    /// </remarks>
+    [Precision(9, 4)] public decimal MinStopDistancePercent { get; set; } = 0.40m;
+
+    /// <summary>
     /// Tỉ lệ lãi/lỗ cấu trúc tối thiểu. Dưới mức này thì không vào lệnh.
     /// </summary>
     /// <remarks>
@@ -391,6 +415,9 @@ public class EngineSetting : BaseEntity
         // đường chính phải tuân theo — im lặng cho ra những lệnh không ai duyệt.
         if (StopAtrMultiple < StopAtrMultipleMin || StopAtrMultiple > StopAtrMultipleMax)
             errors.Add($"StopAtrMultiple ({StopAtrMultiple}) phải nằm trong [{StopAtrMultipleMin}, {StopAtrMultipleMax}].");
+
+        if (MinStopDistancePercent is < 0m or > 5m)
+            errors.Add($"MinStopDistancePercent ({MinStopDistancePercent}) phải nằm trong [0, 5].");
 
         if (StopStructureBufferAtr < 0m)
             errors.Add($"StopStructureBufferAtr ({StopStructureBufferAtr}) không được âm.");

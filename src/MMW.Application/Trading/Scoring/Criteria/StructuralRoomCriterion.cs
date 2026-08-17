@@ -63,9 +63,14 @@ public sealed class StructuralRoomCriterion : IScoreCriterion
             if (context.EntryCandles.Count == 0 || context.CurrentPrice <= 0m)
                 return CriterionResult.Missing("Chưa đủ nến hoặc giá để dựng mức theo cấu trúc.");
 
+            // Hai nguyên nhân khác hẳn nhau cùng cho ra "không dựng được mức". Gộp làm một thông
+            // báo thì nhật ký sẽ đổ hết cho "cấu trúc quá xa", kể cả những ngày thị trường bất
+            // động khi nguyên nhân thật là cấu trúc quá NHỎ để trả nổi phí.
             return CriterionResult.Veto(VetoReason.InsufficientRoom,
-                $"Điểm phủ định setup nằm xa hơn trần {settings.StopAtrMultipleMax:N2} ATR — " +
-                "không đặt được dừng lỗ hợp lệ, và co size không sửa được điều đó.");
+                $"Không đặt được dừng lỗ hợp lệ: điểm phủ định phải nằm trong trần " +
+                $"{settings.StopAtrMultipleMax:N2} ATR và cách giá ít nhất " +
+                $"{settings.MinStopDistancePercent:N2}% — hai điều kiện này không cùng thoả được " +
+                "trên cây nến hiện tại. Co size không sửa được điều đó.");
         }
 
         var required = settings.MinStructuralRr;

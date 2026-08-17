@@ -127,8 +127,14 @@ public sealed class StructuralLevelPlanner : IStructuralLevelPlanner
             : entryPivots.Where(p => p.IsHigh && p.Price > entry).Select(p => (decimal?)p.Price).Min();
 
         var buffer = atr * settings.StopStructureBufferAtr;
-        var minDistance = atr * settings.StopAtrMultipleMin;
         var maxDistance = atr * settings.StopAtrMultipleMax;
+
+        // Sàn dừng lỗ lấy giá trị LỚN HƠN giữa sàn theo ATR và sàn theo phần trăm giá. Sàn ATR
+        // một mình co lại cùng thị trường: tuần 10–17/08/2026 ATR ở phân vị 1–2 nên nó cho qua
+        // những dừng lỗ 1–7 bps, và ở bề rộng đó phí ăn 1,5–9,6R. Xem EngineSetting.MinStopDistancePercent.
+        var minDistance = Math.Max(
+            atr * settings.StopAtrMultipleMin,
+            entry * settings.MinStopDistancePercent / 100m);
 
         decimal stop;
         bool stopIsStructural;

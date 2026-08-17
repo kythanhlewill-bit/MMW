@@ -654,6 +654,10 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("MinScoreToEnter")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("MinStopDistancePercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<decimal>("MinStructuralRr")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
