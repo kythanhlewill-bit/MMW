@@ -42,6 +42,16 @@ public sealed class MarketStructureAnalyzer
 
     public MarketStructureAnalyzer(ISwingDetector swings) => _swings = swings;
 
+    /// <summary>
+    /// Bộ phát hiện điểm xoay đang dùng, để bên gọi đọc điểm xoay bằng ĐÚNG một cách với lớp này.
+    /// </summary>
+    /// <remarks>
+    /// Lộ ra thay vì tiêm thêm một <see cref="ISwingDetector"/> vào nơi cần: hai thể hiện khác
+    /// nhau có thể được cấu hình khác nhau, và khi đó "đáy xoay" trong nhật ký cấu trúc sẽ không
+    /// còn là đáy xoay mà bộ dò setup nhìn thấy.
+    /// </remarks>
+    public ISwingDetector Swings => _swings;
+
     public MarketStructureResult Analyze(
         IReadOnlyList<Candle> candles, int pivotBars, int retestWindowBars, decimal atr)
     {

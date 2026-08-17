@@ -185,6 +185,17 @@ public enum SetupType
     RectangleRangeFade = 5,
     RectangleBreakout = 6,
     TriangleBreakout = 7,
+
+    /// <summary>
+    /// Xu hướng xác định bằng MA7/MA25, vào khi giá hồi về chạm MA7.
+    /// </summary>
+    /// <remarks>
+    /// Khác <see cref="TrendPullback"/> ở chỗ nó đọc xu hướng từ chồng MA chứ không từ chuỗi
+    /// phá cấu trúc (BOS) — nên nó vào được cả những nhịp mà bộ dò BOS bỏ qua. Trong 8 ngày đầu
+    /// chạy thật, <c>TrendPullback</c> kích hoạt 0 lần còn giá chạm MA7 thuận xu hướng xảy ra
+    /// 142–160 lần mỗi mã.
+    /// </remarks>
+    MaPullback = 8,
 }
 
 /// <summary>
@@ -223,6 +234,18 @@ public enum SetupTriggerState
     BreakoutWeak = 17,
     BreakoutRetestMissing = 18,
     StrategyFiltered = 19,
+
+    /// <summary>Chồng MA chưa xếp thuận chiều đang xét.</summary>
+    MaTrendMissing = 20,
+
+    /// <summary>MA đã xếp thuận nhưng cú đẩy tạo ra xu hướng không đủ khối lượng.</summary>
+    MaImpulseWeak = 21,
+
+    /// <summary>Xu hướng thuận, đủ lực, nhưng giá chưa hồi về chạm MA nhanh.</summary>
+    MaPullbackMissing = 22,
+
+    /// <summary>Đã quá lâu kể từ lúc MA cắt nhau — nhịp này không còn là nhịp vừa sinh ra.</summary>
+    MaPullbackStale = 23,
 }
 
 /// <summary>

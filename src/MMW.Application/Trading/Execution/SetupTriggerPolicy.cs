@@ -79,13 +79,239 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
         // DayRegime.Range, nên hai nhãn nguy hiểm — EventDay và HighVolatility — rơi hết vào
         // nhánh xu hướng rồi bị EvaluateTrend bác ngay dòng đầu, vì chúng cũng không phải
         // TrendUp/TrendDown. Kết quả: ngày có tin không có playbook nào cả. Xem DayPlaybook.
+        // Thử nhịp hồi-về-MA TRƯỚC, nhưng chỉ nhận khi nó XÁC NHẬN. Không xác nhận thì rơi
+        // xuống nguyên đường cũ, giữ nguyên lý do từ chối của đường đó.
+        //
+        // Cách ghép thuần cộng thêm này là có chủ ý: đường cũ đã chạy thật 8 ngày và mọi chẩn
+        // đoán đang dựa vào các mã trạng thái của nó. Nếu để bộ dò mới ghi đè cả những lần nó
+        // TỪ CHỐI, mọi thống kê "chặn ở cổng nào" sẽ đứt gãy đúng lúc cần so sánh trước/sau nhất.
+        var maPullback = EvaluateMaPullback(context);
+        if (maPullback.Passed) return maPullback;
+
         var structure = DayPlaybook.StructureOf(context.DailyPlan);
 
-        return structure == DayStructure.Range
+        var fallback = structure == DayStructure.Range
             ? context.Settings.StrategyVersion.UsesSidewaysV6()
                 ? EvaluateSidewaysV6(context)
                 : EvaluateRange(context, range)
             : EvaluateTrend(context, structure);
+
+        // Nhánh MA không xác nhận thì KHÔNG được thắng — kể cả khi nó có lý do nghe thuyết phục.
+        // Đường cũ vẫn có thể tìm ra một setup hợp lệ trên chính cây nến đó, và để nhánh mới bác
+        // thay sẽ giết đúng những lệnh nó lẽ ra phải thêm vào.
+        //
+        // Nhưng lý do của nó vẫn phải hiện ra, nếu không sẽ không có cách nào biết vì sao nhịp
+        // hồi chẳng bao giờ kích hoạt. Nên: giữ nguyên State/SetupType/Stage của đường cũ (mọi
+        // thống kê "chặn ở cổng nào" còn so sánh được trước/sau), chỉ ghi kèm vào phần mô tả.
+        return maPullback.SetupType == SetupType.MaPullback
+            ? fallback with { DetailVi = $"{fallback.DetailVi} · Nhịp MA: {maPullback.DetailVi}" }
+            : fallback;
+    }
+
+    // ── Nhịp hồi về MA nhanh ────────────────────────────────────────────
+
+    private const int MaFastPeriod = 7;
+    private const int MaSlowPeriod = 25;
+
+    /// <summary>Số nến tối đa kể từ lúc MA cắt nhau. 40 nến 15m = 10 giờ.</summary>
+    /// <remarks>
+    /// Nhịp này ăn theo lực của cú đẩy vừa sinh ra xu hướng. Quá mốc đó thì cú đẩy đã tiêu hoá
+    /// xong, và "giá chạm MA7" chỉ còn là giá đi ngang quanh MA chứ không phải một nhịp hồi.
+    /// </remarks>
+    private const int MaPullbackMaxBarsSinceCross = 40;
+
+    /// <summary>Cửa sổ đọc đáy vùng tích luỹ để đặt dừng lỗ.</summary>
+    private const int MaPullbackZoneBars = 10;
+
+    /// <summary>Bội R của mục tiêu.</summary>
+    private const decimal MaPullbackTargetR = 2m;
+
+    /// <summary>
+    /// Xu hướng đọc từ MA7/MA25, vào khi giá hồi về chạm MA7.
+    /// </summary>
+    /// <remarks>
+    /// Dừng lỗ đặt Ở GIỮA đáy xoay gần nhất và đáy vùng tích luỹ — đáy xoay một mình thì quá sát
+    /// (khối lượng nổ, phí ăn hết), còn đáy vùng một mình thì rộng tay hơn mức cần. Sau đó áp
+    /// sàn <c>MinStopDistancePercent</c> ngay tại đây: quyết định này mang theo dừng lỗ riêng và
+    /// nó GHI ĐÈ mức của <c>StructuralLevelPlanner</c>, nên sàn dựng ở planner không với tới.
+    /// </remarks>
+    private SetupTriggerDecision EvaluateMaPullback(ScoringContext context)
+    {
+        var candles = context.EntryCandles;
+
+        // Chỉ cần đủ nến để TÍNH được chồng MA. Việc dò ngược tìm điểm cắt tự dừng khi hết dữ
+        // liệu và trả về "không thấy" — đòi sẵn cả cửa sổ dò ở đây sẽ tắt bộ dò suốt 40 nến đầu
+        // sau mỗi lần khởi động, đúng lúc không ai nhìn nhật ký.
+        if (candles.Count < MaSlowPeriod + 2)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing, "Chưa đủ nến để dựng chồng MA.");
+
+        var isLong = context.Direction == TradeDirection.Long;
+        var last = candles.Count - 1;
+
+        var fast = Sma(candles, MaFastPeriod, last);
+        var slow = Sma(candles, MaSlowPeriod, last);
+        if (fast <= 0m || slow <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing, "Không tính được MA.");
+
+        // (1) Chồng MA phải xếp thuận chiều đang xét.
+        if (isLong ? fast <= slow : fast >= slow)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing,
+                $"MA{MaFastPeriod}={fast:N2} và MA{MaSlowPeriod}={slow:N2} không xếp thuận " +
+                $"chiều {context.Direction}.");
+
+        // (2) Lần cắt gần nhất phải còn mới.
+        var barsSinceCross = BarsSinceMaCross(candles, last, isLong);
+        if (barsSinceCross is not { } sinceCross)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaPullbackStale,
+                $"Không tìm thấy lần MA cắt nhau trong {MaPullbackMaxBarsSinceCross} nến gần đây.");
+
+        if (sinceCross > MaPullbackMaxBarsSinceCross)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaPullbackStale,
+                $"MA cắt cách đây {sinceCross} nến, quá mốc {MaPullbackMaxBarsSinceCross}.");
+
+        // (3) Cú đẩy sinh ra xu hướng phải có khối lượng thật.
+        var minVolume = context.Settings.V6BreakoutMinRelativeVolume;
+        var impulseVolume = 0m;
+        for (var i = last - sinceCross; i <= last; i++)
+            impulseVolume = Math.Max(impulseVolume, RelativeVolume(candles, i));
+
+        if (impulseVolume < minVolume)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaImpulseWeak,
+                $"Cú đẩy sau khi MA cắt chỉ đạt khối lượng {impulseVolume:N2}× trung bình, " +
+                $"cần {minVolume:N2}×.",
+                SetupType.MaPullback,
+                SetupFunnelStage.StructureCandidate);
+
+        // (4) Giá phải đang CHẠM MA nhanh — thân nến vẫn giữ phía đúng của MA chậm.
+        var current = candles[last];
+        var touching = current.Low <= fast && current.High >= fast;
+        if (!touching)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaPullbackMissing,
+                $"Giá chưa hồi về chạm MA{MaFastPeriod}={fast:N2} " +
+                $"(nến hiện tại {current.Low:N2}–{current.High:N2}).",
+                SetupType.MaPullback,
+                SetupFunnelStage.StructureCandidate);
+
+        if (isLong ? current.Close < slow : current.Close > slow)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaPullbackMissing,
+                $"Giá đóng {current.Close:N2} đã xuyên qua MA{MaSlowPeriod}={slow:N2} — " +
+                "đây là gãy xu hướng chứ không phải nhịp hồi.",
+                SetupType.MaPullback,
+                SetupFunnelStage.TriggerStarted);
+
+        // (5) Dừng lỗ: giữa đáy xoay gần nhất và đáy vùng tích luỹ.
+        var entry = context.CurrentPrice;
+        var zone = candles.Skip(Math.Max(0, candles.Count - MaPullbackZoneBars)).ToList();
+        var zoneEdge = isLong ? zone.Min(c => c.Low) : zone.Max(c => c.High);
+
+        var pivots = _structure.Swings.Detect(
+            candles.TakeLast(MaSlowPeriod * 2).ToList(), context.Settings.SwingPivotBars);
+        var swingEdge = isLong
+            ? pivots.Where(p => !p.IsHigh && p.Price < entry).Select(p => (decimal?)p.Price).Max()
+            : pivots.Where(p => p.IsHigh && p.Price > entry).Select(p => (decimal?)p.Price).Min();
+
+        // Không có đáy xoay thì dùng thẳng đáy vùng — không bịa ra một nửa của thứ không tồn tại.
+        var stop = swingEdge is { } swing ? (swing + zoneEdge) / 2m : zoneEdge;
+
+        var atr = AverageTrueRange(candles, 14);
+        var floor = entry * context.Settings.MinStopDistancePercent / 100m;
+        if (Math.Abs(entry - stop) < floor)
+            stop = isLong ? entry - floor : entry + floor;
+
+        var distance = Math.Abs(entry - stop);
+        if (distance <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaPullbackMissing, "Dừng lỗ trùng giá vào.",
+                SetupType.MaPullback, SetupFunnelStage.TriggerStarted);
+
+        if (atr > 0m && distance > atr * context.Settings.StopAtrMultipleMax)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaPullbackMissing,
+                $"Dừng lỗ cách {distance / entry * 100m:N2}% vượt trần " +
+                $"{context.Settings.StopAtrMultipleMax:N2} ATR.",
+                SetupType.MaPullback, SetupFunnelStage.TriggerStarted);
+
+        var target = isLong
+            ? entry + distance * MaPullbackTargetR
+            : entry - distance * MaPullbackTargetR;
+
+        var quality = MaPullbackQuality(impulseVolume, minVolume, fast, slow, sinceCross);
+
+        return new SetupTriggerDecision(
+            Passed: true,
+            SetupType: SetupType.MaPullback,
+            State: SetupTriggerState.Confirmed,
+            DetailVi:
+                $"Hồi về MA{MaFastPeriod} xác nhận: MA{MaFastPeriod}={fast:N2} trên " +
+                $"MA{MaSlowPeriod}={slow:N2}, cắt cách {sinceCross} nến, khối lượng đẩy " +
+                $"{impulseVolume:N2}×, dừng lỗ {stop:N2} ({distance / entry * 100m:N2}%), " +
+                $"chốt lời {target:N2} ({MaPullbackTargetR:N1}R).",
+            // Vào bằng lệnh chờ ngay tại MA nhanh: đó chính là mức mà phương pháp này chờ giá về.
+            SuggestedLimitEntry: fast,
+            Stage: SetupFunnelStage.Confirmed,
+            EventId: $"{context.Symbol}:MaPullback:{context.Direction}:{last - sinceCross}",
+            SetupQualityScore: quality,
+            SuggestedStopLoss: stop,
+            SuggestedFirstTakeProfit: target);
+    }
+
+    /// <summary>
+    /// Chất lượng 60–100. Sàn 60 vì một setup đã qua hết năm điều kiện trên không thể bị
+    /// <c>QualityMultiplier</c> của V6 cho về 0 chỉ vì thang điểm này không có phần hình học.
+    /// </summary>
+    private static int MaPullbackQuality(
+        decimal impulseVolume, decimal minVolume, decimal fast, decimal slow, int barsSinceCross)
+    {
+        // Khối lượng vượt ngưỡng bao nhiêu (tối đa 20 điểm).
+        var volumeScore = Math.Min(20m, (impulseVolume / minVolume - 1m) * 40m);
+
+        // Hai MA tách nhau càng rõ, xu hướng càng sạch (tối đa 12 điểm).
+        var separation = fast <= 0m ? 0m : Math.Abs(fast - slow) / fast * 100m;
+        var separationScore = Math.Min(12m, separation * 30m);
+
+        // Nhịp càng sớm sau khi cắt càng tốt (tối đa 8 điểm).
+        var freshScore = Math.Max(0m, 8m * (1m - (decimal)barsSinceCross / MaPullbackMaxBarsSinceCross));
+
+        return (int)Math.Clamp(60m + volumeScore + separationScore + freshScore, 60m, 100m);
+    }
+
+    /// <summary>Số nến kể từ lần MA nhanh cắt MA chậm theo chiều đang xét, hoặc null nếu không thấy.</summary>
+    private static int? BarsSinceMaCross(IReadOnlyList<Candle> candles, int last, bool isLong)
+    {
+        for (var back = 1; back <= MaPullbackMaxBarsSinceCross; back++)
+        {
+            var i = last - back;
+            if (i - 1 < MaSlowPeriod) break;
+
+            var fastNow = Sma(candles, MaFastPeriod, i);
+            var slowNow = Sma(candles, MaSlowPeriod, i);
+            var fastPrev = Sma(candles, MaFastPeriod, i - 1);
+            var slowPrev = Sma(candles, MaSlowPeriod, i - 1);
+
+            var crossed = isLong
+                ? fastNow > slowNow && fastPrev <= slowPrev
+                : fastNow < slowNow && fastPrev >= slowPrev;
+
+            if (crossed) return back;
+        }
+
+        return null;
+    }
+
+    private static decimal Sma(IReadOnlyList<Candle> candles, int period, int index)
+    {
+        if (index < period - 1 || period <= 0) return 0m;
+        var sum = 0m;
+        for (var i = index - period + 1; i <= index; i++) sum += candles[i].Close;
+        return sum / period;
     }
 
     private SetupTriggerDecision EvaluateSidewaysV6(ScoringContext context)
