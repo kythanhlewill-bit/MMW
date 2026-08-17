@@ -170,6 +170,12 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
         if (unitRisk <= 0m)
             throw new ArgumentException("Khoảng cách entry–stop phải lớn hơn 0.", nameof(card));
 
+        // Ba setup MA tự mang theo TRỌN BỘ mức giá do bộ kích hoạt tính ra, nên planner chỉ việc
+        // hiện thực hoá chúng. Rẽ trước cả nhánh phiên bản: chúng không thuộc họ V3/V6 nào cả,
+        // và để rơi xuống dưới thì PlanV3 sẽ ném "chỉ lập lệnh cho setup đã xác nhận".
+        if (card.SetupType is SetupType.MaCrossFast or SetupType.MaPullback or SetupType.MaDeepPullback)
+            return PlanMa(card, settings, direction, entry, stop);
+
         if (settings.StrategyVersion.UsesSidewaysV6())
             return PlanV6(card, dailyPlan, settings, direction, entry, stop, unitRisk);
 
@@ -258,6 +264,45 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
             "StrongTrendRunner",
             TrailRunnerPivotBars: 3,
             LimitEntryExpiryBars: settings.LimitEntryExpiryBars);
+    }
+
+    /// <summary>
+    /// Kế hoạch cho ba setup họ MA: một chân, trọn ngân sách rủi ro, dùng thẳng mức của phiếu.
+    /// </summary>
+    /// <remarks>
+    /// KHÔNG chia nhiều chân và KHÔNG tự dựng lại mục tiêu, vì bộ kích hoạt đã quyết cả hai:
+    /// dừng lỗ đặt ở giữa đáy xoay và đáy vùng tích luỹ (hoặc dưới MA99), còn mục tiêu là bội R
+    /// theo thứ tự nhịp hồi (hoặc chính mức bị từ chối). Dựng lại ở đây sẽ cho ra một lệnh khác
+    /// với lệnh mà cổng chi phí đã chấm — đúng loại lệch mà <c>PlanLive</c> sinh ra để chấm dứt.
+    ///
+    /// Chỉ <see cref="SetupType.MaCrossFast"/> vào bằng lệnh thị trường: giá trị của nó nằm ở
+    /// chỗ có mặt ngay lúc xu hướng vừa đổi, mà lệnh chờ thì có thể không khớp.
+    /// </remarks>
+    private static TradeExecutionPlan PlanMa(
+        EntryScorecard card,
+        EngineSetting settings,
+        TradeDirection direction,
+        decimal entry,
+        decimal stop)
+    {
+        var target = card.SuggestedFirstTakeProfit
+                     ?? card.SuggestedTakeProfit
+                     ?? AtR(entry, Math.Abs(entry - stop), direction, 2m);
+
+        var isMarket = card.SetupType == SetupType.MaCrossFast;
+        var price = isMarket
+            ? entry
+            : SafeLimitEntry(card.SuggestedLimitEntry, entry, stop, direction, fallbackPullbackR: 0.10m);
+
+        return new TradeExecutionPlan(
+            [new PlannedEntryTranche(price, 1m, IsLimit: !isMarket)],
+            stop,
+            target,
+            RunnerTakeProfit: null,
+            FirstTakeProfitFraction: 1m,
+            MoveRunnerStopToBreakeven: false,
+            Mode: card.SetupType.ToString(),
+            LimitEntryExpiryBars: isMarket ? null : LiveLimitExpiryBars);
     }
 
     private static TradeExecutionPlan PlanV3(
