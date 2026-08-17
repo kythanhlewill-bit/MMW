@@ -92,6 +92,11 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
         var maPullback = EvaluateMaPullback(context);
         if (maPullback.Passed) return maPullback;
 
+        // Nhịp hồi sâu về MA99 xét SAU nhịp hồi thường: khi cả hai cùng thoả thì nhịp thường là
+        // nhịp sớm hơn của cùng xu hướng, và vào sớm hơn thì mục tiêu còn nguyên.
+        var maDeep = EvaluateMaDeepPullback(context);
+        if (maDeep.Passed) return maDeep;
+
         var structure = DayPlaybook.StructureOf(context.DailyPlan);
 
         var fallback = structure == DayStructure.Range
@@ -112,6 +117,8 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
             : string.Empty;
         if (maPullback.SetupType == SetupType.MaPullback)
             maNote += $" · Nhịp MA: {maPullback.DetailVi}";
+        if (maDeep.SetupType == SetupType.MaDeepPullback)
+            maNote += $" · Hồi sâu: {maDeep.DetailVi}";
 
         return maNote.Length == 0
             ? fallback
@@ -315,6 +322,174 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
         var freshScore = Math.Max(0m, 8m * (1m - (decimal)barsSinceCross / MaPullbackMaxBarsSinceCross));
 
         return (int)Math.Clamp(60m + volumeScore + separationScore + freshScore, 60m, 100m);
+    }
+
+    // ── Nhịp hồi sâu về MA chậm nhất sau cú từ chối ─────────────────────
+
+    private const int MaSlowestPeriod = 99;
+
+    /// <summary>Cửa sổ tìm cú từ chối ở kháng cự/hỗ trợ.</summary>
+    private const int RejectionLookbackBars = 30;
+
+    /// <summary>Râu nến phải chiếm ngần này phần biên độ mới gọi là "từ chối rõ".</summary>
+    /// <remarks>
+    /// Một nửa cây nến là râu nghĩa là giá đã đi tới đó rồi bị đẩy ngược về trong cùng một nến —
+    /// đó là dấu vết của lệnh chờ nằm sẵn, không phải một cú lùi bình thường. Ngưỡng thấp hơn sẽ
+    /// gọi mọi nến có bóng là "từ chối" và nhánh này sẽ kích hoạt suốt ngày.
+    /// </remarks>
+    private const decimal RejectionWickRatio = 0.5m;
+
+    /// <summary>Giá đóng phải nằm trong ngần này phần biên độ tính từ phía ĐỐI DIỆN mức bị từ chối.</summary>
+    /// <remarks>
+    /// Chỉ đo râu là chưa đủ: một nến doji đối xứng có râu trên đúng 50% biên độ nhưng đóng ngay
+    /// giữa nến — đó là do dự, không phải từ chối. Từ chối nghĩa là giá chạm tới mức đó rồi bị
+    /// đẩy về và ĐÓNG CỬA ở xa nó. Thiếu ràng buộc này, bộ dò nhận mọi nến có bóng là từ chối và
+    /// nhánh kích hoạt liên tục.
+    /// </remarks>
+    private const decimal RejectionCloseLocation = 0.35m;
+
+    /// <summary>Giá phải nằm trong ngần này lần ATR quanh MA chậm nhất.</summary>
+    private const decimal DeepZoneAtrTolerance = 0.75m;
+
+    /// <summary>
+    /// Sau cú từ chối rõ ở kháng cự, chờ giá hồi sâu về vùng MA99 rồi vào, mục tiêu là chính đỉnh đó.
+    /// </summary>
+    /// <remarks>
+    /// Mục tiêu KHÔNG đặt theo bội R mà đặt đúng tại mức đã bị từ chối. Cú từ chối báo hiệu thị
+    /// trường sắp chuyển sang đi ngang, và trong đi ngang thì mức bị từ chối chính là biên trên —
+    /// đòi thêm quá mức đó là đòi một cú phá biên mà chính cú từ chối vừa nói là chưa tới.
+    ///
+    /// Đổi lại, tỉ lệ tối thiểu hạ xuống 1,0 thay vì 1,6 của các nhánh khác: ở đây dừng lỗ nằm
+    /// dưới MA99 nên nó rộng, và đòi 1,6 sẽ loại sạch nhóm setup mà cả phương pháp này nhắm tới.
+    /// </remarks>
+    private SetupTriggerDecision EvaluateMaDeepPullback(ScoringContext context)
+    {
+        var candles = context.EntryCandles;
+        if (candles.Count < MaSlowestPeriod + RejectionLookbackBars + 2)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing, "Chưa đủ nến để dựng MA chậm nhất.");
+
+        var isLong = context.Direction == TradeDirection.Long;
+        var last = candles.Count - 1;
+
+        var maSlow = Sma(candles, MaSlowPeriod, last);
+        var maSlowest = Sma(candles, MaSlowestPeriod, last);
+        if (maSlow <= 0m || maSlowest <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing, "Không tính được MA chậm nhất.");
+
+        // Cấu trúc LỚN vẫn phải thuận chiều. MA nhanh lúc này thường đã cắt xuống — đó chính là
+        // hình dạng của một nhịp hồi sâu, nên KHÔNG đòi MA7 thuận như hai nhánh trước.
+        if (isLong ? maSlow <= maSlowest : maSlow >= maSlowest)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing,
+                $"MA{MaSlowPeriod}={maSlow:N2} và MA{MaSlowestPeriod}={maSlowest:N2} " +
+                $"không xếp thuận chiều {context.Direction}.");
+
+        // (1) Cú từ chối rõ ở kháng cự (mua) hoặc hỗ trợ (bán), trong cửa sổ gần đây.
+        var window = candles.Skip(Math.Max(0, candles.Count - RejectionLookbackBars)).ToList();
+        Candle? rejection = null;
+        foreach (var c in window)
+        {
+            var range = c.High - c.Low;
+            if (range <= 0m) continue;
+
+            var wick = isLong ? c.High - Math.Max(c.Open, c.Close) : Math.Min(c.Open, c.Close) - c.Low;
+            if (wick / range < RejectionWickRatio) continue;
+
+            // Và phải ĐÓNG CỬA xa mức bị từ chối — xem chú thích RejectionCloseLocation.
+            var closeLocation = CloseLocation(c);
+            if (isLong ? closeLocation > RejectionCloseLocation
+                       : closeLocation < 1m - RejectionCloseLocation) continue;
+
+            // Giữ cú từ chối ở mức CỰC ĐOAN nhất: đó là biên mà thị trường thật sự không vượt nổi.
+            if (rejection is null
+                || (isLong ? c.High > rejection.High : c.Low < rejection.Low))
+                rejection = c;
+        }
+
+        if (rejection is null)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaRejectionMissing,
+                $"Không có cú từ chối rõ (râu ≥ {RejectionWickRatio:P0} biên độ) trong " +
+                $"{RejectionLookbackBars} nến gần nhất.");
+
+        var barrier = isLong ? rejection.High : rejection.Low;
+
+        // (2) Giá phải đã hồi SÂU về vùng MA chậm nhất.
+        var atr = AverageTrueRange(candles, 14);
+        if (atr <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaDeepZoneMissing, "Không tính được ATR.");
+
+        var entry = context.CurrentPrice;
+        if (Math.Abs(entry - maSlowest) > atr * DeepZoneAtrTolerance)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaDeepZoneMissing,
+                $"Giá {entry:N2} chưa về vùng MA{MaSlowestPeriod}={maSlowest:N2} " +
+                $"(cần trong {DeepZoneAtrTolerance:N2} ATR).",
+                SetupType.MaDeepPullback,
+                SetupFunnelStage.StructureCandidate);
+
+        // (3) Dừng lỗ dưới MA chậm nhất — thủng đó là hỏng cấu trúc, không còn là nhịp hồi.
+        var buffer = atr * context.Settings.StopStructureBufferAtr;
+        var stop = isLong ? maSlowest - buffer : maSlowest + buffer;
+
+        var floor = entry * context.Settings.MinStopDistancePercent / 100m;
+        if (Math.Abs(entry - stop) < floor)
+            stop = isLong ? entry - floor : entry + floor;
+
+        var distance = Math.Abs(entry - stop);
+        if (distance <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaDeepZoneMissing, "Dừng lỗ trùng giá vào.",
+                SetupType.MaDeepPullback, SetupFunnelStage.TriggerStarted);
+
+        if (distance > atr * context.Settings.StopAtrMultipleMax)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaDeepZoneMissing,
+                $"Dừng lỗ cách {distance / entry * 100m:N2}% vượt trần " +
+                $"{context.Settings.StopAtrMultipleMax:N2} ATR.",
+                SetupType.MaDeepPullback, SetupFunnelStage.TriggerStarted);
+
+        // (4) Mục tiêu là chính mức đã bị từ chối, lùi vào một khoảng đệm.
+        var target = isLong ? barrier - buffer : barrier + buffer;
+        var reward = isLong ? target - entry : entry - target;
+        var riskReward = reward / distance;
+
+        if (riskReward < DeepPullbackMinRiskReward)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaDeepZoneMissing,
+                $"Từ giá {entry:N2} lên mức bị từ chối {barrier:N2} chỉ được " +
+                $"{riskReward:N2}R, dưới mức tối thiểu {DeepPullbackMinRiskReward:N2}R.",
+                SetupType.MaDeepPullback, SetupFunnelStage.TriggerStarted);
+
+        return new SetupTriggerDecision(
+            Passed: true,
+            SetupType: SetupType.MaDeepPullback,
+            State: SetupTriggerState.Confirmed,
+            DetailVi:
+                $"Hồi sâu về MA{MaSlowestPeriod}={maSlowest:N2} sau cú từ chối tại {barrier:N2}: " +
+                $"dừng lỗ {stop:N2} ({distance / entry * 100m:N2}%), chốt lời {target:N2} " +
+                $"({riskReward:N2}R).",
+            SuggestedLimitEntry: maSlowest,
+            Stage: SetupFunnelStage.Confirmed,
+            EventId: $"{context.Symbol}:MaDeepPullback:{context.Direction}:{rejection.OpenTime:yyyyMMddHHmm}",
+            SetupQualityScore: MaDeepQuality(riskReward, atr, entry, maSlowest),
+            SuggestedStopLoss: stop,
+            SuggestedFirstTakeProfit: target);
+    }
+
+    /// <summary>Tỉ lệ tối thiểu riêng cho nhịp hồi sâu — thấp hơn các nhánh khác, xem chú thích trên.</summary>
+    private const decimal DeepPullbackMinRiskReward = 1.0m;
+
+    /// <summary>Chất lượng 60–100: thưởng tỉ lệ lãi/lỗ và độ sát của giá với MA chậm nhất.</summary>
+    private static int MaDeepQuality(decimal riskReward, decimal atr, decimal entry, decimal maSlowest)
+    {
+        var rrScore = Math.Min(25m, (riskReward - DeepPullbackMinRiskReward) * 12m);
+        var proximity = atr <= 0m ? 0m : Math.Abs(entry - maSlowest) / atr;
+        var proximityScore = Math.Max(0m, 15m * (1m - proximity / DeepZoneAtrTolerance));
+        return (int)Math.Clamp(60m + rrScore + proximityScore, 60m, 100m);
     }
 
     // ── Cú cắt MA bắt sớm trên khung nhanh ──────────────────────────────

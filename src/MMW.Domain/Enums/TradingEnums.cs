@@ -205,6 +205,16 @@ public enum SetupType
     /// cú đẩy. Đổi lại nó bắt được đoạn di chuyển mà bốn nhánh còn lại đã bỏ lỡ.
     /// </remarks>
     MaCrossFast = 9,
+
+    /// <summary>
+    /// Sau khi giá bị từ chối rõ ở kháng cự, chờ nó hồi sâu về vùng MA99 rồi vào.
+    /// </summary>
+    /// <remarks>
+    /// Nhịp cuối của một xu hướng đang chín: cú từ chối ở đỉnh báo hiệu sắp đi ngang, nên mục
+    /// tiêu đặt về lại đúng đỉnh đó chứ không đòi bội R cao. Dừng lỗ dưới MA99 — mức mà nếu thủng
+    /// thì cấu trúc xu hướng đã hỏng chứ không còn là một nhịp hồi.
+    /// </remarks>
+    MaDeepPullback = 10,
 }
 
 /// <summary>
@@ -255,6 +265,12 @@ public enum SetupTriggerState
 
     /// <summary>Đã quá lâu kể từ lúc MA cắt nhau — nhịp này không còn là nhịp vừa sinh ra.</summary>
     MaPullbackStale = 23,
+
+    /// <summary>Chưa có cú từ chối rõ ở kháng cự/hỗ trợ để mở nhịp hồi sâu.</summary>
+    MaRejectionMissing = 24,
+
+    /// <summary>Đã có cú từ chối nhưng giá chưa hồi về vùng MA chậm nhất.</summary>
+    MaDeepZoneMissing = 25,
 }
 
 /// <summary>
