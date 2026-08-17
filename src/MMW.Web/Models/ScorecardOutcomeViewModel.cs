@@ -18,10 +18,24 @@ public sealed record OutcomeRow(
     decimal NetR,
     decimal StopDistancePercent,
     decimal MaxFavorableExcursionR,
-    decimal MaxAdverseExcursionR)
+    decimal MaxAdverseExcursionR,
+    decimal? Entry,
+    decimal? StopLoss,
+    decimal? TakeProfit)
 {
     /// <summary>Phí + trượt giá + phí vốn, quy về R. Luôn ≥ 0 — chi phí chỉ đi một chiều.</summary>
     public decimal CostR => GrossR - NetR;
+
+    /// <summary>
+    /// Ba mức giá phải là ĐÚNG ba mức bộ đối soát đã mô phỏng, không phải mức "đẹp" nào khác.
+    /// </summary>
+    /// <remarks>
+    /// Cụ thể: <c>SuggestedEntry</c>, <c>SuggestedStopLoss</c> và
+    /// <c>SuggestedFirstTakeProfit ?? SuggestedTakeProfit</c> — khớp nguyên văn với
+    /// <c>ScorecardOutcomeReviewService</c>. Lấy mức khác, ví dụ mức đặt lệnh chờ mà đường chạy
+    /// thật dùng, sẽ cho ra một trang mà cột giá không giải thích nổi cột R ngay bên cạnh nó.
+    /// </remarks>
+    public string PriceFormat => "0.####";
 }
 
 /// <summary>

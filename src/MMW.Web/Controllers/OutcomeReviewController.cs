@@ -81,7 +81,11 @@ public sealed class OutcomeReviewController : Controller
                 x.r.NetR,
                 x.r.StopDistancePercent,
                 x.r.MaxFavorableExcursionR,
-                x.r.MaxAdverseExcursionR))
+                x.r.MaxAdverseExcursionR,
+                // Đúng ba mức mà ScorecardOutcomeReviewService đã mô phỏng — xem OutcomeRow.
+                x.c.SuggestedEntry,
+                x.c.SuggestedStopLoss,
+                x.c.SuggestedFirstTakeProfit ?? x.c.SuggestedTakeProfit))
             .ToListAsync(ct);
 
         var wins = rows.Where(r => r.NetR > 0m).Select(r => r.NetR).ToList();

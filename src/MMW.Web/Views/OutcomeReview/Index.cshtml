@@ -214,6 +214,9 @@
                     <th>Chiều</th>
                     <th>Điểm</th>
                     <th>Cổng đã chặn</th>
+                    <th class="text-end">Vào</th>
+                    <th class="text-end">Dừng lỗ</th>
+                    <th class="text-end">Chốt lời</th>
                     <th>Kết cục</th>
                     <th class="text-end">Số nến</th>
                     <th class="text-end">grossR</th>
@@ -234,6 +237,9 @@
                     <td class="small">
                         @(r.Veto is null ? "—" : ScorecardListViewModel.VetoLabel(r.Veto.Value))
                     </td>
+                    <td class="text-end text-nowrap">@(r.Entry?.ToString(r.PriceFormat) ?? "—")</td>
+                    <td class="text-end text-nowrap text-danger">@(r.StopLoss?.ToString(r.PriceFormat) ?? "—")</td>
+                    <td class="text-end text-nowrap text-green">@(r.TakeProfit?.ToString(r.PriceFormat) ?? "—")</td>
                     <td>
                         <span class="badge @ScorecardOutcomeViewModel.OutcomeBadge(r.Outcome)">
                             @ScorecardOutcomeViewModel.OutcomeLabel(r.Outcome)
