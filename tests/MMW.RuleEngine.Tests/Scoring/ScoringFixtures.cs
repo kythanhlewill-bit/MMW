@@ -221,7 +221,8 @@ internal static class ScoringFixtures
         TradeDirection direction = TradeDirection.Long,
         DailyPlan? plan = null,
         EngineSetting? settings = null,
-        string symbol = Symbol)
+        string symbol = Symbol,
+        IReadOnlyList<Candle>? fast = null)
     {
         var entryCandles = entry ?? Ramp(260);
         var price = entryCandles.Count > 0 ? entryCandles[^1].Close : 1000m;
@@ -235,6 +236,7 @@ internal static class ScoringFixtures
             EntryCandles = entryCandles,
             BiasCandles = bias ?? Ramp(260, interval: TimeSpan.FromHours(4)),
             DailyCandles = Ramp(120, interval: TimeSpan.FromDays(1)),
+            FastCandles = fast ?? Array.Empty<Candle>(),
             CurrentPrice = price,
             DailyPlan = plan ?? Plan(),
             Settings = settings ?? Settings(),

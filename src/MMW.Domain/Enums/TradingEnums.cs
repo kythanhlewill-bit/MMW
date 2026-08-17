@@ -196,6 +196,15 @@ public enum SetupType
     /// 142–160 lần mỗi mã.
     /// </remarks>
     MaPullback = 8,
+
+    /// <summary>
+    /// Vào ngay khi MA7 cắt MA25 trên khung 5m kèm khối lượng mạnh.
+    /// </summary>
+    /// <remarks>
+    /// Nhịp sớm nhất và rủi ro nhất của cùng một xu hướng: chưa có nhịp hồi nào xác nhận, chỉ có
+    /// cú đẩy. Đổi lại nó bắt được đoạn di chuyển mà bốn nhánh còn lại đã bỏ lỡ.
+    /// </remarks>
+    MaCrossFast = 9,
 }
 
 /// <summary>

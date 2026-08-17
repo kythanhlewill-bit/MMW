@@ -135,6 +135,19 @@ public sealed record ScoringContext
     /// <summary>Nến 1d đã đóng.</summary>
     public required IReadOnlyList<Candle> DailyCandles { get; init; }
 
+    /// <summary>
+    /// Nến khung NHANH (5m). Rỗng khi không lấy được — mọi thứ đọc nó phải chịu được điều đó.
+    /// </summary>
+    /// <remarks>
+    /// Chỉ phục vụ nhánh vào-ngay-khi-MA-cắt: cú cắt trên khung 15m chỉ nhìn thấy được sau khi
+    /// nến 15m đóng, tức chậm nhất 15 phút so với lúc nó thật sự xảy ra. Khung 5m rút độ trễ đó
+    /// xuống 5 phút, và đó là toàn bộ lý do nó có mặt ở đây.
+    ///
+    /// KHÔNG dùng cho chấm điểm hay dựng mức: thang điểm và mức cấu trúc neo vào khung vào lệnh,
+    /// trộn thêm một khung nữa vào đó sẽ làm hai phiếu cùng điểm nói về hai thứ khác nhau.
+    /// </remarks>
+    public IReadOnlyList<Candle> FastCandles { get; init; } = Array.Empty<Candle>();
+
     /// <summary>Giá hiện tại từ ticker, KHÔNG lấy từ nến đang chạy.</summary>
     public required decimal CurrentPrice { get; init; }
 

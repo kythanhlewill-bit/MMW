@@ -85,6 +85,10 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
         // Cách ghép thuần cộng thêm này là có chủ ý: đường cũ đã chạy thật 8 ngày và mọi chẩn
         // đoán đang dựa vào các mã trạng thái của nó. Nếu để bộ dò mới ghi đè cả những lần nó
         // TỪ CHỐI, mọi thống kê "chặn ở cổng nào" sẽ đứt gãy đúng lúc cần so sánh trước/sau nhất.
+        // Cú cắt MA bắt trên khung NHANH đi trước, vì nó là nhịp sớm nhất của cùng một xu hướng.
+        var maCross = EvaluateMaCrossFast(context);
+        if (maCross.Passed) return maCross;
+
         var maPullback = EvaluateMaPullback(context);
         if (maPullback.Passed) return maPullback;
 
@@ -103,9 +107,15 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
         // Nhưng lý do của nó vẫn phải hiện ra, nếu không sẽ không có cách nào biết vì sao nhịp
         // hồi chẳng bao giờ kích hoạt. Nên: giữ nguyên State/SetupType/Stage của đường cũ (mọi
         // thống kê "chặn ở cổng nào" còn so sánh được trước/sau), chỉ ghi kèm vào phần mô tả.
-        return maPullback.SetupType == SetupType.MaPullback
-            ? fallback with { DetailVi = $"{fallback.DetailVi} · Nhịp MA: {maPullback.DetailVi}" }
-            : fallback;
+        var maNote = maCross.SetupType == SetupType.MaCrossFast
+            ? $" · Cắt MA nhanh: {maCross.DetailVi}"
+            : string.Empty;
+        if (maPullback.SetupType == SetupType.MaPullback)
+            maNote += $" · Nhịp MA: {maPullback.DetailVi}";
+
+        return maNote.Length == 0
+            ? fallback
+            : fallback with { DetailVi = fallback.DetailVi + maNote };
     }
 
     // ── Nhịp hồi về MA nhanh ────────────────────────────────────────────
@@ -307,6 +317,120 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
         return (int)Math.Clamp(60m + volumeScore + separationScore + freshScore, 60m, 100m);
     }
 
+    // ── Cú cắt MA bắt sớm trên khung nhanh ──────────────────────────────
+
+    /// <summary>Cú cắt phải vừa xảy ra trong vòng ngần này nến 5m.</summary>
+    /// <remarks>
+    /// 3 nến 5m = 15 phút, đúng bằng MỘT nến khung vào lệnh. Đó là toàn bộ lợi thế mà khung
+    /// nhanh mang lại: thấy cú cắt trước khi nến 15m đóng. Nới rộng hơn thì lợi thế biến mất mà
+    /// rủi ro "vào lúc cú cắt đã đi xa" thì còn nguyên.
+    /// </remarks>
+    private const int FastCrossMaxBars = 3;
+
+    /// <summary>Khối lượng cú cắt phải mạnh hơn ngưỡng thường, vì đây là lần vào sớm nhất.</summary>
+    /// <remarks>
+    /// Vào ngay lúc cắt là nhịp rủi ro nhất trong cả năm pha: chưa có nhịp hồi nào để xác nhận
+    /// xu hướng thật, chỉ có cú đẩy. Đổi lại phải đòi khối lượng cao hơn — nếu không thì mọi cú
+    /// cắt MA do nhiễu, vốn xảy ra 44 lần/8 ngày mỗi mã, đều thành một lệnh.
+    /// </remarks>
+    private const decimal FastCrossVolumeMultiple = 1.5m;
+
+    /// <summary>
+    /// Vào ngay khi MA7 cắt MA25 trên khung 5m kèm khối lượng mạnh.
+    /// </summary>
+    /// <remarks>
+    /// Dừng lỗ đặt dưới đáy của chính cú đẩy (cửa sổ từ điểm cắt tới hiện tại), không phải dưới
+    /// MA — MA lúc này còn dính sát giá nên dừng theo nó sẽ ra vài bps, đúng vùng phí ăn hết.
+    ///
+    /// Đây là nhánh DUY NHẤT vào bằng lệnh thị trường. Bốn nhánh còn lại chờ giá quay về một
+    /// mức đã biết nên đặt được lệnh chờ; nhánh này ăn tiền chính ở chỗ vào SỚM, mà lệnh chờ
+    /// thì có thể không khớp và làm mất đúng thứ nó đang mua.
+    /// </remarks>
+    private SetupTriggerDecision EvaluateMaCrossFast(ScoringContext context)
+    {
+        var fast = context.FastCandles;
+        if (fast.Count < MaSlowPeriod + VolumeLookbackBars + 2)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing, "Chưa đủ nến khung nhanh.");
+
+        var isLong = context.Direction == TradeDirection.Long;
+        var last = fast.Count - 1;
+
+        var maFast = Sma(fast, MaFastPeriod, last);
+        var maSlow = Sma(fast, MaSlowPeriod, last);
+        if (maFast <= 0m || maSlow <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing, "Không tính được MA khung nhanh.");
+
+        if (isLong ? maFast <= maSlow : maFast >= maSlow)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing,
+                $"Khung nhanh: MA{MaFastPeriod}/MA{MaSlowPeriod} chưa xếp thuận chiều {context.Direction}.");
+
+        // Cú cắt phải VỪA xảy ra — đây là điểm khác biệt duy nhất so với nhánh hồi về MA.
+        var sinceCross = BarsSinceMaCrossIn(fast, last, isLong, FastCrossMaxBars);
+        if (sinceCross is not { } bars)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing,
+                $"Khung nhanh: không có cú cắt MA nào trong {FastCrossMaxBars} nến gần nhất.");
+
+        var impulseVolume = 0m;
+        for (var i = last - bars; i <= last; i++)
+            impulseVolume = Math.Max(impulseVolume, RelativeVolume(fast, i));
+
+        if (impulseVolume < FastCrossVolumeMultiple)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaImpulseWeak,
+                $"Khung nhanh: cú cắt chỉ đạt khối lượng {impulseVolume:N2}× trung bình, " +
+                $"cần {FastCrossVolumeMultiple:N2}× cho lần vào sớm nhất.",
+                SetupType.MaCrossFast,
+                SetupFunnelStage.StructureCandidate);
+
+        // Dừng lỗ dưới đáy của chính cú đẩy, cộng thêm sàn phần trăm.
+        var entry = context.CurrentPrice;
+        var impulse = fast.Skip(last - bars).ToList();
+        var stop = isLong ? impulse.Min(c => c.Low) : impulse.Max(c => c.High);
+
+        var floor = entry * context.Settings.MinStopDistancePercent / 100m;
+        if (Math.Abs(entry - stop) < floor)
+            stop = isLong ? entry - floor : entry + floor;
+
+        var distance = Math.Abs(entry - stop);
+        if (distance <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing, "Khung nhanh: dừng lỗ trùng giá vào.",
+                SetupType.MaCrossFast, SetupFunnelStage.TriggerStarted);
+
+        // Trần đọc ATR của khung VÀO LỆNH, không phải khung nhanh: dừng lỗ sẽ sống trên khung
+        // 15m, nên độ rộng hợp lý phải đo bằng biên độ của khung đó.
+        var atr = AverageTrueRange(context.EntryCandles, 14);
+        if (atr > 0m && distance > atr * context.Settings.StopAtrMultipleMax)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaTrendMissing,
+                $"Khung nhanh: dừng lỗ cách {distance / entry * 100m:N2}% vượt trần " +
+                $"{context.Settings.StopAtrMultipleMax:N2} ATR.",
+                SetupType.MaCrossFast, SetupFunnelStage.TriggerStarted);
+
+        var target = isLong ? entry + distance * 2m : entry - distance * 2m;
+        var quality = MaPullbackQuality(impulseVolume, FastCrossVolumeMultiple, maFast, maSlow, bars);
+
+        return new SetupTriggerDecision(
+            Passed: true,
+            SetupType: SetupType.MaCrossFast,
+            State: SetupTriggerState.Confirmed,
+            DetailVi:
+                $"Khung nhanh xác nhận cú cắt: MA{MaFastPeriod}={maFast:N2} vượt " +
+                $"MA{MaSlowPeriod}={maSlow:N2} cách {bars} nến 5m, khối lượng {impulseVolume:N2}×, " +
+                $"dừng lỗ {stop:N2} ({distance / entry * 100m:N2}%), chốt lời {target:N2} (2,0R).",
+            // Không đặt lệnh chờ: giá trị của nhánh này nằm ở chỗ vào SỚM.
+            SuggestedLimitEntry: null,
+            Stage: SetupFunnelStage.Confirmed,
+            EventId: $"{context.Symbol}:MaCrossFast:{context.Direction}:{fast[last - bars].OpenTime:yyyyMMddHHmm}",
+            SetupQualityScore: quality,
+            SuggestedStopLoss: stop,
+            SuggestedFirstTakeProfit: target);
+    }
+
     /// <summary>
     /// Nhịp hồi hiện tại là nhịp thứ mấy kể từ lúc MA cắt. Nhịp đang diễn ra được tính vào.
     /// </summary>
@@ -342,9 +466,14 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
     }
 
     /// <summary>Số nến kể từ lần MA nhanh cắt MA chậm theo chiều đang xét, hoặc null nếu không thấy.</summary>
-    private static int? BarsSinceMaCross(IReadOnlyList<Candle> candles, int last, bool isLong)
+    private static int? BarsSinceMaCross(IReadOnlyList<Candle> candles, int last, bool isLong) =>
+        BarsSinceMaCrossIn(candles, last, isLong, MaPullbackMaxBarsSinceCross);
+
+    /// <summary>Như trên nhưng giới hạn cửa sổ dò — khung nhanh chỉ nhận cú cắt vừa xảy ra.</summary>
+    private static int? BarsSinceMaCrossIn(
+        IReadOnlyList<Candle> candles, int last, bool isLong, int maxBars)
     {
-        for (var back = 1; back <= MaPullbackMaxBarsSinceCross; back++)
+        for (var back = 1; back <= maxBars; back++)
         {
             var i = last - back;
             if (i - 1 < MaSlowPeriod) break;

@@ -67,6 +67,17 @@ public sealed class SignalEvalService : ISignalEvalService
     private const int BiasCandleLimit = 300;
     private const int DailyCandleLimit = 120;
 
+    /// <summary>Khung nhanh, chỉ để bắt cú MA cắt sớm hơn khung vào lệnh.</summary>
+    /// <remarks>
+    /// Cố định 5m thay vì suy ra từ <c>EntryTimeframe</c>: nhánh dùng nó đọc MA7/MA25 với chu kỳ
+    /// đã chốt theo cách giao dịch thật, nên khung phải cố định thì chu kỳ mới có nghĩa. Một
+    /// khung suy diễn sẽ làm "MA7" nghĩa khác nhau tuỳ cấu hình mà không ai nhận ra.
+    /// </remarks>
+    private const string FastTimeframe = "5m";
+
+    /// <summary>Đủ cho MA25 cộng cửa sổ dò điểm cắt trên khung 5m.</summary>
+    private const int FastCandleLimit = 120;
+
     /// <summary>
     /// Số nến dùng để đo tương quan với mã dẫn dắt. 96 nến 15m = đúng 24 giờ.
     /// </summary>
@@ -691,6 +702,7 @@ public sealed class SignalEvalService : ISignalEvalService
     private sealed record MarketSnapshot(
         IReadOnlyList<Candle> BiasCandles,
         IReadOnlyList<Candle> DailyCandles,
+        IReadOnlyList<Candle> FastCandles,
         decimal Price,
         decimal Atr,
         IReadOnlyList<MarketContextRecord> ActiveAiContext,
@@ -708,12 +720,17 @@ public sealed class SignalEvalService : ISignalEvalService
         var biasCandles = await ClosedCandlesAsync(symbol, setting.BiasTimeframe, BiasCandleLimit, ct);
         var dailyCandles = await ClosedCandlesAsync(symbol, "1d", DailyCandleLimit, ct);
 
+        // Khung nhanh chỉ phục vụ nhánh vào-ngay-khi-MA-cắt. Lỗi nguồn ⟹ rỗng, và nhánh đó tự
+        // đứng ngoài — không được để nó kéo sập cả vòng chấm điểm của khung 15m.
+        var fastCandles = await ClosedCandlesAsync(symbol, FastTimeframe, FastCandleLimit, ct);
+
         var price = await SafeAsync(async () => (await _marketData.GetTickerAsync(symbol, ct)).Price, 0m, "ticker");
         if (price <= 0m && entryCandles.Count > 0) price = entryCandles[^1].Close;
 
         return new MarketSnapshot(
             BiasCandles: biasCandles,
             DailyCandles: dailyCandles,
+            FastCandles: fastCandles,
             Price: price,
             Atr: _indicators.Atr(entryCandles, 14) ?? 0m,
             ActiveAiContext: transient
@@ -779,6 +796,7 @@ public sealed class SignalEvalService : ISignalEvalService
             EntryCandles = entryCandles,
             BiasCandles = market.BiasCandles,
             DailyCandles = market.DailyCandles,
+            FastCandles = market.FastCandles,
             CurrentPrice = market.Price,
             DailyPlan = plan,
             Settings = setting,
