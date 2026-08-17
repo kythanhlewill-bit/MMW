@@ -123,8 +123,20 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
     /// <summary>Cửa sổ đọc đáy vùng tích luỹ để đặt dừng lỗ.</summary>
     private const int MaPullbackZoneBars = 10;
 
-    /// <summary>Bội R của mục tiêu.</summary>
-    private const decimal MaPullbackTargetR = 2m;
+    /// <summary>Số nến sau điểm cắt còn coi là "đang cắt", không tính thành nhịp hồi.</summary>
+    private const int CrossSettleBars = 2;
+
+    /// <summary>Bội R của mục tiêu theo THỨ TỰ nhịp hồi kể từ lúc MA cắt.</summary>
+    /// <remarks>
+    /// Nhịp đầu ăn theo lực còn nguyên của cú đẩy nên đặt 2R. Nhịp thứ hai đi sau một lần thị
+    /// trường đã hấp thụ, khối lượng thường đã giảm, nên hạ xuống 1,5R — đòi 2R ở nhịp này là
+    /// đổi một mục tiêu thường xuyên chạm được lấy một mục tiêu thường xuyên hụt. Từ nhịp thứ
+    /// ba trở đi thì không vào nữa: đó không còn là xu hướng đang chạy mà là giá đi ngang bám MA.
+    ///
+    /// Thứ tự nhịp đọc THẲNG TỪ LỊCH SỬ NẾN, không cần lưu trạng thái: đếm số lần giá rời khỏi
+    /// rồi chạm lại MA nhanh trong khoảng từ điểm cắt tới hiện tại.
+    /// </remarks>
+    private static readonly decimal[] MaPullbackTargetRByOrdinal = [2m, 1.5m];
 
     /// <summary>
     /// Xu hướng đọc từ MA7/MA25, vào khi giá hồi về chạm MA7.
@@ -207,6 +219,18 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
                 SetupType.MaPullback,
                 SetupFunnelStage.TriggerStarted);
 
+        // (4b) Đây là nhịp hồi thứ mấy? Quyết định mục tiêu, và quyết định có vào nữa hay không.
+        var ordinal = PullbackOrdinal(candles, last, sinceCross);
+        if (ordinal > MaPullbackTargetRByOrdinal.Length)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.MaPullbackStale,
+                $"Đây là nhịp hồi thứ {ordinal} kể từ lúc MA cắt — quá {MaPullbackTargetRByOrdinal.Length} " +
+                "nhịp thì không còn là xu hướng đang chạy mà là giá đi ngang bám MA.",
+                SetupType.MaPullback,
+                SetupFunnelStage.TriggerStarted);
+
+        var targetR = MaPullbackTargetRByOrdinal[ordinal - 1];
+
         // (5) Dừng lỗ: giữa đáy xoay gần nhất và đáy vùng tích luỹ.
         var entry = context.CurrentPrice;
         var zone = candles.Skip(Math.Max(0, candles.Count - MaPullbackZoneBars)).ToList();
@@ -240,8 +264,8 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
                 SetupType.MaPullback, SetupFunnelStage.TriggerStarted);
 
         var target = isLong
-            ? entry + distance * MaPullbackTargetR
-            : entry - distance * MaPullbackTargetR;
+            ? entry + distance * targetR
+            : entry - distance * targetR;
 
         var quality = MaPullbackQuality(impulseVolume, minVolume, fast, slow, sinceCross);
 
@@ -250,10 +274,10 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
             SetupType: SetupType.MaPullback,
             State: SetupTriggerState.Confirmed,
             DetailVi:
-                $"Hồi về MA{MaFastPeriod} xác nhận: MA{MaFastPeriod}={fast:N2} trên " +
+                $"Hồi về MA{MaFastPeriod} lần {ordinal} xác nhận: MA{MaFastPeriod}={fast:N2} trên " +
                 $"MA{MaSlowPeriod}={slow:N2}, cắt cách {sinceCross} nến, khối lượng đẩy " +
                 $"{impulseVolume:N2}×, dừng lỗ {stop:N2} ({distance / entry * 100m:N2}%), " +
-                $"chốt lời {target:N2} ({MaPullbackTargetR:N1}R).",
+                $"chốt lời {target:N2} ({targetR:N1}R).",
             // Vào bằng lệnh chờ ngay tại MA nhanh: đó chính là mức mà phương pháp này chờ giá về.
             SuggestedLimitEntry: fast,
             Stage: SetupFunnelStage.Confirmed,
@@ -281,6 +305,40 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
         var freshScore = Math.Max(0m, 8m * (1m - (decimal)barsSinceCross / MaPullbackMaxBarsSinceCross));
 
         return (int)Math.Clamp(60m + volumeScore + separationScore + freshScore, 60m, 100m);
+    }
+
+    /// <summary>
+    /// Nhịp hồi hiện tại là nhịp thứ mấy kể từ lúc MA cắt. Nhịp đang diễn ra được tính vào.
+    /// </summary>
+    /// <remarks>
+    /// Đếm SỰ KIỆN chạm chứ không đếm nến chạm: một nhịp hồi thường kéo vài nến liên tiếp cùng
+    /// cắt qua MA, và đếm từng nến sẽ biến một nhịp thành ba, đẩy setup thật vào diện "quá nhiều
+    /// nhịp" ngay lần đầu. Một sự kiện = một lần chuyển từ KHÔNG chạm sang CÓ chạm.
+    ///
+    /// Đọc thẳng từ nến nên không cần lưu trạng thái giữa các chu kỳ chấm điểm — đây là chỗ
+    /// tránh được cả một thực thể mới và một migration.
+    /// </remarks>
+    private static int PullbackOrdinal(IReadOnlyList<Candle> candles, int last, int barsSinceCross)
+    {
+        var crossIndex = last - barsSinceCross;
+        var events = 0;
+        var wasTouching = false;
+
+        for (var i = crossIndex; i <= last; i++)
+        {
+            if (i < MaSlowPeriod - 1) continue;
+
+            var ma = Sma(candles, MaFastPeriod, i);
+            var touching = ma > 0m && candles[i].Low <= ma && candles[i].High >= ma;
+
+            // Ngay sau khi cắt, giá và MA nhanh còn dính nhau — đó là CHÍNH CÚ CẮT, không phải
+            // một nhịp hồi. Không loại nó ra thì mọi setup đều bị đẩy lên một bậc, nhịp đầu bị
+            // chấm như nhịp hai và ăn mục tiêu 1,5R thay vì 2R.
+            if (touching && !wasTouching && i > crossIndex + CrossSettleBars) events++;
+            wasTouching = touching;
+        }
+
+        return Math.Max(1, events);
     }
 
     /// <summary>Số nến kể từ lần MA nhanh cắt MA chậm theo chiều đang xét, hoặc null nếu không thấy.</summary>

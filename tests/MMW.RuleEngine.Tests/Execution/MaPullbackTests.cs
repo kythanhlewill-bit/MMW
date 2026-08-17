@@ -40,19 +40,32 @@ public sealed class MaPullbackTests
         Assert.True(result.SetupQualityScore >= 60, $"Chất lượng {result.SetupQualityScore} phải ≥ 60.");
     }
 
-    /// <summary>Chốt lời đúng 2R so với dừng lỗ mà chính quyết định này mang theo.</summary>
-    [Fact]
-    public void Chot_loi_dat_dung_2R()
+    /// <summary>
+    /// Nhịp hồi ĐẦU đặt 2R, nhịp thứ HAI hạ xuống 1,5R.
+    /// </summary>
+    /// <remarks>
+    /// Luật suy giảm này đến từ chính người dùng: nhịp sau đi kèm khối lượng đã cạn, nên đòi 2R
+    /// ở đó là đổi một mục tiêu thường chạm được lấy một mục tiêu thường hụt.
+    ///
+    /// Thứ tự nhịp đọc thẳng từ lịch sử nến (đếm sự kiện chạm MA kể từ điểm cắt), nên không cần
+    /// lưu trạng thái nào giữa các chu kỳ chấm điểm.
+    /// </remarks>
+    [Theory]
+    [InlineData(0.5, 2.0)]   // đỉnh dốc lên: MA7 không đuổi kịp ⟹ đây là lần chạm ĐẦU
+    [InlineData(0.0, 1.5)]   // đỉnh đi ngang: MA7 đuổi kịp và đã chạm ⟹ đây là lần THỨ HAI
+    public void Chot_loi_giam_dan_theo_thu_tu_nhip_hoi(double topStep, double expectedR)
     {
-        var context = ScoringFixtures.Context(entry: UptrendPullback());
+        var context = ScoringFixtures.Context(entry: UptrendPullback(topStep: (decimal)topStep));
 
         var result = _triggers.Evaluate(context, range: null);
 
-        Assert.True(result.Passed);
+        Assert.True(result.Passed, result.DetailVi);
         var entry = context.CurrentPrice;
         var risk = entry - result.SuggestedStopLoss!.Value;
         Assert.True(risk > 0m);
-        Assert.Equal(2m, Math.Round((result.SuggestedFirstTakeProfit!.Value - entry) / risk, 4));
+        Assert.Equal(
+            (decimal)expectedR,
+            Math.Round((result.SuggestedFirstTakeProfit!.Value - entry) / risk, 4));
     }
 
     /// <summary>
@@ -169,7 +182,7 @@ public sealed class MaPullbackTests
     /// vì mã.
     /// </remarks>
     private static List<Candle> UptrendPullback(
-        decimal impulseVolume = 2.5m, bool touchesFastMa = true)
+        decimal impulseVolume = 2.5m, bool touchesFastMa = true, decimal topStep = 0m)
     {
         var candles = new List<Candle>();
         var i = 0;
@@ -190,13 +203,21 @@ public sealed class MaPullbackTests
             candles.Add(Bar(price, price + 0.4m, price - 0.4m, 100m * impulseVolume));
         }
 
-        // 6 nến đi ngang trên đỉnh để MA7 bám theo rồi bắt đầu bằng phẳng.
-        for (var n = 0; n < 6; n++) candles.Add(Bar(108m, 108.4m, 107.6m, 100m));
-
-        // Nhịp hồi: 3 nến lùi dần về phía MA7.
-        for (var n = 1; n <= 3; n++)
+        // Đỉnh 6 nến. Bước 0 = đi ngang, MA7 đuổi kịp và CHẠM — tức đã tiêu mất một nhịp hồi.
+        // Bước > 0 = dốc lên, MA7 bị bỏ lại phía sau nên nhịp hồi sắp tới là nhịp ĐẦU TIÊN.
+        // Giữ đúng 6 nến ở cả hai trường hợp để cửa sổ 10 nến dựng dừng lỗ không chạm vào cú đẩy.
+        var top = 108m;
+        for (var n = 0; n < 6; n++)
         {
-            var price = 108m - n * 0.5m;
+            top += topStep;
+            candles.Add(Bar(top, top + 0.4m, top - 0.4m, 100m));
+        }
+
+        // Nhịp hồi: 2 nến lùi về phía MA7. Cố ý KHÔNG xuyên hẳn qua MA rồi quay lại — làm vậy
+        // sẽ thành hai sự kiện chạm tách nhau và bộ đếm chấm nó là nhịp thứ hai, đúng theo luật.
+        for (var n = 1; n <= 2; n++)
+        {
+            var price = top - n * 0.5m;
             candles.Add(Bar(price, price + 0.3m, price - 0.3m, 100m));
         }
 
