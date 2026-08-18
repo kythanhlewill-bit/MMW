@@ -365,8 +365,22 @@ public enum ScoreGroup
 public enum ScorecardOutcome
 {
     Entered = 1,
+
+    /// <summary>Điểm KHÔNG đủ ngưỡng vào lệnh.</summary>
     BelowThreshold = 2,
     Vetoed = 3,
+
+    /// <summary>
+    /// Điểm ĐỦ ngưỡng nhưng không setup nào xác nhận: cỡ lệnh bằng 0 vì hệ số chất lượng setup
+    /// bằng 0, không phải vì điểm thấp.
+    /// </summary>
+    /// <remarks>
+    /// Tách khỏi <see cref="BelowThreshold"/> vì hai thứ này đòi hai phản ứng khác hẳn nhau.
+    /// Điểm thấp nghĩa là bối cảnh xấu — đúng thiết kế, không có gì phải sửa. Setup vắng nghĩa là
+    /// bối cảnh TỐT mà bộ kích hoạt không bắt được kèo; nếu con số này lớn thì chính bộ kích hoạt
+    /// là thứ cần xem lại. Gộp chung một nhãn thì câu hỏi đó không bao giờ đặt ra được.
+    /// </remarks>
+    SetupMissing = 4,
 }
 
 /// <summary>

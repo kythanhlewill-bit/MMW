@@ -192,6 +192,38 @@ public sealed class V6SidewaysExecutionTests
         Assert.True(execution.MoveRunnerStopToBreakeven);
     }
 
+    /// <summary>
+    /// Hai cách để cỡ lệnh về 0 phải PHÂN BIỆT ĐƯỢC qua <c>SetupMultiplier</c>.
+    /// </summary>
+    /// <remarks>
+    /// Đây là thứ mà nhãn <see cref="ScorecardOutcome.SetupMissing"/> dựa vào. Nếu hai đường đều
+    /// trả về cùng một hệ số thì nhãn kia sẽ nói dối một cách âm thầm — không có gì báo lỗi, chỉ
+    /// là mọi phiếu "đủ điểm nhưng thiếu kèo" tiếp tục bị đếm nhầm vào "điểm thấp". Kiểm ở đây
+    /// chứ không ở lớp gọi, vì lớp gọi chỉ đọc lại con số này.
+    /// </remarks>
+    [Fact]
+    public void Diem_thieu_va_setup_thieu_cho_hai_he_so_setup_khac_nhau()
+    {
+        var settings = V6Settings(s => s.V6MinSetupQuality = 50);
+        var sizer = new ScoreBasedPositionSizer();
+        var plan = ScoringFixtures.Plan();
+
+        var lowScore = sizer.Calculate(
+            Score(settings.MinScoreToEnter - 10), plan, GateAggregate.Neutral, 1m, settings,
+            new SetupSizingProfile(SetupType.MaPullback, 80));
+
+        var noSetup = sizer.Calculate(
+            Score(71), plan, GateAggregate.Neutral, 1m, settings,
+            new SetupSizingProfile(SetupType.MaPullback, 0));
+
+        Assert.Equal(0m, lowScore.FinalSizeR);
+        Assert.Equal(0m, noSetup.FinalSizeR);
+
+        // Đường điểm-thiếu thoát SỚM, trước cả khi chạm tới hệ số setup — nên nó giữ nguyên 1.
+        Assert.Equal(1m, lowScore.SetupMultiplier);
+        Assert.Equal(0m, noSetup.SetupMultiplier);
+    }
+
     private static SetupTriggerPolicy Policy() => new(
         ScoringFixtures.Structure,
         new SidewaysPatternAnalyzer(ScoringFixtures.Swings));

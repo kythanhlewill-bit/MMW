@@ -48,6 +48,7 @@ public class ScorecardListViewModel
     {
         ScorecardOutcome.Entered => "Đã vào lệnh",
         ScorecardOutcome.BelowThreshold => "Dưới ngưỡng",
+        ScorecardOutcome.SetupMissing => "Đủ điểm, thiếu setup",
         _ => "Bị từ chối",
     };
 }

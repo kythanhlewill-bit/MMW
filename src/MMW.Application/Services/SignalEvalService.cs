@@ -456,7 +456,12 @@ public sealed class SignalEvalService : ISignalEvalService
         var blockingScoreVeto = score.IsVetoed && !triggerOverridesLegacyVeto;
         var provisionalOutcome = blockingScoreVeto || blocked
             ? ScorecardOutcome.Vetoed
-            : sizing.FinalSizeR > 0m ? ScorecardOutcome.Entered : ScorecardOutcome.BelowThreshold;
+            : sizing.FinalSizeR > 0m ? ScorecardOutcome.Entered
+            // Cỡ lệnh bằng 0 có hai nguyên nhân hoàn toàn khác nhau, và chỉ hệ số setup mới phân
+            // biệt được: sizer trả về Zero() khi điểm thiếu (SetupMultiplier giữ nguyên 1) nhưng
+            // trả về SetupMultiplier = 0 khi điểm đủ mà chất lượng setup dưới sàn.
+            : sizing.SetupMultiplier <= 0m ? ScorecardOutcome.SetupMissing
+            : ScorecardOutcome.BelowThreshold;
         var triggerBlocked = setting.StrategyVersion.UsesTriggerFirst()
                              && provisionalOutcome == ScorecardOutcome.Entered
                              && !trigger.Passed;

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Diagnostics;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -153,6 +154,9 @@ public static class BacktestCli
                 _ => throw new ArgumentException("--fill chỉ nhận conservative hoặc optimistic."),
             };
         }
+
+        if (options.TryGetValue("set", out var overrides))
+            ApplySettingOverrides(settingsOverride, overrides);
 
         var collectTelemetry = !options.TryGetValue("telemetry", out var telemetryText)
                                || !string.Equals(telemetryText, "false", StringComparison.OrdinalIgnoreCase);
@@ -361,6 +365,45 @@ public static class BacktestCli
         return ok;
     }
 
+    /// <summary>
+    /// <c>--set "V3TriggerFreshBars=6;MinScoreToEnter=60"</c> — đổi tham số engine cho MỘT lượt
+    /// chạy, không chạm vào cấu hình trong CSDL.
+    /// </summary>
+    /// <remarks>
+    /// Quét tham số mà phải UPDATE bảng EngineSettings giữa các lượt là cách chắc chắn nhất để
+    /// một hôm nào đó quên đặt lại và bản chạy thật mang tham số của lần thử cuối. Bản ghi ở đây
+    /// là bản đã AsNoTracking nên mọi thay đổi chỉ sống trong tiến trình này.
+    ///
+    /// Cố tình NÉM khi tên sai thay vì bỏ qua: một cái tên gõ nhầm mà im lặng sẽ cho ra một lượt
+    /// chạy trông hợp lệ với tham số mặc định, và bảng so sánh sẽ có hai dòng giống hệt nhau mà
+    /// không ai biết vì sao.
+    /// </remarks>
+    private static void ApplySettingOverrides(EngineSetting settings, string overrides)
+    {
+        foreach (var pair in overrides.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length != 2)
+                throw new ArgumentException($"--set cần dạng Ten=GiaTri, nhận '{pair}'.");
+
+            var property = typeof(EngineSetting).GetProperty(
+                parts[0].Trim(),
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
+                ?? throw new ArgumentException($"EngineSetting không có thuộc tính '{parts[0].Trim()}'.");
+
+            if (!property.CanWrite)
+                throw new ArgumentException($"Thuộc tính '{property.Name}' chỉ đọc.");
+
+            var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            var value = type.IsEnum
+                ? Enum.Parse(type, parts[1].Trim(), ignoreCase: true)
+                : Convert.ChangeType(parts[1].Trim(), type, CultureInfo.InvariantCulture);
+
+            property.SetValue(settings, value);
+            Console.WriteLine($"  ghi đè {property.Name} = {value}");
+        }
+    }
+
     private static Dictionary<string, string> Options(string[] args)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -546,6 +589,7 @@ public static class BacktestCli
               ordertest --account ID [--conditional true]
               backtest --account ID --symbol SYMBOL --from DATE --to DATE [--version v2|v3|v5|v6]
                        [--fill conservative|optimistic] [--telemetry true|false] [--name NAME]
+                       [--set "Prop=Value;Prop2=Value2"]
                        [--dump FILE.csv]
 
             Ví dụ:
