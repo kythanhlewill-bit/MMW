@@ -12,6 +12,12 @@
         _ => "bg-red",
     };
 
+    string Price(decimal? value) => value is { } v && v > 0m ? v.ToString("0.####") : "—";
+
+    // Dòng tóm tắt phải giữ được một dòng: lý do đầy đủ vẫn còn nguyên ở phần mở rộng ngay dưới.
+    string Truncate(string text, int max) =>
+        text.Length <= max ? text : text[..max].TrimEnd() + "…";
+
     string GroupLabel(ScoreGroup g) => g switch
     {
         ScoreGroup.Technical => "Kỹ thuật",
@@ -117,79 +123,142 @@
     </div>
 </div>
 
+
 @if (Model.Items.Count == 0)
 {
     <div class="card"><div class="card-body text-secondary">Không có phiếu nào khớp bộ lọc.</div></div>
 }
-
-@foreach (var card in Model.Items)
+else
 {
-    <div class="card mb-2">
+    <div class="card">
         <div class="card-header">
-            <div class="col">
-                <h3 class="card-title">
-                    @card.Symbol · @card.Interval ·
-                    <span class="text-secondary">nến đóng @ScorecardListViewModel.Vn(card.CandleCloseTimeUtc) giờ VN</span>
-                </h3>
-                <div class="card-subtitle">
-                    <span class="badge @OutcomeBadge(card.Outcome)">@ScorecardListViewModel.OutcomeLabel(card.Outcome)</span>
-                    <strong>@card.TotalScore/100</strong>
-                    (kỹ thuật @card.TechnicalScore · thị trường @card.MarketScore · thanh khoản @card.LiquidityScore · kỷ luật @card.DisciplinePenalty)
-                    @if (card.Direction is not null)
-                    {
-                        <span>· @(card.Direction == TradeDirection.Long ? "mua" : "bán")</span>
-                    }
-                    @if (card.FinalSizeR > 0m)
-                    {
-                        <span>· kích thước @card.FinalSizeR.ToString("0.####")R</span>
-                    }
-                </div>
-            </div>
+            <h3 class="card-title">@Model.Items.Count phiếu gần nhất</h3>
+            <div class="card-subtitle">Bấm vào một dòng để mở chi tiết chấm từng tiêu chí.</div>
         </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-vcenter card-table">
+                <thead>
+                    <tr>
+                        <th style="width:1rem"></th>
+                        <th>Giờ VN</th>
+                        <th>Mã</th>
+                        <th>Chiều</th>
+                        <th class="text-end">Điểm</th>
+                        <th>Kết cục</th>
+                        <th class="text-end">Vào</th>
+                        <th class="text-end">Dừng lỗ</th>
+                        <th class="text-end">Chốt lời</th>
+                        <th class="text-end">RR</th>
+                        <th class="text-end">Cỡ</th>
+                        <th>Vì sao</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var card in Model.Items)
+                {
+                    var id = $"pc-{card.Id}";
+                    var reason = ScorecardListViewModel.BlockReason(card);
+                    var takeProfit = card.SuggestedFirstTakeProfit ?? card.SuggestedTakeProfit;
 
-        @if (card.VetoReason is not null)
-        {
-            <div class="card-body py-2">
-                <div class="alert alert-danger mb-0 py-2">
-                    <strong>@ScorecardListViewModel.VetoLabel(card.VetoReason.Value)</strong>
-                    @if (!string.IsNullOrWhiteSpace(card.VetoDetail))
-                    {
-                        <span>— @card.VetoDetail</span>
-                    }
-                </div>
-            </div>
-        }
+                    <tr role="button" data-bs-toggle="collapse" data-bs-target="#@id"
+                        aria-expanded="false" aria-controls="@id">
+                        <td class="text-secondary">▸</td>
+                        <td class="text-nowrap">@ScorecardListViewModel.Vn(card.CandleCloseTimeUtc)</td>
+                        <td class="text-nowrap"><strong>@card.Symbol</strong> <span class="text-secondary">@card.Interval</span></td>
+                        <td>
+                            @if (card.Direction is { } direction)
+                            {
+                                <span class="@(direction == TradeDirection.Long ? "text-green" : "text-red")">
+                                    @(direction == TradeDirection.Long ? "mua" : "bán")
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="text-secondary">—</span>
+                            }
+                        </td>
+                        <td class="text-end"><strong>@card.TotalScore</strong><span class="text-secondary">/@card.AvailableMaxPoints</span></td>
+                        <td><span class="badge @OutcomeBadge(card.Outcome)">@ScorecardListViewModel.OutcomeLabel(card.Outcome)</span></td>
+                        <td class="text-end text-nowrap">@Price(card.SuggestedEntry)</td>
+                        <td class="text-end text-nowrap text-red">@Price(card.SuggestedStopLoss)</td>
+                        <td class="text-end text-nowrap text-green">@Price(takeProfit)</td>
+                        <td class="text-end">@(card.RiskReward?.ToString("0.00") ?? "—")</td>
+                        <td class="text-end">@(card.FinalSizeR > 0m ? card.FinalSizeR.ToString("0.##") + "R" : "—")</td>
+                        <td class="small text-secondary">@Truncate(reason, 70)</td>
+                    </tr>
 
-        @if (card.Lines.Count > 0)
-        {
-            <div class="table-responsive">
-                <table class="table table-sm card-table table-vcenter">
-                    <thead>
-                        <tr><th>Tiêu chí</th><th>Nhóm</th><th class="text-end">Điểm</th><th>Lý do</th></tr>
-                    </thead>
-                    <tbody>
-                    @foreach (var line in card.Lines.OrderBy(l => l.Group).ThenBy(l => l.CriterionKey))
-                    {
-                        <tr class="@(line.IsHardVeto ? "table-danger" : line.AwardedPoints == 0 ? "text-secondary" : "")">
-                            <td><code>@line.CriterionKey</code></td>
-                            <td>@GroupLabel(line.Group)</td>
-                            <td class="text-end">@line.AwardedPoints/@line.MaxPoints</td>
-                            <td class="small">
-                                @line.Reason
-                                @if (!line.DataAvailable)
+                    @* Vùng collapse nằm TRONG ô, không phải trên chính <tr>. Bootstrap hoạt ảnh
+                       collapse bằng cách chạy height từ 0 lên; trên một hàng bảng thì trình duyệt
+                       bỏ qua height và hàng nhảy phịch ra thay vì trượt. Bọc bằng một <div> trả
+                       lại cho nó một hộp khối bình thường để chạy hoạt ảnh. *@
+                    <tr>
+                        <td colspan="12" class="p-0 border-0">
+                            <div class="collapse p-3 bg-surface-secondary" id="@id">
+                            @if (reason.Length > 0)
+                            {
+                                <div class="alert @(card.Outcome == ScorecardOutcome.Vetoed ? "alert-danger" : "alert-warning") py-2 mb-2">
+                                    <strong>@ScorecardListViewModel.OutcomeLabel(card.Outcome)</strong> — @reason
+                                </div>
+                            }
+
+                            <div class="row g-2 mb-2 small">
+                                <div class="col-auto">Đánh giá lúc <strong>@ScorecardListViewModel.Vn(card.EvaluatedAtUtc)</strong></div>
+                                <div class="col-auto">Setup <strong>@ScorecardListViewModel.SetupLabel(card.SetupType)</strong></div>
+                                <div class="col-auto">Bộ kích hoạt <strong>@ScorecardListViewModel.TriggerStateLabel(card.TriggerState)</strong></div>
+                                @if (card.SuggestedLimitEntry is { } limit)
                                 {
-                                    <span class="badge bg-secondary-lt ms-1">thiếu dữ liệu</span>
+                                    <div class="col-auto">Giá chờ <strong>@Price(limit)</strong></div>
                                 }
-                                @if (line.IsApproximation)
+                                @if (card.NetRiskReward is { } net)
                                 {
-                                    <span class="badge bg-azure-lt ms-1">xấp xỉ</span>
+                                    <div class="col-auto">RR sau phí <strong>@net.ToString("0.00")</strong></div>
                                 }
-                            </td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
-            </div>
-        }
+                                @if (card.StopDistanceBps is { } bps)
+                                {
+                                    <div class="col-auto">Bề rộng dừng lỗ <strong>@bps.ToString("0.0") bps</strong></div>
+                                }
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(card.TriggerDetail))
+                            {
+                                <div class="small text-secondary mb-2">@card.TriggerDetail</div>
+                            }
+
+                            @if (card.Lines.Count > 0)
+                            {
+                                <table class="table table-sm table-vcenter mb-0">
+                                    <thead>
+                                        <tr><th>Tiêu chí</th><th>Nhóm</th><th class="text-end">Điểm</th><th>Lý do</th></tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach (var line in card.Lines.OrderBy(l => l.Group).ThenBy(l => l.CriterionKey))
+                                    {
+                                        <tr class="@(line.IsHardVeto ? "table-danger" : line.AwardedPoints == 0 ? "text-secondary" : "")">
+                                            <td><code>@line.CriterionKey</code></td>
+                                            <td>@GroupLabel(line.Group)</td>
+                                            <td class="text-end">@line.AwardedPoints/@line.MaxPoints</td>
+                                            <td class="small">
+                                                @line.Reason
+                                                @if (!line.DataAvailable)
+                                                {
+                                                    <span class="badge bg-secondary-lt ms-1">thiếu dữ liệu</span>
+                                                }
+                                                @if (line.IsApproximation)
+                                                {
+                                                    <span class="badge bg-azure-lt ms-1">xấp xỉ</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
     </div>
 }
