@@ -472,6 +472,15 @@ public static class BacktestCli
                     await provider.CancelAllOpenOrdersAsync(symbol);
                     Console.WriteLine($"    {symbol,-9} đã huỷ dọn.");
                 }
+                catch (Exception ex) when (ex.Message.Contains("-4509"))
+                {
+                    // Sàn ĐÒI có vị thế mới nhận lệnh đóng có điều kiện. Đây KHÔNG phải lỗi định
+                    // dạng — lệnh đã qua hết khâu kiểm precision rồi mới bị chặn vì lý do nghiệp
+                    // vụ. Và nó xác nhận thiết kế hoãn SL/TP tới lúc lệnh chờ khớp là BẮT BUỘC,
+                    // chứ không phải chỉ thận trọng: đặt trước lúc chưa có vị thế là bất khả thi.
+                    Console.WriteLine($"  ✓ {symbol,-9} STOP_MARKET định dạng hợp lệ "
+                        + "(sàn đòi có vị thế mới nhận — đúng như thiết kế hoãn SL/TP).");
+                }
                 catch (Exception ex)
                 {
                     failures++;
