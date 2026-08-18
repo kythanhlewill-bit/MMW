@@ -27,6 +27,9 @@ public class LiveOrderTests
         public int CloseCalls;
         public IReadOnlyList<ExchangePosition> Positions = new List<ExchangePosition>();
 
+        public Task<string> ValidateFuturesOrderAsync(FuturesOrderRequest req, CancellationToken ct = default)
+            => Task.FromResult("OK");
+
         public Task<ExchangeOrderResult> PlaceFuturesOrderAsync(FuturesOrderRequest req, CancellationToken ct = default)
         {
             Placed.Add(req);
@@ -546,6 +549,9 @@ public class LiveOrderTests
                 _inner = inner;
                 _failCount = failCount;
             }
+
+            public Task<string> ValidateFuturesOrderAsync(FuturesOrderRequest req, CancellationToken ct = default)
+                => Task.FromResult("OK");
 
             public Task<ExchangeOrderResult> PlaceFuturesOrderAsync(FuturesOrderRequest req, CancellationToken ct = default)
             {

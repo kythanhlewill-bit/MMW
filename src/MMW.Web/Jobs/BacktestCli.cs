@@ -8,6 +8,7 @@ using MMW.Application.Abstractions;
 using MMW.Application.Backtest;
 using MMW.Application.Backtest.Models;
 using MMW.Application.MarketData;
+using MMW.Application.MarketData.Models;
 using MMW.Domain.DbContext;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
@@ -28,7 +29,7 @@ public static class BacktestCli
 {
     /// <summary>Đúng khi tham số dòng lệnh yêu cầu chạy CLI thay vì khởi động web.</summary>
     public static bool Handles(string[] args) =>
-        args.Length > 0 && args[0] is "backfill" or "backtest";
+        args.Length > 0 && args[0] is "backfill" or "backtest" or "ordertest";
 
     public static async Task<int> RunAsync(string[] args, WebApplication app)
     {
@@ -38,6 +39,7 @@ public static class BacktestCli
         {
             "backfill" => await BackfillAsync(args, app),
             "backtest" => await BacktestAsync(args, app),
+            "ordertest" => await OrderTestAsync(args, app),
             _ => Usage(),
         };
     }
@@ -377,11 +379,115 @@ public static class BacktestCli
     private static IEnumerable<string> Csv(string value) =>
         value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+
+    /// <summary>
+    /// <c>ordertest --account ID</c> — gửi mọi tổ hợp mã × kiểu lệnh vào endpoint KIỂM TRA của sàn.
+    /// </summary>
+    /// <remarks>
+    /// Tiền kiểm này tồn tại vì ngày 18/08/2026 bốn lệnh đầu tiên của hệ thống bị bác -1111: bộ
+    /// lọc precision lấy nhầm mã (exchangeInfo bỏ qua ?symbol= nên luôn trả BTCUSDT). Lỗi loại đó
+    /// chỉ lộ ra ở đúng khoảnh khắc đặt lệnh thật, mà khoảnh khắc ấy không lặp lại theo ý muốn.
+    ///
+    /// Khối lượng cố ý để LẺ (0.123456789) đúng như engine sinh ra, để bài kiểm thật sự kiểm
+    /// phần làm tròn chứ không kiểm một con số đã sạch sẵn.
+    /// </remarks>
+    private static async Task<int> OrderTestAsync(string[] args, WebApplication app)
+    {
+        var options = Options(args);
+        if (!options.TryGetValue("account", out var accountText)
+            || !long.TryParse(accountText, out var accountId)) return Usage();
+
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MmwDbContext>();
+        var factory = scope.ServiceProvider.GetRequiredService<IExchangeOrderProviderFactory>();
+        var live = scope.ServiceProvider.GetRequiredService<
+            Microsoft.Extensions.Options.IOptions<LiveTradingOptions>>().Value;
+
+        var account = await db.TradingAccounts.FirstOrDefaultAsync(a => a.Id == accountId);
+        if (account is null || string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret))
+        {
+            Console.Error.WriteLine($"Tài khoản {accountId} không tồn tại hoặc thiếu API key.");
+            return 1;
+        }
+
+        var provider = factory.Create(account.ApiKey!, account.ApiSecret!, live.UseTestnet);
+        Console.WriteLine($"Tiền kiểm lệnh — tài khoản {accountId}, testnet={live.UseTestnet}");
+
+        var failures = 0;
+        foreach (var symbol in new[] { "BTCUSDT", "ETHUSDT" })
+        {
+            var price = await ReferencePriceAsync(scope, symbol);
+            if (price <= 0m) { Console.WriteLine($"  {symbol}: bỏ qua, không lấy được giá."); continue; }
+
+            foreach (var (label, req) in Probes(symbol, price))
+            {
+                try
+                {
+                    var result = await provider.ValidateFuturesOrderAsync(req);
+                    Console.WriteLine($"  ✓ {symbol,-9} {label,-22} {result}");
+                }
+                catch (Exception ex)
+                {
+                    failures++;
+                    Console.WriteLine($"  ✗ {symbol,-9} {label,-22} {ex.Message}");
+                }
+            }
+        }
+
+        Console.WriteLine(failures == 0
+            ? "Tất cả tổ hợp đều được sàn chấp nhận."
+            : $"CÓ {failures} tổ hợp bị sàn từ chối — xem ở trên.");
+        return failures == 0 ? 0 : 1;
+    }
+
+    private static async Task<decimal> ReferencePriceAsync(IServiceScope scope, string symbol)
+    {
+        try
+        {
+            var md = scope.ServiceProvider.GetRequiredService<IMarketDataProvider>();
+            return (await md.GetTickerAsync(symbol)).Price;
+        }
+        catch { return 0m; }
+    }
+
+    /// <summary>Các tổ hợp đáng kiểm. Giá lệnh chờ đặt XA thị trường để GTX chắc chắn không cắt sổ.</summary>
+    private static IEnumerable<(string Label, FuturesOrderRequest Req)> Probes(string symbol, decimal price)
+    {
+        const decimal oddQty = 0.123456789m;
+
+        yield return ("MARKET mua", new FuturesOrderRequest
+        {
+            Symbol = symbol, Side = OrderSide.Buy, Kind = FuturesOrderKind.Market,
+            Quantity = oddQty, PositionSide = FuturesPositionSide.Long,
+        });
+
+        yield return ("LIMIT GTX mua", new FuturesOrderRequest
+        {
+            Symbol = symbol, Side = OrderSide.Buy, Kind = FuturesOrderKind.Limit,
+            Quantity = oddQty, Price = price * 0.90m, TimeInForce = "GTX",
+            PositionSide = FuturesPositionSide.Long,
+        });
+
+        yield return ("LIMIT GTX bán", new FuturesOrderRequest
+        {
+            Symbol = symbol, Side = OrderSide.Sell, Kind = FuturesOrderKind.Limit,
+            Quantity = oddQty, Price = price * 1.10m, TimeInForce = "GTX",
+            PositionSide = FuturesPositionSide.Short,
+        });
+
+        yield return ("STOP_MARKET đóng", new FuturesOrderRequest
+        {
+            Symbol = symbol, Side = OrderSide.Sell, Kind = FuturesOrderKind.StopMarket,
+            StopPrice = price * 0.95m, ClosePosition = true, PositionSide = FuturesPositionSide.Long,
+        });
+    }
+
     private static int Usage()
     {
         Console.Error.WriteLine("""
             Cách dùng:
               backfill --symbols LIST --intervals LIST --from DATE [--to DATE]
+              ordertest --account ID
               backtest --account ID --symbol SYMBOL --from DATE --to DATE [--version v2|v3|v5|v6]
                        [--fill conservative|optimistic] [--telemetry true|false] [--name NAME]
                        [--dump FILE.csv]

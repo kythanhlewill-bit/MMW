@@ -12,6 +12,15 @@ public interface IExchangeOrderProvider
     Task<ExchangeOrderResult> PlaceFuturesOrderAsync(FuturesOrderRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gửi lệnh vào endpoint KIỂM TRA của sàn: xác thực đầy đủ nhưng không đặt gì.
+    /// </summary>
+    /// <remarks>
+    /// Lỗi định dạng lệnh chỉ lộ ra ở đúng khoảnh khắc đặt lệnh thật, và khoảnh khắc đó không lặp
+    /// lại theo ý muốn. Hàm này biến nó thành thứ gọi được bất cứ lúc nào.
+    /// </remarks>
+    Task<string> ValidateFuturesOrderAsync(FuturesOrderRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Chuẩn hoá khối lượng theo precision (stepSize) của symbol và ÉP LÊN mức tối thiểu
     /// (minQty) nếu nhỏ hơn. Trả về khối lượng hợp lệ để gửi sàn.
     /// </summary>

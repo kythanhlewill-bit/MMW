@@ -50,9 +50,63 @@ public class BinanceFuturesOrderProvider : IExchangeOrderProvider
 
     public async Task<ExchangeOrderResult> PlaceFuturesOrderAsync(FuturesOrderRequest req, CancellationToken cancellationToken = default)
     {
+        var (p, isConditional) = await BuildOrderParamsAsync(req, cancellationToken);
+
+        using var doc = await SignedSendAsync(
+            HttpMethod.Post, isConditional ? "/fapi/v1/algoOrder" : "/fapi/v1/order", p, cancellationToken);
+        var root = doc.RootElement;
+
+        // Algo trả về algoId/clientAlgoId/algoStatus thay cho orderId/clientOrderId/status. Gộp về
+        // một hình dạng để tầng trên không phải biết lệnh nằm ở dịch vụ nào.
+        var orderId = root.TryGetProperty(isConditional ? "algoId" : "orderId", out var oid)
+            ? oid.GetRawText().Trim('"') : "";
+        var clientId = root.TryGetProperty(isConditional ? "clientAlgoId" : "clientOrderId", out var cid)
+            ? cid.GetString() : null;
+        var status = root.TryGetProperty(isConditional ? "algoStatus" : "status", out var st)
+            ? st.GetString() ?? "" : "";
+        return new ExchangeOrderResult(orderId, clientId, status);
+    }
+
+    /// <summary>
+    /// Gửi lệnh vào endpoint KIỂM TRA của sàn: sàn xác thực đầy đủ rồi trả về mà không đặt gì.
+    /// </summary>
+    /// <remarks>
+    /// Tồn tại vì lỗi định dạng lệnh chỉ lộ ra ở đúng khoảnh khắc đặt lệnh thật, và khoảnh khắc
+    /// đó không lặp lại theo ý muốn — ngày 18/08/2026 bốn lệnh đầu tiên của hệ thống bị bác
+    /// -1111 vì bộ lọc precision lấy nhầm mã, và không có cách nào phát hiện trước.
+    ///
+    /// Đi qua ĐÚNG đường dựng tham số của lệnh thật (<c>BuildOrderParamsAsync</c>), nếu không thì
+    /// nó chỉ kiểm được chính nó. Lệnh điều kiện KHÔNG kiểm được: Algo Service không có endpoint
+    /// tương ứng, nên hàm trả về ghi chú thay vì im lặng báo thành công.
+    /// </remarks>
+    public async Task<string> ValidateFuturesOrderAsync(
+        FuturesOrderRequest req, CancellationToken cancellationToken = default)
+    {
+        var (p, isConditional) = await BuildOrderParamsAsync(req, cancellationToken);
+
+        if (isConditional)
+            return "BỎ QUA: Algo Service không có endpoint kiểm thử cho lệnh điều kiện.";
+
+        using var _ = await SignedSendAsync(HttpMethod.Post, "/fapi/v1/order/test", p, cancellationToken);
+        return "OK: " + string.Join(", ", p
+            .Where(x => x.Key is "symbol" or "side" or "type" or "quantity" or "price" or "timeInForce" or "positionSide")
+            .Select(x => x.Key + "=" + x.Value));
+    }
+
+    /// <summary>Dựng tham số cho một lệnh. Dùng chung giữa đặt thật và tiền kiểm.</summary>
+    private async Task<(List<KeyValuePair<string, string>> Params, bool IsConditional)> BuildOrderParamsAsync(
+        FuturesOrderRequest req, CancellationToken cancellationToken)
+    {
         var symbol = req.Symbol.ToUpperInvariant();
         var filter = await GetFiltersAsync(symbol, cancellationToken);
         var hedge = await IsHedgeModeAsync(cancellationToken);
+
+        // Không có bộ lọc thì DỪNG, không gửi lệnh với định dạng đoán. Trước đây thiếu bộ lọc sẽ
+        // rơi về "tối đa 12 số lẻ" và sàn bác -1111 — một lỗi trông như sự cố mạng nhất thời trong
+        // khi thực chất là hệ thống không biết mã này có bao nhiêu số lẻ. Chết sớm và nói rõ.
+        if (filter is null)
+            throw new InvalidOperationException(
+                $"Không lấy được bộ lọc precision của {symbol} từ sàn — không gửi lệnh để tránh bị bác -1111.");
 
         var p = new List<KeyValuePair<string, string>>
         {
@@ -110,19 +164,7 @@ public class BinanceFuturesOrderProvider : IExchangeOrderProvider
         if (!string.IsNullOrWhiteSpace(req.NewClientOrderId))
             p.Add(new(isConditional ? "clientAlgoId" : "newClientOrderId", req.NewClientOrderId!));
 
-        using var doc = await SignedSendAsync(
-            HttpMethod.Post, isConditional ? "/fapi/v1/algoOrder" : "/fapi/v1/order", p, cancellationToken);
-        var root = doc.RootElement;
-
-        // Algo trả về algoId/clientAlgoId/algoStatus thay cho orderId/clientOrderId/status. Gộp về
-        // một hình dạng để tầng trên không phải biết lệnh nằm ở dịch vụ nào.
-        var orderId = root.TryGetProperty(isConditional ? "algoId" : "orderId", out var oid)
-            ? oid.GetRawText().Trim('"') : "";
-        var clientId = root.TryGetProperty(isConditional ? "clientAlgoId" : "clientOrderId", out var cid)
-            ? cid.GetString() : null;
-        var status = root.TryGetProperty(isConditional ? "algoStatus" : "status", out var st)
-            ? st.GetString() ?? "" : "";
-        return new ExchangeOrderResult(orderId, clientId, status);
+        return (p, isConditional);
     }
 
     public async Task SetLeverageAsync(string symbol, int leverage, CancellationToken cancellationToken = default)
