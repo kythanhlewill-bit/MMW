@@ -397,8 +397,27 @@ public class BinanceFuturesOrderProvider : IExchangeOrderProvider
             if (!doc.RootElement.TryGetProperty("symbols", out var symbols) || symbols.GetArrayLength() == 0)
                 return null;
 
+            // PHẢI tìm đúng symbol trong mảng. /fapi/v1/exchangeInfo BỎ QUA tham số ?symbol=
+            // và luôn trả về toàn bộ danh sách, nên symbols[0] luôn là BTCUSDT bất kể hỏi mã nào.
+            // Hậu quả đo được ngày 18/08/2026: bốn lệnh ETHUSDT đầu tiên bị sàn bác -1111 vì khối
+            // lượng làm tròn theo stepSize 0,0001 của BTC trong khi ETH chỉ nhận 0,001.
+            JsonElement? target = null;
+            foreach (var s in symbols.EnumerateArray())
+            {
+                if (s.TryGetProperty("symbol", out var name)
+                    && string.Equals(name.GetString(), symbol, StringComparison.OrdinalIgnoreCase))
+                {
+                    target = s;
+                    break;
+                }
+            }
+
+            // Không thấy mã ⟹ trả null để bên gọi dùng định dạng chung, KHÔNG mượn bộ lọc của mã
+            // khác: một bộ lọc sai còn nguy hiểm hơn không có bộ lọc, vì nó trông như đã xử lý.
+            if (target is not { } symbolNode) return null;
+
             decimal step = 0m, tick = 0m, minQty = 0m;
-            foreach (var f in symbols[0].GetProperty("filters").EnumerateArray())
+            foreach (var f in symbolNode.GetProperty("filters").EnumerateArray())
             {
                 var type = f.GetProperty("filterType").GetString();
                 if (type == "LOT_SIZE")

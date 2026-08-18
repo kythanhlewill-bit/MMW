@@ -107,7 +107,12 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
         // Không bịa ra mức chờ: một lệnh chờ đặt sai phía sổ sẽ khớp ngay như lệnh thị trường,
         // và mô hình chi phí lại tính phí maker cho một cú khớp taker — đúng loại nói dối mà
         // `PlanLive` sinh ra để chấm dứt.
-        var passive = PassiveLimitEntry(card.SuggestedLimitEntry, entry, stop, direction);
+        // MaCrossFast BẮT BUỘC là lệnh thị trường. Bộ kích hoạt trả SuggestedLimitEntry = null cho
+        // nó, nhưng SignalEvalService lùi về mức chờ dựng từ EMA khi trigger không nêu mức — nên
+        // nếu không chặn ở đây, nhánh mua-sự-có-mặt lại thành nhánh chờ giá quay đầu.
+        var passive = card.SetupType == SetupType.MaCrossFast
+            ? null
+            : PassiveLimitEntry(card.SuggestedLimitEntry, entry, stop, direction);
 
         return new TradeExecutionPlan(
             [new PlannedEntryTranche(passive ?? entry, 1m, IsLimit: passive is not null)],
