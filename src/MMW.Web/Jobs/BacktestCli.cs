@@ -434,6 +434,53 @@ public static class BacktestCli
             }
         }
 
+        // Lệnh điều kiện không có endpoint kiểm thử, nên muốn chắc thì phải ĐẶT THẬT rồi huỷ.
+        // Mặc định TẮT vì nó chạm vào sổ lệnh thật; bật bằng --conditional true.
+        if (options.TryGetValue("conditional", out var condText)
+            && bool.TryParse(condText, out var runCond) && runCond)
+        {
+            Console.WriteLine("Kiểm lệnh điều kiện (đặt thật rồi huỷ):");
+            foreach (var symbol in new[] { "BTCUSDT", "ETHUSDT" })
+            {
+                try
+                {
+                    // Tự bảo vệ: chỉ chạy khi sổ lệnh của mã đó đang SẠCH. Dọn dẹp cuối bài dùng
+                    // huỷ-toàn-bộ, nên nếu có lệnh thật đang chờ thì bài kiểm sẽ giết chính nó.
+                    var existing = await provider.GetOpenOrdersAsync(symbol);
+                    if (existing.Count > 0)
+                    {
+                        Console.WriteLine($"  ⚠ {symbol,-9} bỏ qua: đang có {existing.Count} lệnh chờ, không đụng vào.");
+                        continue;
+                    }
+
+                    var price = await ReferencePriceAsync(scope, symbol);
+                    if (price <= 0m) { Console.WriteLine($"  ⚠ {symbol,-9} bỏ qua: không lấy được giá."); continue; }
+
+                    // Mức kích hoạt đặt cách 30% để không thể chạm trong vài giây của bài kiểm.
+                    var placed = await provider.PlaceFuturesOrderAsync(new FuturesOrderRequest
+                    {
+                        Symbol = symbol,
+                        Side = OrderSide.Sell,
+                        Kind = FuturesOrderKind.StopMarket,
+                        StopPrice = price * 0.70m,
+                        ClosePosition = true,
+                        PositionSide = FuturesPositionSide.Long,
+                        NewClientOrderId = $"mmwtest-{symbol}",
+                    });
+
+                    Console.WriteLine($"  ✓ {symbol,-9} STOP_MARKET đặt được (id={placed.OrderId}, status={placed.Status})");
+                    await provider.CancelAllOpenOrdersAsync(symbol);
+                    Console.WriteLine($"    {symbol,-9} đã huỷ dọn.");
+                }
+                catch (Exception ex)
+                {
+                    failures++;
+                    Console.WriteLine($"  ✗ {symbol,-9} STOP_MARKET lỗi: {ex.Message}");
+                    try { await provider.CancelAllOpenOrdersAsync(symbol); } catch { }
+                }
+            }
+        }
+
         Console.WriteLine(failures == 0
             ? "Tất cả tổ hợp đều được sàn chấp nhận."
             : $"CÓ {failures} tổ hợp bị sàn từ chối — xem ở trên.");
@@ -487,7 +534,7 @@ public static class BacktestCli
         Console.Error.WriteLine("""
             Cách dùng:
               backfill --symbols LIST --intervals LIST --from DATE [--to DATE]
-              ordertest --account ID
+              ordertest --account ID [--conditional true]
               backtest --account ID --symbol SYMBOL --from DATE --to DATE [--version v2|v3|v5|v6]
                        [--fill conservative|optimistic] [--telemetry true|false] [--name NAME]
                        [--dump FILE.csv]
