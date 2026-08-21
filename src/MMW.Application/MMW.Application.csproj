@@ -13,6 +13,13 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
   </ItemGroup>
 
+  <!-- Ghép fill sàn với lệnh trong nhật ký là logic thuần, không cần CSDL hay mạng, nhưng nằm
+       sâu trong một service có tám phụ thuộc. Mở cho bộ test thấy phần thuần đó rẻ hơn nhiều so
+       với dựng tám fake chỉ để kiểm một phép lọc. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="MMW.RuleEngine.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\MMW.Domain\MMW.Domain.csproj" />
     <ProjectReference Include="..\MMW.Shared\MMW.Shared.csproj" />

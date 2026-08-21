@@ -1102,8 +1102,7 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("TriggerDetail")
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("TriggerState")
                         .HasColumnType("int");
@@ -1115,8 +1114,7 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("VetoDetail")
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("VetoReason")
                         .HasColumnType("int");

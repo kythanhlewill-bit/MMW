@@ -30,7 +30,7 @@ public static class BacktestCli
 {
     /// <summary>Đúng khi tham số dòng lệnh yêu cầu chạy CLI thay vì khởi động web.</summary>
     public static bool Handles(string[] args) =>
-        args.Length > 0 && args[0] is "backfill" or "backtest" or "ordertest";
+        args.Length > 0 && args[0] is "backfill" or "backtest" or "ordertest" or "positions";
 
     public static async Task<int> RunAsync(string[] args, WebApplication app)
     {
@@ -41,6 +41,7 @@ public static class BacktestCli
             "backfill" => await BackfillAsync(args, app),
             "backtest" => await BacktestAsync(args, app),
             "ordertest" => await OrderTestAsync(args, app),
+            "positions" => await PositionsAsync(args, app),
             _ => Usage(),
         };
     }
@@ -424,6 +425,94 @@ public static class BacktestCli
 
 
     /// <summary>
+    /// <c>positions --account ID</c> — đối chiếu vị thế/lệnh chờ trên SÀN với nhật ký trong CSDL.
+    /// </summary>
+    /// <remarks>
+    /// CHỈ ĐỌC. Nó tồn tại vì một lỗi ghép fill từng khiến nhật ký ghi "đã đóng" trong khi vị thế
+    /// vẫn chạy trên sàn: hai bên lệch nhau mà không có gì kêu lên. Bản sửa ngăn lỗi tái diễn,
+    /// nhưng không tự tìm ra những vị thế đã bị bỏ rơi trước đó — việc đó cần một lượt đối chiếu,
+    /// và lượt đối chiếu ấy phải chạy được bất cứ lúc nào chứ không chỉ một lần.
+    ///
+    /// Không tự sửa gì cả: đóng một vị thế hay ghi lại nhật ký đều là quyết định của người, và
+    /// một công cụ chẩn đoán tự ý chữa bệnh sẽ che mất chính triệu chứng cần nhìn.
+    /// </remarks>
+    private static async Task<int> PositionsAsync(string[] args, WebApplication app)
+    {
+        var options = Options(args);
+        if (!options.TryGetValue("account", out var accountText)
+            || !long.TryParse(accountText, out var accountId)) return Usage();
+
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MmwDbContext>();
+        var factory = scope.ServiceProvider.GetRequiredService<IExchangeOrderProviderFactory>();
+        var live = scope.ServiceProvider.GetRequiredService<
+            Microsoft.Extensions.Options.IOptions<LiveTradingOptions>>().Value;
+
+        var account = await db.TradingAccounts.FirstOrDefaultAsync(a => a.Id == accountId);
+        if (account is null || string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret))
+        {
+            Console.Error.WriteLine($"Tài khoản {accountId} không tồn tại hoặc thiếu API key.");
+            return 1;
+        }
+
+        var provider = factory.Create(account.ApiKey!, account.ApiSecret!, live.UseTestnet);
+        Console.WriteLine($"Đối chiếu vị thế — tài khoản {accountId}, testnet={live.UseTestnet}");
+
+        var positions = await provider.GetOpenPositionsAsync();
+        var orders = await provider.GetOpenOrdersAsync();
+        var openTrades = await db.Trades
+            .Where(t => t.TradingAccountId == accountId && t.Status == TradeStatus.Open)
+            .OrderBy(t => t.Id)
+            .ToListAsync();
+
+        Console.WriteLine($"\nVỊ THẾ TRÊN SÀN ({positions.Count}):");
+        foreach (var p in positions)
+            Console.WriteLine($"  {p.Symbol,-9} {(p.IsLong ? "Long" : "Short"),-6} qty={p.PositionAmt,14} vào={p.EntryPrice}");
+
+        Console.WriteLine($"\nLỆNH CHỜ TRÊN SÀN ({orders.Count}):");
+        foreach (var o in orders)
+            Console.WriteLine(
+                $"  {o.Symbol,-9} {o.Side,-5} {o.Type,-18} giá={o.Price,12} kích hoạt={o.StopPrice,12} "
+                + $"qty={o.OrigQty,10} reduceOnly={o.ReduceOnly} id={o.OrderId}");
+
+        Console.WriteLine($"\nLỆNH ĐANG MỞ TRONG NHẬT KÝ ({openTrades.Count}):");
+        foreach (var t in openTrades)
+            Console.WriteLine($"  #{t.Id,-4} {t.Symbol,-9} {t.Direction,-6} vào={t.EntryPrice} qty={t.Quantity} {t.LiveStatus}");
+
+        // Lệch một chiều: sàn có vị thế mà nhật ký không có lệnh mở nào ứng với nó. Đây chính là
+        // dấu vết của lỗi ghép fill — vị thế bị bỏ rơi, không ai theo dõi, và mọi rào hạn mức
+        // vị thế đều đọc từ nhật ký nên không thấy nó.
+        var journalKeys = openTrades
+            .Select(t => $"{t.Symbol}|{t.Direction}".ToUpperInvariant())
+            .ToHashSet();
+
+        var orphans = positions
+            .Where(p => !journalKeys.Contains($"{p.Symbol}|{(p.IsLong ? "Long" : "Short")}".ToUpperInvariant()))
+            .ToList();
+
+        Console.WriteLine($"\nVỊ THẾ BỊ BỎ RƠI ({orphans.Count}):");
+        if (orphans.Count == 0)
+        {
+            Console.WriteLine("  Không có — sàn và nhật ký khớp nhau.");
+        }
+        else
+        {
+            foreach (var p in orphans)
+            {
+                var protectedBy = orders.Count(o =>
+                    string.Equals(o.Symbol, p.Symbol, StringComparison.OrdinalIgnoreCase)
+                    && (o.ReduceOnly || o.ClosePosition));
+
+                Console.WriteLine(
+                    $"  ⚠ {p.Symbol,-9} {(p.IsLong ? "Long" : "Short"),-6} qty={p.PositionAmt} vào={p.EntryPrice} "
+                    + $"— {protectedBy} lệnh bảo vệ đang treo");
+            }
+        }
+
+        return orphans.Count == 0 ? 0 : 2;
+    }
+
+    /// <summary>
     /// <c>ordertest --account ID</c> — gửi mọi tổ hợp mã × kiểu lệnh vào endpoint KIỂM TRA của sàn.
     /// </summary>
     /// <remarks>
@@ -587,6 +676,7 @@ public static class BacktestCli
             Cách dùng:
               backfill --symbols LIST --intervals LIST --from DATE [--to DATE]
               ordertest --account ID [--conditional true]
+              positions --account ID
               backtest --account ID --symbol SYMBOL --from DATE --to DATE [--version v2|v3|v5|v6]
                        [--fill conservative|optimistic] [--telemetry true|false] [--name NAME]
                        [--set "Prop=Value;Prop2=Value2"]

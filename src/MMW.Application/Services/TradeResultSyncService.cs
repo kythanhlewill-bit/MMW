@@ -223,7 +223,7 @@ public class TradeResultSyncService : ITradeResultSyncService
 
     private static string PositionKey(string symbol, TradeDirection direction) => $"{symbol}|{direction}";
 
-    private static bool TryMatchAndClose(
+    internal static bool TryMatchAndClose(
         Trade trade,
         IReadOnlyList<MarketData.Models.ExchangeTrade> fills,
         TradingAccount account,
@@ -236,33 +236,40 @@ public class TradeResultSyncService : ITradeResultSyncService
 
         // Phía đóng lệnh: Long đóng bằng SELL (isBuyer=false), Short đóng bằng BUY (isBuyer=true).
         var isClosingSide = trade.Direction != TradeDirection.Long;
-        var afterOpen = trade.OpenedAt ?? trade.CreatedDate;
+        var entryOrderId = string.IsNullOrWhiteSpace(trade.ExchangeOrderId) ? null : trade.ExchangeOrderId;
 
-        List<MarketData.Models.ExchangeTrade> closingFills;
+        // ExchangeOrderId là id lệnh VÀO, không phải lệnh ra. Nó dùng để LOẠI TRỪ fill của chính
+        // cú vào, chứ không phải để nhận diện cú đóng — SL/TP là hai lệnh khác với id khác, và
+        // MMW không lưu id của chúng.
+        //
+        // Trước đây chỗ này lấy thẳng fills cùng id rồi coi là fill đóng lệnh. Hệ quả: ngay giây
+        // lệnh vào khớp, hàm này "đóng" lệnh tại chính giá vào — lãi/lỗ bằng đúng tiền phí, còn
+        // vị thế thật vẫn chạy trên sàn mà nhật ký ghi là đã xong.
+        var entryFills = entryOrderId is null
+            ? []
+            : fills.Where(f => f.OrderId == entryOrderId).ToList();
 
-        if (!string.IsNullOrWhiteSpace(trade.ExchangeOrderId))
-        {
-            // Tier 1 — Exact match: lệnh đặt qua MMW có orderId → match chính xác 100%.
-            // Lấy fills có cùng orderId (Binance gom partial fills vào cùng một order).
-            closingFills = fills
-                .Where(f => f.OrderId == trade.ExchangeOrderId)
-                .OrderBy(f => f.Time)
-                .ToList();
-        }
-        else
-        {
-            // Tier 2 — Fuzzy match: import thủ công / không có orderId.
-            // Điều kiện: đúng phía đóng + sau thời điểm mở + giá fill nằm trong ±5% entry
-            // (loại fills của các lệnh khác trên cùng symbol).
-            var entryRef = trade.EntryPrice;
-            closingFills = fills
-                .Where(f => f.IsBuyer == isClosingSide
-                         && f.Time > afterOpen
-                         && entryRef > 0m
-                         && Math.Abs(f.Price - entryRef) / entryRef <= 0.05m)
-                .OrderBy(f => f.Time)
-                .ToList();
-        }
+        // Có id lệnh vào mà chưa thấy fill nào của nó nghĩa là lệnh chờ chưa khớp — chưa có vị
+        // thế nào để đóng. Không có bước này thì một lệnh chờ treo sẽ bị gán nhầm fill của lệnh
+        // trước đó trên cùng mã.
+        if (entryOrderId is not null && entryFills.Count == 0) return false;
+
+        var afterOpen = entryFills.Count > 0
+            ? entryFills.Max(f => f.Time)
+            : trade.OpenedAt ?? trade.CreatedDate;
+
+        var entryRef = trade.EntryPrice;
+        var closingFills = fills
+            .Where(f => f.IsBuyer == isClosingSide
+                     && (entryOrderId is null || f.OrderId != entryOrderId)
+                     && f.Time >= afterOpen
+                     && entryRef > 0m
+                     // Dải ±5% loại fills của các lệnh khác trên cùng mã. Rộng hơn mọi dừng
+                     // lỗ/chốt lời mà engine đặt, nhưng vẫn đủ chặt để không nuốt một lệnh tay
+                     // ở vùng giá khác.
+                     && Math.Abs(f.Price - entryRef) / entryRef <= 0.05m)
+            .OrderBy(f => f.Time)
+            .ToList();
 
         if (closingFills.Count == 0) return false;
 

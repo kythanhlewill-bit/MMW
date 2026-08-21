@@ -108,8 +108,12 @@ public class EntryScorecardConfiguration : IEntityTypeConfiguration<EntryScoreca
         b.HasKey(x => x.Id);
         b.Property(x => x.Symbol).HasMaxLength(30);
         b.Property(x => x.Interval).HasMaxLength(8);
-        b.Property(x => x.VetoDetail).HasMaxLength(300);
-        b.Property(x => x.TriggerDetail).HasMaxLength(300);
+        // Hai cột này là LỜI GIẢI THÍCH, và độ dài của chúng do nội dung quyết định chứ không do
+        // ta chọn: mỗi nhánh setup mới lại nối thêm lý do của nó vào chuỗi. Trần 300 ký tự từng
+        // làm 27 lượt chấm điểm ném lỗi cắt chuỗi và MẤT HẲN phiếu — đánh đổi tệ nhất có thể, vì
+        // đúng những phiếu có nhiều thứ để giải thích mới là những phiếu đáng giữ nhất.
+        b.Property(x => x.VetoDetail);
+        b.Property(x => x.TriggerDetail);
         b.Property(x => x.SetupEventId).HasMaxLength(120);
 
         // Chống sinh phiếu trùng cho cùng một cây nến (FR-051).
