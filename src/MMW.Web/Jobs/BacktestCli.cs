@@ -30,7 +30,7 @@ public static class BacktestCli
 {
     /// <summary>Đúng khi tham số dòng lệnh yêu cầu chạy CLI thay vì khởi động web.</summary>
     public static bool Handles(string[] args) =>
-        args.Length > 0 && args[0] is "backfill" or "backtest" or "ordertest" or "positions";
+        args.Length > 0 && args[0] is "backfill" or "backtest" or "ordertest" or "positions" or "repairtrades";
 
     public static async Task<int> RunAsync(string[] args, WebApplication app)
     {
@@ -42,6 +42,7 @@ public static class BacktestCli
             "backtest" => await BacktestAsync(args, app),
             "ordertest" => await OrderTestAsync(args, app),
             "positions" => await PositionsAsync(args, app),
+            "repairtrades" => await RepairTradesAsync(args, app),
             _ => Usage(),
         };
     }
@@ -425,6 +426,177 @@ public static class BacktestCli
 
 
     /// <summary>
+    /// <c>repairtrades --account ID --ids 9,10 [--apply true]</c> — dựng lại kết quả lệnh từ fills của sàn.
+    /// </summary>
+    /// <remarks>
+    /// Sửa hậu quả của lỗi ghép fill: nhật ký ghi lệnh đóng ngay tại giá vào vì fill của chính cú
+    /// vào bị đọc thành cú đóng. Bản sửa ở <c>TradeResultSyncService</c> ngăn lỗi tái diễn nhưng
+    /// không tự chữa những bản ghi đã hỏng.
+    ///
+    /// Tính lại TỪ ĐẦU từ fills của sàn — giá vào, giá ra, phí, lãi lỗ — chứ không cố lần ngược
+    /// các trường trong CSDL. Trường hiện tại đã trộn lẫn số đúng với số sai (phí đóng lệnh cộng
+    /// vào phí vào lệnh chẳng hạn), nên mọi phép trừ ngược đều dựa trên giả định về thứ tự đã xảy
+    /// ra. Sàn thì có bản ghi đầy đủ và không cần giả định nào.
+    ///
+    /// Cũng sửa luôn giá vào: nhật ký ghi giá ĐỊNH đặt, còn sàn ghi giá THỰC khớp — lệnh #9 lệch
+    /// 1,41 điểm giữa hai con số.
+    ///
+    /// Mặc định CHẠY THỬ. Ghi vào CSDL chỉ khi có --apply true.
+    /// </remarks>
+    private static async Task<int> RepairTradesAsync(string[] args, WebApplication app)
+    {
+        var options = Options(args);
+        if (!options.TryGetValue("account", out var accountText)
+            || !long.TryParse(accountText, out var accountId)
+            || !TryOption(options, "ids", "id", out var idsText)) return Usage();
+
+        var ids = Csv(idsText).Select(long.Parse).ToHashSet();
+        var apply = options.TryGetValue("apply", out var applyText)
+                    && bool.TryParse(applyText, out var a) && a;
+
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MmwDbContext>();
+        var factory = scope.ServiceProvider.GetRequiredService<IExchangeAccountProviderFactory>();
+        var live = scope.ServiceProvider.GetRequiredService<
+            Microsoft.Extensions.Options.IOptions<LiveTradingOptions>>().Value;
+
+        var account = await db.TradingAccounts.FirstOrDefaultAsync(a => a.Id == accountId);
+        if (account is null || string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret))
+        {
+            Console.Error.WriteLine($"Tài khoản {accountId} không tồn tại hoặc thiếu API key.");
+            return 1;
+        }
+
+        var trades = await db.Trades
+            .Where(t => t.TradingAccountId == accountId && ids.Contains(t.Id))
+            .OrderBy(t => t.Id)
+            .ToListAsync();
+
+        var missing = ids.Except(trades.Select(t => t.Id)).ToList();
+        if (missing.Count > 0)
+            Console.WriteLine($"⚠ Không tìm thấy lệnh: {string.Join(", ", missing)}");
+
+        var provider = factory.Create(account.ApiKey!, account.ApiSecret!, live.UseTestnet);
+        Console.WriteLine($"Dựng lại kết quả lệnh — tài khoản {accountId}, testnet={live.UseTestnet}, "
+                          + (apply ? "GHI VÀO CSDL" : "chạy thử"));
+
+        var fillsBySymbol = new Dictionary<string, IReadOnlyList<ExchangeTrade>>(StringComparer.OrdinalIgnoreCase);
+        var balanceDelta = 0m;
+        var repaired = 0;
+
+        foreach (var trade in trades)
+        {
+            if (!fillsBySymbol.TryGetValue(trade.Symbol, out var fills))
+                fillsBySymbol[trade.Symbol] = fills = await provider.GetMyTradesAsync(trade.Symbol, 1000);
+
+            if (string.IsNullOrWhiteSpace(trade.ExchangeOrderId))
+            {
+                Console.WriteLine($"\n#{trade.Id} — bỏ qua: không có id lệnh trên sàn để bám vào.");
+                continue;
+            }
+
+            var entryFills = fills.Where(f => f.OrderId == trade.ExchangeOrderId).OrderBy(f => f.Time).ToList();
+            if (entryFills.Count == 0)
+            {
+                Console.WriteLine($"\n#{trade.Id} — bỏ qua: sàn không còn fill nào của lệnh vào "
+                                  + $"{trade.ExchangeOrderId} (quá 1000 fill gần nhất).");
+                continue;
+            }
+
+            var entryQty = entryFills.Sum(f => f.Quantity);
+            var entryPrice = entryFills.Sum(f => f.Price * f.Quantity) / entryQty;
+            var entryFee = entryFills.Sum(f => f.Commission);
+            var lastEntry = entryFills.Max(f => f.Time);
+
+            // Phía đóng: Long đóng bằng SELL, Short đóng bằng BUY.
+            var isClosingSide = trade.Direction != TradeDirection.Long;
+            var closingFills = fills
+                .Where(f => f.IsBuyer == isClosingSide
+                         && f.OrderId != trade.ExchangeOrderId
+                         && f.Time >= lastEntry
+                         && Math.Abs(f.Price - entryPrice) / entryPrice <= 0.05m)
+                .OrderBy(f => f.Time)
+                .ToList();
+
+            // Chỉ nhận đủ khối lượng đã vào; fill dư thuộc về lệnh sau.
+            var taken = new List<ExchangeTrade>();
+            var remaining = entryQty;
+            foreach (var f in closingFills)
+            {
+                if (remaining <= 0m) break;
+                taken.Add(f);
+                remaining -= Math.Min(f.Quantity, remaining);
+            }
+
+            var closedQty = taken.Sum(f => Math.Min(f.Quantity, entryQty));
+            if (taken.Count == 0 || closedQty < entryQty * 0.9m)
+            {
+                Console.WriteLine($"\n#{trade.Id} {trade.Symbol} — bỏ qua: chưa thấy cú đóng nào "
+                                  + $"(khớp đóng {closedQty}/{entryQty}). Lệnh có thể vẫn đang mở thật.");
+                continue;
+            }
+
+            var exitPrice = taken.Sum(f => f.Price * f.Quantity) / taken.Sum(f => f.Quantity);
+            var exitFee = taken.Sum(f => f.Commission);
+            var gross = trade.Direction == TradeDirection.Long
+                ? (exitPrice - entryPrice) * entryQty
+                : (entryPrice - exitPrice) * entryQty;
+            var netPnl = Math.Round(gross - entryFee - exitFee, 8);
+            var newR = trade.RiskAmount is { } risk && risk > 0m
+                ? Math.Round(netPnl / risk, 4)
+                : (decimal?)null;
+
+            var oldPnl = trade.RealizedPnl ?? 0m;
+            Console.WriteLine($"\n#{trade.Id} {trade.Symbol} {trade.Direction} qty={entryQty}");
+            Console.WriteLine($"  vào      {trade.EntryPrice,16} → {entryPrice,16}");
+            Console.WriteLine($"  ra       {trade.ExitPrice?.ToString() ?? "—",16} → {exitPrice,16}"
+                              + $"   ({taken.Count} fill, lúc {taken.Max(f => f.Time):yyyy-MM-dd HH:mm:ss} UTC)");
+            Console.WriteLine($"  phí      {trade.Fee,16} → {entryFee + exitFee,16}");
+            Console.WriteLine($"  lãi/lỗ   {oldPnl,16} → {netPnl,16}");
+            Console.WriteLine($"  R        {trade.RMultiple?.ToString() ?? "—",16} → {newR?.ToString() ?? "—",16}");
+
+            balanceDelta += netPnl - oldPnl;
+            repaired++;
+
+            if (!apply) continue;
+
+            trade.EntryPrice = Math.Round(entryPrice, 8);
+            trade.ExitPrice = Math.Round(exitPrice, 8);
+            trade.Quantity = entryQty;
+            trade.Fee = Math.Round(entryFee + exitFee, 8);
+            trade.RealizedPnl = netPnl;
+            trade.RMultiple = newR;
+            trade.ClosedAt = taken.Max(f => f.Time);
+            trade.OpenedAt = lastEntry;
+            trade.Status = TradeStatus.Closed;
+            trade.LiveStatus = LiveOrderStatus.Filled;
+            trade.Outcome = netPnl > 0m ? TradeOutcome.Win
+                : netPnl < 0m ? TradeOutcome.Loss
+                : TradeOutcome.BreakEven;
+            trade.Note = Append(trade.Note,
+                $"Dựng lại từ fills của sàn ngày {DateTime.UtcNow:yyyy-MM-dd} "
+                + $"(lãi/lỗ cũ {oldPnl}, sai do lỗi ghép fill).");
+        }
+
+        Console.WriteLine($"\nTổng: {repaired} lệnh, số dư lệch {balanceDelta:+0.########;-0.########;0} USDT "
+                          + $"(hiện {account.CurrentBalance}).");
+
+        if (!apply)
+        {
+            Console.WriteLine("Chạy thử — chưa ghi gì. Thêm --apply true để ghi.");
+            return 0;
+        }
+
+        account.CurrentBalance += balanceDelta;
+        await db.SaveChangesAsync();
+        Console.WriteLine($"Đã ghi. Số dư mới {account.CurrentBalance}.");
+        return 0;
+    }
+
+    private static string Append(string? existing, string line) =>
+        string.IsNullOrWhiteSpace(existing) ? line : $"{existing} · {line}";
+
+    /// <summary>
     /// <c>positions --account ID</c> — đối chiếu vị thế/lệnh chờ trên SÀN với nhật ký trong CSDL.
     /// </summary>
     /// <remarks>
@@ -720,6 +892,7 @@ public static class BacktestCli
               backfill --symbols LIST --intervals LIST --from DATE [--to DATE]
               ordertest --account ID [--conditional true]
               positions --account ID
+              repairtrades --account ID --ids 9,10 [--apply true]
               backtest --account ID --symbol SYMBOL --from DATE --to DATE [--version v2|v3|v5|v6]
                        [--fill conservative|optimistic] [--telemetry true|false] [--name NAME]
                        [--set "Prop=Value;Prop2=Value2"]
