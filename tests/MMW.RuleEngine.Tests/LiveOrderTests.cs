@@ -51,6 +51,8 @@ public class LiveOrderTests
             => Task.FromResult(Positions);
         public Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenOrdersAsync(string? symbol = null, CancellationToken ct = default)
             => Task.FromResult((IReadOnlyList<ExchangeOpenOrder>)new List<ExchangeOpenOrder>());
+        public Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenConditionalOrdersAsync(string? symbol = null, CancellationToken ct = default)
+            => Task.FromResult((IReadOnlyList<ExchangeOpenOrder>)new List<ExchangeOpenOrder>());
         public Task CancelAllOpenOrdersAsync(string symbol, CancellationToken ct = default) { CancelAllCalls++; return Task.CompletedTask; }
         public Task ClosePositionAsync(string symbol, CancellationToken ct = default) { CloseCalls++; return Task.CompletedTask; }
     }
@@ -567,6 +569,7 @@ public class LiveOrderTests
             public Task CancelOrderAsync(string s, string id, CancellationToken ct) => _inner.CancelOrderAsync(s, id, ct);
             public Task<IReadOnlyList<ExchangePosition>> GetOpenPositionsAsync(string? s, CancellationToken ct) => _inner.GetOpenPositionsAsync(s, ct);
             public Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenOrdersAsync(string? s, CancellationToken ct) => _inner.GetOpenOrdersAsync(s, ct);
+            public Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenConditionalOrdersAsync(string? s, CancellationToken ct) => _inner.GetOpenConditionalOrdersAsync(s, ct);
             public Task CancelAllOpenOrdersAsync(string s, CancellationToken ct) => _inner.CancelAllOpenOrdersAsync(s, ct);
             public Task ClosePositionAsync(string s, CancellationToken ct) => _inner.ClosePositionAsync(s, ct);
         }

@@ -459,7 +459,27 @@ public static class BacktestCli
         Console.WriteLine($"Đối chiếu vị thế — tài khoản {accountId}, testnet={live.UseTestnet}");
 
         var positions = await provider.GetOpenPositionsAsync();
-        var orders = await provider.GetOpenOrdersAsync();
+
+        // Hai sổ riêng, đọc riêng. Lệnh thường ở /fapi/v1/openOrders, còn SL/TP là lệnh điều kiện
+        // và nằm ở Algo Service từ 2025-12-09 — chúng KHÔNG xuất hiện ở sổ thứ nhất.
+        var plainOrders = await provider.GetOpenOrdersAsync();
+        IReadOnlyList<ExchangeOpenOrder> algoOrders = [];
+        string? algoError = null;
+        try
+        {
+            algoOrders = await provider.GetOpenConditionalOrdersAsync();
+        }
+        catch (Exception ex)
+        {
+            // KHÔNG coi đọc hụt là "sổ trống". Cả bài đối chiếu này tồn tại để trả lời "vị thế kia
+            // có được bảo vệ không"; im lặng trả về 0 là đưa ra câu trả lời sai theo hướng nguy hiểm.
+            algoError = ex.Message;
+        }
+
+        // GetOpenOrdersAsync đã gộp sẵn nhóm điều kiện. Bỏ trùng theo id để bảng không đếm đôi.
+        var algoIds = algoOrders.Select(o => o.OrderId).ToHashSet(StringComparer.Ordinal);
+        var orders = plainOrders.Where(o => !algoIds.Contains(o.OrderId)).ToList();
+
         var openTrades = await db.Trades
             .Where(t => t.TradingAccountId == accountId && t.Status == TradeStatus.Open)
             .OrderBy(t => t.Id)
@@ -469,11 +489,21 @@ public static class BacktestCli
         foreach (var p in positions)
             Console.WriteLine($"  {p.Symbol,-9} {(p.IsLong ? "Long" : "Short"),-6} qty={p.PositionAmt,14} vào={p.EntryPrice}");
 
-        Console.WriteLine($"\nLỆNH CHỜ TRÊN SÀN ({orders.Count}):");
+        Console.WriteLine($"\nLỆNH CHỜ THƯỜNG ({orders.Count}):");
         foreach (var o in orders)
             Console.WriteLine(
                 $"  {o.Symbol,-9} {o.Side,-5} {o.Type,-18} giá={o.Price,12} kích hoạt={o.StopPrice,12} "
                 + $"qty={o.OrigQty,10} reduceOnly={o.ReduceOnly} id={o.OrderId}");
+
+        Console.WriteLine(algoError is null
+            ? $"\nLỆNH ĐIỀU KIỆN — SL/TP ({algoOrders.Count}):"
+            : "\nLỆNH ĐIỀU KIỆN — SL/TP: KHÔNG ĐỌC ĐƯỢC SỔ");
+        if (algoError is not null)
+            Console.WriteLine($"  ⚠ {algoError}\n  Mọi kết luận về việc vị thế có SL/TP hay không đều KHÔNG dùng được.");
+        foreach (var o in algoOrders)
+            Console.WriteLine(
+                $"  {o.Symbol,-9} {o.Side,-5} {o.Type,-18} kích hoạt={o.StopPrice,12} "
+                + $"qty={o.OrigQty,10} closePosition={o.ClosePosition} id={o.OrderId}");
 
         Console.WriteLine($"\nLỆNH ĐANG MỞ TRONG NHẬT KÝ ({openTrades.Count}):");
         foreach (var t in openTrades)
@@ -492,24 +522,37 @@ public static class BacktestCli
 
         Console.WriteLine($"\nVỊ THẾ BỊ BỎ RƠI ({orphans.Count}):");
         if (orphans.Count == 0)
-        {
             Console.WriteLine("  Không có — sàn và nhật ký khớp nhau.");
+        foreach (var p in orphans)
+            Console.WriteLine(
+                $"  ⚠ {p.Symbol,-9} {(p.IsLong ? "Long" : "Short"),-6} qty={p.PositionAmt} vào={p.EntryPrice}");
+
+        // Vị thế TRẦN — nguy hiểm hơn vị thế bị bỏ rơi, và độc lập với nhật ký: một vị thế được
+        // ghi chép đầy đủ mà không có dừng lỗ vẫn là một vị thế không có dừng lỗ.
+        var naked = algoError is null
+            ? positions.Where(p => !algoOrders.Any(o =>
+                  string.Equals(o.Symbol, p.Symbol, StringComparison.OrdinalIgnoreCase)
+                  && (o.ReduceOnly || o.ClosePosition))).ToList()
+            : [];
+
+        if (algoError is not null)
+        {
+            Console.WriteLine("\nVỊ THẾ KHÔNG CÓ DỪNG LỖ: không kết luận được vì sổ điều kiện đọc hụt.");
         }
         else
         {
-            foreach (var p in orphans)
-            {
-                var protectedBy = orders.Count(o =>
-                    string.Equals(o.Symbol, p.Symbol, StringComparison.OrdinalIgnoreCase)
-                    && (o.ReduceOnly || o.ClosePosition));
-
+            Console.WriteLine($"\nVỊ THẾ KHÔNG CÓ DỪNG LỖ ({naked.Count}):");
+            if (naked.Count == 0)
+                Console.WriteLine("  Không có — mọi vị thế đều có lệnh bảo vệ đang treo.");
+            foreach (var p in naked)
                 Console.WriteLine(
-                    $"  ⚠ {p.Symbol,-9} {(p.IsLong ? "Long" : "Short"),-6} qty={p.PositionAmt} vào={p.EntryPrice} "
-                    + $"— {protectedBy} lệnh bảo vệ đang treo");
-            }
+                    $"  ⚠ {p.Symbol,-9} {(p.IsLong ? "Long" : "Short"),-6} qty={p.PositionAmt} vào={p.EntryPrice}");
         }
 
-        return orphans.Count == 0 ? 0 : 2;
+        // Mã thoát để cron/script gọi được: 0 sạch, 2 có chuyện phải xem, 3 không đọc đủ dữ liệu
+        // để kết luận — khác hẳn "đã xem và không có gì".
+        if (algoError is not null) return 3;
+        return orphans.Count == 0 && naked.Count == 0 ? 0 : 2;
     }
 
     /// <summary>

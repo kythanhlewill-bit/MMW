@@ -52,6 +52,17 @@ public interface IExchangeOrderProvider
     /// </summary>
     Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenOrdersAsync(string? symbol = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// RIÊNG sổ lệnh điều kiện (SL/TP). Ném khi không đọc được, thay vì trả danh sách rỗng.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GetOpenOrdersAsync"/> đã gộp sẵn nhóm này và nuốt lỗi để đường giao dịch không
+    /// gãy vì một vế hỏng. Hàm này dành cho người gọi mà "sổ trống" và "không đọc được sổ" là hai
+    /// kết luận trái ngược — đối chiếu vị thế chẳng hạn: nhầm hai thứ đó là báo an toàn cho một
+    /// vị thế không có dừng lỗ.
+    /// </remarks>
+    Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenConditionalOrdersAsync(string? symbol = null, CancellationToken cancellationToken = default);
+
     /// <summary>Huỷ toàn bộ lệnh chờ (SL/TP) của symbol.</summary>
     Task CancelAllOpenOrdersAsync(string symbol, CancellationToken cancellationToken = default);
 

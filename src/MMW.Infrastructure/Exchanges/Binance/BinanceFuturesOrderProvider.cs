@@ -253,61 +253,76 @@ public class BinanceFuturesOrderProvider : IExchangeOrderProvider
         // Lệnh điều kiện (SL/TP) nằm ở Algo Service từ 2025-12-09 và KHÔNG xuất hiện trong
         // /fapi/v1/openOrders. Thiếu vế này thì bảng "lệnh chờ trên sàn" hiện vị thế trần trụi
         // không SL — đúng cái mà người xem đang tìm cách kiểm tra.
-        list.AddRange(await GetOpenAlgoOrdersAsync(symbol, cancellationToken));
+        try
+        {
+            list.AddRange(await GetOpenConditionalOrdersAsync(symbol, cancellationToken));
+        }
+        catch (InvalidOperationException)
+        {
+            // Nuốt có chủ ý Ở ĐÂY, không phải bên trong: danh sách gộp thường vẫn có giá trị dù
+            // vế algo hỏng, còn ném ra sẽ làm mất luôn cả hai. Nhưng ai cần BIẾT mình đọc hụt —
+            // ví dụ lượt đối chiếu vị thế — thì gọi thẳng hàm dưới và tự bắt lỗi.
+            //
+            // Không mất dấu vết: SignedSendAsync đã ghi request/response vào bảng audit trước khi ném.
+        }
+
         return list;
     }
 
-    private async Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenAlgoOrdersAsync(
-        string? symbol, CancellationToken cancellationToken)
+    /// <summary>
+    /// Chỉ sổ lệnh ĐIỀU KIỆN (SL/TP). Ném khi không đọc được thay vì trả danh sách rỗng.
+    /// </summary>
+    /// <remarks>
+    /// Tách khỏi <see cref="GetOpenOrdersAsync"/> vì hai người gọi cần hai hành vi trái ngược.
+    /// Đường giao dịch muốn best-effort. Đường đối chiếu thì KHÔNG: ở đó "đọc được, không có lệnh
+    /// bảo vệ nào" và "không đọc được sổ" dẫn tới hai kết luận ngược nhau về một vị thế đang mở,
+    /// và gộp chúng vào cùng một danh sách rỗng là cách chắc chắn nhất để báo an toàn cho một vị
+    /// thế trần trụi — đúng lúc câu trả lời đó nguy hiểm nhất.
+    /// </remarks>
+    public async Task<IReadOnlyList<ExchangeOpenOrder>> GetOpenConditionalOrdersAsync(
+        string? symbol = null, CancellationToken cancellationToken = default)
     {
         var p = new List<KeyValuePair<string, string>>();
         if (!string.IsNullOrWhiteSpace(symbol)) p.Add(new("symbol", symbol.ToUpperInvariant()));
 
         var list = new List<ExchangeOpenOrder>();
-        try
+
+        using var doc = await SignedSendAsync(HttpMethod.Get, "/fapi/v1/openAlgoOrders", p, cancellationToken);
+        var root = doc.RootElement;
+
+        // Endpoint trả mảng trần hoặc bọc trong { "orders": [...] } tuỳ phiên bản — nhận cả hai.
+        var array = root.ValueKind == JsonValueKind.Array
+            ? root
+            : root.TryGetProperty("orders", out var wrapped) && wrapped.ValueKind == JsonValueKind.Array
+                ? wrapped
+                : default;
+        if (array.ValueKind != JsonValueKind.Array) return list;
+
+        foreach (var e in array.EnumerateArray())
         {
-            using var doc = await SignedSendAsync(HttpMethod.Get, "/fapi/v1/openAlgoOrders", p, cancellationToken);
-            var root = doc.RootElement;
+            string Str(string name) => e.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
+            decimal Dec(string name) => e.TryGetProperty(name, out var v) ? ParseDec(v.GetString()) : 0m;
+            bool Bool(string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
 
-            // Endpoint trả mảng trần hoặc bọc trong { "orders": [...] } tuỳ phiên bản — nhận cả hai.
-            var array = root.ValueKind == JsonValueKind.Array
-                ? root
-                : root.TryGetProperty("orders", out var wrapped) && wrapped.ValueKind == JsonValueKind.Array
-                    ? wrapped
-                    : default;
-            if (array.ValueKind != JsonValueKind.Array) return list;
+            var side = string.Equals(Str("side"), "BUY", StringComparison.OrdinalIgnoreCase) ? OrderSide.Buy : OrderSide.Sell;
+            var timeMs = e.TryGetProperty("createTime", out var t) && t.TryGetInt64(out var ms) ? ms : 0L;
 
-            foreach (var e in array.EnumerateArray())
-            {
-                string Str(string name) => e.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
-                decimal Dec(string name) => e.TryGetProperty(name, out var v) ? ParseDec(v.GetString()) : 0m;
-                bool Bool(string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
-
-                var side = string.Equals(Str("side"), "BUY", StringComparison.OrdinalIgnoreCase) ? OrderSide.Buy : OrderSide.Sell;
-                var timeMs = e.TryGetProperty("createTime", out var t) && t.TryGetInt64(out var ms) ? ms : 0L;
-
-                list.Add(new ExchangeOpenOrder(
-                    Str("symbol"),
-                    e.TryGetProperty("algoId", out var aid) ? aid.GetRawText().Trim('"') : "",
-                    Str("clientAlgoId"),
-                    side,
-                    Str("orderType"),
-                    Str("positionSide"),
-                    Dec("price"),
-                    Dec("triggerPrice"),
-                    Dec("quantity"),
-                    0m,
-                    Bool("reduceOnly"),
-                    Bool("closePosition"),
-                    DateTimeOffset.FromUnixTimeMilliseconds(timeMs).UtcDateTime));
-            }
+            list.Add(new ExchangeOpenOrder(
+                Str("symbol"),
+                e.TryGetProperty("algoId", out var aid) ? aid.GetRawText().Trim('"') : "",
+                Str("clientAlgoId"),
+                side,
+                Str("orderType"),
+                Str("positionSide"),
+                Dec("price"),
+                Dec("triggerPrice"),
+                Dec("quantity"),
+                0m,
+                Bool("reduceOnly"),
+                Bool("closePosition"),
+                DateTimeOffset.FromUnixTimeMilliseconds(timeMs).UtcDateTime));
         }
-        catch (InvalidOperationException)
-        {
-            // Nuốt có chủ ý: danh sách lệnh thường vẫn có giá trị dù vế algo hỏng, còn ném ra sẽ
-            // làm mất luôn cả hai. Không mất dấu vết — SignedSendAsync đã ghi request/response vào
-            // bảng audit trước khi ném.
-        }
+
         return list;
     }
 
