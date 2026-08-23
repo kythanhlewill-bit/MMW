@@ -209,16 +209,28 @@ public sealed class OpenPositionGate : IDisciplineGate
                 "không phải một lệnh độc lập.");
         }
 
-        var limit = context.Settings.MaxConcurrentPositions;
-        if (open.Count >= limit)
+        // Hạn mức đếm RIÊNG từng nhóm. Một lệnh swing 4h giữ nhiều ngày; nếu nó chiếm chỗ trong
+        // cùng hạn mức với lệnh trong ngày thì hai lệnh swing là đủ khoá đường vào của bộ luật
+        // ngắn hạn suốt cả tuần — và điều đó xảy ra âm thầm, không có lý do nào hiện ra ngoài
+        // một dòng "đủ trần vị thế" chẳng nhắc gì tới việc nó bị nhóm khác chiếm.
+        var style = context.Settings.StrategyVersion.StyleOf();
+        var sameStyle = open.Where(p => p.Style == style).ToList();
+
+        var limit = style == TradeStyle.HtfSwing
+            ? context.Settings.V7MaxConcurrentSwingPositions
+            : context.Settings.MaxConcurrentPositions;
+
+        var styleName = style == TradeStyle.HtfSwing ? "lệnh H4" : "lệnh ngắn";
+
+        if (sameStyle.Count >= limit)
         {
             return GateResult.Block(VetoReason.ConcurrentPositionLimit,
-                $"Đang mở {open.Count} vị thế ({string.Join(", ", open.Select(p => p.Symbol))}), " +
-                $"đủ trần {limit} vị thế đồng thời.");
+                $"Đang mở {sameStyle.Count} vị thế {styleName} ({string.Join(", ", sameStyle.Select(p => p.Symbol))}), " +
+                $"đủ trần {limit} vị thế đồng thời của nhóm này.");
         }
 
         return GateResult.Pass(
-            $"Đang mở {open.Count}/{limit} vị thế, không có vị thế nào trên {context.Symbol}.");
+            $"Đang mở {sameStyle.Count}/{limit} vị thế {styleName}, không có vị thế nào trên {context.Symbol}.");
     }
 
     private static string Describe(TradeDirection d) => d == TradeDirection.Long ? "mua" : "bán";

@@ -313,27 +313,7 @@ public class LiveOrderService : ILiveOrderService
         var sltpNote = "";
         try
         {
-            if (trade.StopLoss is decimal sl && sl > 0m)
-            {
-                _logger.LogInformation("Trade {TradeId}: đặt SL {Sl} lên sàn.", tradeId, sl);
-                await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                    FuturesOrderKind.StopMarket, sl, $"{clientId}-sl", cancellationToken), 3, 500, cancellationToken);
-            }
-            else
-            {
-                _logger.LogWarning("Trade {TradeId}: BỎ QUA đặt SL — StopLoss={Sl} (null hoặc <= 0).", tradeId, trade.StopLoss);
-            }
-
-            if (trade.TakeProfit is decimal tp && tp > 0m)
-            {
-                _logger.LogInformation("Trade {TradeId}: đặt TP {Tp} lên sàn.", tradeId, tp);
-                await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                    FuturesOrderKind.TakeProfitMarket, tp, $"{clientId}-tp", cancellationToken), 3, 500, cancellationToken);
-            }
-            else
-            {
-                _logger.LogWarning("Trade {TradeId}: BỎ QUA đặt TP — TakeProfit={Tp} (null hoặc <= 0).", tradeId, trade.TakeProfit);
-            }
+            await PlaceProtectiveSetAsync(provider, trade, clientId, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -396,15 +376,9 @@ public class LiveOrderService : ILiveOrderService
             // Huỷ SL/TP chờ cũ rồi đặt lại theo giá mới (entry đã khớp, không đổi).
             await provider.CancelAllOpenOrdersAsync(trade.Symbol, cancellationToken);
 
-            var closeSide = trade.Direction == TradeDirection.Long ? OrderSide.Sell : OrderSide.Buy;
-            var positionSide = trade.Direction == TradeDirection.Long ? FuturesPositionSide.Long : FuturesPositionSide.Short;
-            var clientId = $"mmw-{tradeId}";
-            if (trade.StopLoss is decimal sl && sl > 0m)
-                await TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                    FuturesOrderKind.StopMarket, sl, $"{clientId}-sl-{DateTime.UtcNow:HHmmss}", cancellationToken);
-            if (trade.TakeProfit is decimal tp && tp > 0m)
-                await TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                    FuturesOrderKind.TakeProfitMarket, tp, $"{clientId}-tp-{DateTime.UtcNow:HHmmss}", cancellationToken);
+            await PlaceProtectiveSetAsync(provider, trade, $"mmw-{tradeId}-s{DateTime.UtcNow:HHmmss}", cancellationToken);
+            _trades.Update(trade);
+            await _unitOfWork.CommitAsync(cancellationToken);
 
             _logger.LogInformation("Đã đồng bộ SL/TP lệnh #{TradeId} lên sàn.", tradeId);
         }
@@ -440,9 +414,20 @@ public class LiveOrderService : ILiveOrderService
         }
     }
 
+    /// <summary>
+    /// Đặt một lệnh bảo vệ. Không truyền <paramref name="quantity"/> thì lệnh đóng TOÀN BỘ vị
+    /// thế còn lại; truyền vào thì chỉ đóng đúng phần đó.
+    /// </summary>
+    /// <remarks>
+    /// Hai chế độ này loại trừ nhau ở phía sàn: <c>closePosition</c> không đi cùng
+    /// <c>quantity</c> hay <c>reduceOnly</c>. Đó cũng là lý do dừng lỗ luôn dùng chế độ đóng
+    /// toàn bộ — sau khi chốt phần đầu, phần còn lại bao nhiêu thì dừng lỗ vẫn phủ hết bấy
+    /// nhiêu, không cần ai đi sửa khối lượng của nó.
+    /// </remarks>
     private static async Task TryPlaceProtectiveAsync(
         IExchangeOrderProvider provider, string symbol, OrderSide side, FuturesPositionSide positionSide,
-        FuturesOrderKind kind, decimal stopPrice, string clientId, CancellationToken ct)
+        FuturesOrderKind kind, decimal stopPrice, string clientId, CancellationToken ct,
+        decimal? quantity = null)
     {
         await provider.PlaceFuturesOrderAsync(new FuturesOrderRequest
         {
@@ -450,10 +435,80 @@ public class LiveOrderService : ILiveOrderService
             Side = side,
             Kind = kind,
             StopPrice = stopPrice,
-            ClosePosition = true,
+            Quantity = quantity,
+            ClosePosition = quantity is null,
+            ReduceOnly = quantity is not null,
             PositionSide = positionSide,
             NewClientOrderId = clientId,
         }, ct);
+    }
+
+    /// <summary>
+    /// Đặt trọn bộ lệnh bảo vệ cho một lệnh: dừng lỗ, chốt phần đầu (nếu có), chốt phần cuối.
+    /// </summary>
+    /// <remarks>
+    /// Gom về một chỗ vì bốn đường khác nhau cùng cần nó — vào lệnh thị trường, lệnh chờ vừa
+    /// khớp, đồng bộ lại mức, và job retry. Trước đây mỗi đường tự viết lấy hai lệnh SL/TP, nên
+    /// khi thêm mục tiêu thứ hai sẽ phải sửa đúng bốn nơi và chỉ cần bỏ sót một nơi là có lệnh
+    /// chạy với nửa bộ bảo vệ.
+    ///
+    /// Thứ tự đặt là dừng lỗ TRƯỚC. Nếu mạng đứt giữa chừng thì thứ còn thiếu là một mục tiêu
+    /// chốt lời chứ không phải cái phanh.
+    /// </remarks>
+    private async Task PlaceProtectiveSetAsync(
+        IExchangeOrderProvider provider, Trade trade, string clientId, CancellationToken ct)
+    {
+        var closeSide = trade.Direction == TradeDirection.Long ? OrderSide.Sell : OrderSide.Buy;
+        var positionSide = trade.Direction == TradeDirection.Long ? FuturesPositionSide.Long : FuturesPositionSide.Short;
+
+        if (trade.StopLoss is decimal sl && sl > 0m)
+        {
+            await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
+                FuturesOrderKind.StopMarket, sl, $"{clientId}-sl", ct), 3, 500, ct);
+        }
+        else
+        {
+            _logger.LogWarning("Trade {TradeId}: BỎ QUA đặt SL — StopLoss={Sl} (null hoặc <= 0).", trade.Id, trade.StopLoss);
+        }
+
+        // Mục tiêu gần chỉ đặt khi lệnh còn nguyên. Đã chốt phần đầu rồi mà đặt lại thì lệnh
+        // này sẽ ăn nốt phần runner ngay lần chạm tiếp theo — đúng thứ mà việc giữ runner sinh
+        // ra để tránh.
+        if (trade.FirstTargetFilledAt is null
+            && trade.FirstTakeProfit is decimal tp1 && tp1 > 0m
+            && trade.FirstTakeProfitFraction is decimal fraction && fraction is > 0m and < 1m)
+        {
+            var desired = trade.Quantity * fraction;
+            var qty = trade.FirstTakeProfitQuantity
+                      ?? await provider.NormalizeQuantityAsync(trade.Symbol, desired, ct);
+
+            // Sàn ép khối lượng lên mức tối thiểu. Nếu phần chốt đầu bị ép bằng cả vị thế thì
+            // "chốt một phần" đã biến thành "chốt hết" — bỏ hẳn mục tiêu gần còn trung thực hơn.
+            if (qty > 0m && qty < trade.Quantity)
+            {
+                trade.FirstTakeProfitQuantity = qty;
+                await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
+                    FuturesOrderKind.TakeProfitMarket, tp1, $"{clientId}-tp1", ct, qty), 3, 500, ct);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Trade {TradeId}: bỏ mục tiêu gần — khối lượng {Qty} không nhỏ hơn cả vị thế {Total}.",
+                    trade.Id, qty, trade.Quantity);
+                trade.FirstTakeProfit = null;
+                trade.FirstTakeProfitFraction = null;
+            }
+        }
+
+        if (trade.TakeProfit is decimal tp && tp > 0m)
+        {
+            await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
+                FuturesOrderKind.TakeProfitMarket, tp, $"{clientId}-tp", ct), 3, 500, ct);
+        }
+        else
+        {
+            _logger.LogWarning("Trade {TradeId}: BỎ QUA đặt TP — TakeProfit={Tp} (null hoặc <= 0).", trade.Id, trade.TakeProfit);
+        }
     }
 
     private async Task BlockAsync(Trade trade, TradingAccount? account, string reason, CancellationToken ct)
@@ -602,20 +657,11 @@ public class LiveOrderService : ILiveOrderService
     private async Task ProtectFilledEntryAsync(
         Trade trade, TradingAccount account, IExchangeOrderProvider provider, CancellationToken cancellationToken)
     {
-        var closeSide = trade.Direction == TradeDirection.Long ? OrderSide.Sell : OrderSide.Buy;
-        var positionSide = trade.Direction == TradeDirection.Long ? FuturesPositionSide.Long : FuturesPositionSide.Short;
         var clientId = $"mmw-{trade.Id}-f{DateTime.UtcNow:HHmmss}";
 
         try
         {
-            if (trade.StopLoss is decimal sl && sl > 0m)
-                await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                    FuturesOrderKind.StopMarket, sl, $"{clientId}-sl", cancellationToken), 3, 500, cancellationToken);
-
-            if (trade.TakeProfit is decimal tp && tp > 0m)
-                await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                    FuturesOrderKind.TakeProfitMarket, tp, $"{clientId}-tp", cancellationToken), 3, 500, cancellationToken);
-
+            await PlaceProtectiveSetAsync(provider, trade, clientId, cancellationToken);
             trade.LiveStatus = LiveOrderStatus.Filled;
             trade.LiveNote = $"Lệnh chờ khớp lúc {DateTime.UtcNow:HH:mm:ss} UTC, SL/TP đã đặt.";
         }
@@ -677,17 +723,8 @@ public class LiveOrderService : ILiveOrderService
                 // Huỷ lệnh chờ cũ (nếu có lệnh SL/TP nửa vời) rồi đặt lại sạch.
                 await provider.CancelAllOpenOrdersAsync(trade.Symbol, cancellationToken);
 
-                var closeSide = trade.Direction == TradeDirection.Long ? OrderSide.Sell : OrderSide.Buy;
-                var positionSide = trade.Direction == TradeDirection.Long ? FuturesPositionSide.Long : FuturesPositionSide.Short;
-                var clientId = $"mmw-{trade.Id}-r{DateTime.UtcNow:HHmmss}";
-
-                if (trade.StopLoss is decimal sl && sl > 0m)
-                    await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                        FuturesOrderKind.StopMarket, sl, $"{clientId}-sl", cancellationToken), 3, 500, cancellationToken);
-
-                if (trade.TakeProfit is decimal tp && tp > 0m)
-                    await RetryAsync(() => TryPlaceProtectiveAsync(provider, trade.Symbol, closeSide, positionSide,
-                        FuturesOrderKind.TakeProfitMarket, tp, $"{clientId}-tp", cancellationToken), 3, 500, cancellationToken);
+                await PlaceProtectiveSetAsync(
+                    provider, trade, $"mmw-{trade.Id}-r{DateTime.UtcNow:HHmmss}", cancellationToken);
 
                 trade.LiveStatus = LiveOrderStatus.Submitted;
                 trade.LiveNote = $"SL/TP đặt lại thành công lúc {DateTime.UtcNow:HH:mm:ss} UTC.";

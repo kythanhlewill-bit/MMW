@@ -203,6 +203,94 @@ public sealed class LiveExecutionPlanTests
         Assert.False(limit.Passed);
     }
 
+    // ── Chốt hai phần ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Phiếu mang đủ hai mục tiêu thì kế hoạch chạy thật phải giữ CẢ HAI.
+    /// </summary>
+    /// <remarks>
+    /// Đây là chỗ rò rỉ lớn nhất của bộ luật cũ, và nó rò suốt vì trông rất giống một quyết định
+    /// thiết kế: <c>PlanLive</c> gán thẳng <c>RunnerTakeProfit = null</c> và
+    /// <c>FirstTakeProfitFraction = 1</c>, nên đường chạy thật đặt đúng một lệnh chốt lời cỡ đầy
+    /// đủ ở mục tiêu XA. Hệ quả là mọi lệnh không đi tới đích đều quay về chạm dừng lỗ và mất
+    /// trọn 1R — kể cả những lệnh đã đi đúng hướng quá nửa đường.
+    /// </remarks>
+    [Fact]
+    public void PlanLive_giu_ca_hai_muc_tieu_khi_phieu_co_du()
+    {
+        var card = Card(TradeDirection.Long);
+        card.SuggestedFirstTakeProfit = 1900m;
+        card.SuggestedRunnerTakeProfit = 1950m;
+        card.SuggestedTakeProfit = 1950m;
+
+        var settings = EngineSettingDefaults.Create(1);
+        settings.StrategyVersion = TradingStrategyVersion.HtfSwingV7;
+
+        var plan = _planner.PlanLive(card, settings)!;
+
+        Assert.Equal(1900m, plan.FirstTakeProfit);
+        Assert.Equal(1950m, plan.RunnerTakeProfit);
+        Assert.Equal(settings.V7FirstTargetFraction, plan.FirstTakeProfitFraction);
+        Assert.True(plan.MoveRunnerStopToBreakeven);
+        Assert.Equal(settings.V7TrailPivotBars, plan.TrailRunnerPivotBars);
+    }
+
+    /// <summary>Không truyền cấu hình thì kế hoạch quay về một mục tiêu — hành vi trước V7.</summary>
+    [Fact]
+    public void PlanLive_khong_co_cau_hinh_thi_van_mot_muc_tieu()
+    {
+        var card = Card(TradeDirection.Long);
+        card.SuggestedFirstTakeProfit = 1900m;
+        card.SuggestedRunnerTakeProfit = 1950m;
+
+        var plan = _planner.PlanLive(card)!;
+
+        Assert.Null(plan.RunnerTakeProfit);
+        Assert.Equal(1m, plan.FirstTakeProfitFraction);
+        Assert.False(plan.MoveRunnerStopToBreakeven);
+        Assert.Equal(0, plan.TrailRunnerPivotBars);
+    }
+
+    /// <summary>
+    /// Hai mục tiêu xếp sai thứ tự thì bỏ hẳn phần runner, không "sửa hộ".
+    /// </summary>
+    /// <remarks>
+    /// Nếu mục tiêu cuối lại gần hơn mục tiêu gần thì hai lệnh chốt sẽ tranh nhau trên sàn, và
+    /// cái nào khớp trước là do may rủi. Quay về một mục tiêu là kết cục đúng: nó vẫn chạy được
+    /// và nó trung thực về việc mình đang làm gì.
+    /// </remarks>
+    [Fact]
+    public void PlanLive_bo_runner_khi_hai_muc_tieu_xep_sai_thu_tu()
+    {
+        var card = Card(TradeDirection.Long);
+        card.SuggestedFirstTakeProfit = 1950m;
+        card.SuggestedRunnerTakeProfit = 1900m; // Gần hơn mục tiêu gần — sai.
+
+        var settings = EngineSettingDefaults.Create(1);
+        settings.StrategyVersion = TradingStrategyVersion.HtfSwingV7;
+
+        var plan = _planner.PlanLive(card, settings)!;
+
+        Assert.Null(plan.RunnerTakeProfit);
+        Assert.Equal(1m, plan.FirstTakeProfitFraction);
+    }
+
+    /// <summary>Mục tiêu gần nằm sai phía giá vào thì cũng bỏ runner.</summary>
+    [Fact]
+    public void PlanLive_bo_runner_khi_muc_tieu_gan_nam_sai_phia()
+    {
+        var card = Card(TradeDirection.Long);
+        card.SuggestedFirstTakeProfit = card.SuggestedEntry!.Value - 10m;
+        card.SuggestedRunnerTakeProfit = 1950m;
+
+        var settings = EngineSettingDefaults.Create(1);
+        settings.StrategyVersion = TradingStrategyVersion.HtfSwingV7;
+
+        var plan = _planner.PlanLive(card, settings)!;
+
+        Assert.Null(plan.RunnerTakeProfit);
+    }
+
     // ── Backtest giữ nguyên đường cũ ────────────────────────────────────
 
     /// <summary>

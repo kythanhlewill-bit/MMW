@@ -21,7 +21,9 @@ public class DayPlaybookTests
 {
     private readonly SetupTriggerPolicy _triggers = new(
         ScoringFixtures.Structure,
-        new MMW.Application.Trading.Structure.SidewaysPatternAnalyzer(ScoringFixtures.Swings));
+        new MMW.Application.Trading.Structure.SidewaysPatternAnalyzer(ScoringFixtures.Swings),
+        ScoringFixtures.Htf,
+        ScoringFixtures.Swings);
 
     // ── Lấy lại cấu trúc từ dưới lớp nhãn ───────────────────────────────
 

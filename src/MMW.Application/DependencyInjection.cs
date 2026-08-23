@@ -76,6 +76,7 @@ public static class DependencyInjection
         services.AddSingleton<Trading.Structure.ISwingDetector, Trading.Structure.SwingDetector>();
         services.AddSingleton<Trading.Structure.MarketStructureAnalyzer>();
         services.AddSingleton<Trading.Structure.ISidewaysPatternAnalyzer, Trading.Structure.SidewaysPatternAnalyzer>();
+        services.AddSingleton<Trading.Structure.IHtfSwingAnalyzer, Trading.Structure.HtfSwingAnalyzer>();
         services.AddSingleton<Trading.Structure.IStructuralLevelPlanner, Trading.Structure.StructuralLevelPlanner>();
         services.AddSingleton<Trading.Scoring.PriceActionAnalyzer>();
         services.AddSingleton<Trading.Scoring.IDirectionPolicy, Trading.Scoring.DirectionPolicy>();
@@ -157,6 +158,7 @@ public static class DependencyInjection
 
         // Đặt lệnh thật (live trading) — chỉ chạy khi LiveTrading.Enabled=true
         services.AddScoped<ILiveOrderService, LiveOrderService>();
+        services.AddScoped<ITradeTrailingService, TradeTrailingService>();
         services.AddScoped<IScorecardExecutionService, ScorecardExecutionService>();
         services.AddScoped<IScorecardOutcomeReviewService, ScorecardOutcomeReviewService>();
 

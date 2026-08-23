@@ -68,7 +68,11 @@ public interface ITradeExecutionPlanner
     /// Đây cũng là chỗ duy nhất cần sửa để chuyển sang vào bằng lệnh chờ: đổi <c>IsLimit</c>
     /// của chân duy nhất, cổng và bộ đặt lệnh tự khớp theo.
     /// </remarks>
-    TradeExecutionPlan? PlanLive(EntryScorecard card);
+    /// <param name="settings">
+    /// Cần cho phần chốt hai mục tiêu. Bỏ trống thì kế hoạch quay về một mục tiêu duy nhất —
+    /// đúng hành vi của mọi phiên bản trước V7.
+    /// </param>
+    TradeExecutionPlan? PlanLive(EntryScorecard card, EngineSetting? settings = null);
 }
 
 /// <summary>
@@ -89,7 +93,7 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
     public const string LiveMode = "LiveSingleMarket";
 
     /// <inheritdoc />
-    public TradeExecutionPlan? PlanLive(EntryScorecard card)
+    public TradeExecutionPlan? PlanLive(EntryScorecard card, EngineSetting? settings = null)
     {
         ArgumentNullException.ThrowIfNull(card);
 
@@ -114,15 +118,65 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
             ? null
             : PassiveLimitEntry(card.SuggestedLimitEntry, entry, stop, direction);
 
+        // Chốt hai phần khi phiếu mang đủ HAI mức khác nhau và chúng xếp đúng thứ tự. Thiếu một
+        // trong hai thì quay về một mục tiêu — chứ không bịa ra mức thứ hai bằng một bội R nào
+        // đó. Một mục tiêu bịa ra sẽ được cổng chi phí chấm như mục tiêu thật, và mọi con số
+        // kỳ vọng sau đó đo một thứ không tồn tại.
+        var runner = TwoStageTargets(card, target, direction, settings, out var firstTarget, out var fraction);
+
         return new TradeExecutionPlan(
             [new PlannedEntryTranche(passive ?? entry, 1m, IsLimit: passive is not null)],
             stop,
-            target,
-            RunnerTakeProfit: null,
-            FirstTakeProfitFraction: 1m,
-            MoveRunnerStopToBreakeven: false,
+            firstTarget,
+            RunnerTakeProfit: runner,
+            FirstTakeProfitFraction: fraction,
+            // Kéo về hoà vốn ngay sau khi chốt phần đầu. Đây là nửa còn lại của lý do chốt từng
+            // phần: chốt một nửa mà vẫn để nửa kia rơi về dừng lỗ gốc thì lệnh vẫn lỗ, chỉ lỗ
+            // chậm hơn. Chốt một nửa RỒI kéo về hoà vốn mới biến kết cục xấu nhất thành +0,5R.
+            MoveRunnerStopToBreakeven: runner is not null,
             Mode: LiveMode,
-            LimitEntryExpiryBars: passive is not null ? LiveLimitExpiryBars : null);
+            TrailRunnerPivotBars: runner is not null ? settings?.V7TrailPivotBars ?? 0 : 0,
+            // Lệnh chờ của bộ luật swing phải sống lâu hơn hẳn: nhịp hồi khung 4 giờ mất nhiều
+            // giờ để đi hết, còn hạn một giờ được chọn cho setup trong phiên. Đây chính là chỗ
+            // mà bảy lệnh bị huỷ vì "quá 60 phút chưa khớp" đã đi qua.
+            LimitEntryExpiryBars: passive is null
+                ? null
+                : settings?.StrategyVersion.UsesHtfSwing() == true
+                    ? HtfSwingLimitExpiryBars
+                    : LiveLimitExpiryBars);
+    }
+
+    /// <summary>
+    /// Tách mục tiêu của phiếu thành mục tiêu gần và mục tiêu cuối, hoặc trả <c>null</c> cho
+    /// mục tiêu cuối khi phiếu chỉ có một mức dùng được.
+    /// </summary>
+    private static decimal? TwoStageTargets(
+        EntryScorecard card,
+        decimal fallbackTarget,
+        TradeDirection direction,
+        EngineSetting? settings,
+        out decimal firstTarget,
+        out decimal fraction)
+    {
+        firstTarget = fallbackTarget;
+        fraction = 1m;
+
+        if (settings is null) return null;
+        if (card.SuggestedFirstTakeProfit is not { } first || first <= 0m) return null;
+        if (card.SuggestedRunnerTakeProfit is not { } runner || runner <= 0m) return null;
+
+        var isLong = direction == TradeDirection.Long;
+
+        // Cả hai phải nằm đúng phía giá vào, và mục tiêu cuối phải xa hơn mục tiêu gần.
+        if (card.SuggestedEntry is not { } entry || entry <= 0m) return null;
+        if (isLong ? first <= entry || runner <= first : first >= entry || runner >= first) return null;
+
+        var f = settings.V7FirstTargetFraction;
+        if (f is <= 0m or >= 1m) return null;
+
+        firstTarget = first;
+        fraction = f;
+        return runner;
     }
 
     /// <summary>Số nến chờ trước khi huỷ lệnh chờ chưa khớp của đường chạy thật.</summary>
@@ -180,6 +234,13 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
         // và để rơi xuống dưới thì PlanV3 sẽ ném "chỉ lập lệnh cho setup đã xác nhận".
         if (card.SetupType is SetupType.MaCrossFast or SetupType.MaPullback or SetupType.MaDeepPullback)
             return PlanMa(card, settings, direction, entry, stop);
+
+        // V7 phải rẽ TRƯỚC hai nhánh dưới. Bộ kích hoạt của nó đã tính sẵn cả ba mức từ cấu trúc
+        // 4h, nên planner chỉ hiện thực hoá; để rơi xuống PlanV3/PlanV6 thì mục tiêu sẽ bị tính
+        // lại theo bội R của khung vào lệnh và toàn bộ phần "mục tiêu đo bằng cấu trúc khung
+        // lớn" — lý do tồn tại của bộ luật này — biến mất im lặng.
+        if (settings.StrategyVersion.UsesHtfSwing())
+            return PlanHtfSwing(card, settings, direction, entry, stop, unitRisk);
 
         if (settings.StrategyVersion.UsesSidewaysV6())
             return PlanV6(card, dailyPlan, settings, direction, entry, stop, unitRisk);
@@ -270,6 +331,66 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
             TrailRunnerPivotBars: 3,
             LimitEntryExpiryBars: settings.LimitEntryExpiryBars);
     }
+
+    /// <summary>
+    /// Kế hoạch cho bộ luật swing 4h: một chân vào bằng lệnh chờ, hai mục tiêu, có kéo dừng lỗ.
+    /// </summary>
+    /// <remarks>
+    /// <para>Ba lựa chọn ở đây đều khác hẳn các nhánh trên, và cả ba đều phục vụ cùng một mục
+    /// đích: để phần LỚN của lệnh còn sống tới mục tiêu 4h.</para>
+    ///
+    /// <list type="bullet">
+    /// <item><b>Không chia nhiều chân vào.</b> Vùng giá trị đã là một khoảng rồi; chia thêm chân
+    /// bên trong một khoảng chỉ làm giá vào trung bình nhích vài điểm cơ bản, đổi lấy rủi ro
+    /// không khớp đủ chân trên một setup mỗi tuần chỉ có vài lần.</item>
+    /// <item><b>Luôn vào bằng lệnh chờ.</b> Nhịp hồi 4h đi chậm — đây chính là loại setup mà
+    /// lệnh chờ khớp được, và phí maker là giả định mà cổng chi phí đang dựa vào.</item>
+    /// <item><b>Lệnh chờ sống lâu hơn hẳn.</b> Một nhịp hồi khung 4h mất nhiều giờ để hoàn tất;
+    /// hạn một giờ như đường chạy thật của V6 sẽ huỷ lệnh trước cả khi giá kịp tới nơi.</item>
+    /// </list>
+    /// </remarks>
+    private static TradeExecutionPlan PlanHtfSwing(
+        EntryScorecard card,
+        EngineSetting settings,
+        TradeDirection direction,
+        decimal entry,
+        decimal stop,
+        decimal unitRisk)
+    {
+        var first = card.SuggestedFirstTakeProfit
+                    ?? card.SuggestedTakeProfit
+                    ?? AtR(entry, unitRisk, direction, settings.V7MinFirstRr);
+
+        var runner = card.SuggestedRunnerTakeProfit;
+        var isLong = direction == TradeDirection.Long;
+
+        // Mục tiêu cuối phải xa hơn mục tiêu gần; không thì hai lệnh chốt tranh nhau trên sàn và
+        // cái nào khớp trước là do may rủi.
+        if (runner is { } r && (isLong ? r <= first : r >= first)) runner = null;
+
+        var limit = SafeLimitEntry(card.SuggestedLimitEntry, entry, stop, direction, fallbackPullbackR: 0.10m);
+
+        return new TradeExecutionPlan(
+            [new PlannedEntryTranche(limit, 1m, IsLimit: true)],
+            stop,
+            first,
+            RunnerTakeProfit: runner,
+            FirstTakeProfitFraction: runner is null ? 1m : settings.V7FirstTargetFraction,
+            MoveRunnerStopToBreakeven: runner is not null,
+            Mode: "HtfSwing",
+            TrailRunnerPivotBars: runner is null ? 0 : settings.V7TrailPivotBars,
+            LimitEntryExpiryBars: HtfSwingLimitExpiryBars);
+    }
+
+    /// <summary>
+    /// Số nến khung vào lệnh mà lệnh chờ của bộ luật swing được sống.
+    /// </summary>
+    /// <remarks>
+    /// 24 nến 15 phút = 6 giờ, tức khoảng một nến rưỡi trên khung 4 giờ. Đó là quãng thời gian
+    /// mà một nhịp hồi 4h thật sự cần để đi hết; con số một giờ của các bản trước được chọn cho
+    /// setup trong phiên, và áp nó vào đây sẽ huỷ gần hết lệnh chờ trước khi giá kịp tới vùng.
+    /// </remarks>
+    public const int HtfSwingLimitExpiryBars = 24;
 
     /// <summary>
     /// Kế hoạch cho ba setup họ MA: một chân, trọn ngân sách rủi ro, dùng thẳng mức của phiếu.

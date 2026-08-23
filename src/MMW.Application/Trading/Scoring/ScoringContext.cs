@@ -107,10 +107,16 @@ public sealed record TraderStatistics(
 
 /// <summary>Một vị thế đang mở, rút gọn về đúng những gì gate kỷ luật cần biết.</summary>
 /// <param name="SizeR">Kích thước theo R tại lúc vào lệnh, để cộng dồn rủi ro tương quan.</param>
+/// <param name="Style">
+/// Nhóm lệnh. Hạn mức vị thế đồng thời đếm RIÊNG từng nhóm, vì hai nhóm tiêu hai loại ngân sách
+/// khác nhau: lệnh swing giữ nhiều ngày và chiếm chỗ lâu, lệnh ngắn xoay vòng trong phiên. Dùng
+/// chung một hạn mức thì nhóm giữ lâu khoá cửa nhóm kia suốt cả tuần.
+/// </param>
 public sealed record OpenPositionSnapshot(
     string Symbol,
     TradeDirection Direction,
-    decimal SizeR);
+    decimal SizeR,
+    TradeStyle Style = TradeStyle.Intraday);
 
 /// <summary>
 /// Đầu vào BẤT BIẾN của một lần chấm điểm.

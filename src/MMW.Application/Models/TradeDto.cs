@@ -19,6 +19,19 @@ public class TradeDto
     public decimal? ExitPrice { get; set; }
     public decimal? StopLoss { get; set; }
     public decimal? TakeProfit { get; set; }
+
+    // --- Chốt hai phần (V7) ---
+    public decimal? FirstTakeProfit { get; set; }
+    public decimal? FirstTakeProfitFraction { get; set; }
+    public decimal? FirstTakeProfitQuantity { get; set; }
+    public DateTime? FirstTargetFilledAt { get; set; }
+    public decimal? InitialStopLoss { get; set; }
+    public int TrailPivotBars { get; set; }
+    public int TrailUpdateCount { get; set; }
+
+    /// <summary>Nhóm lệnh: lệnh ngắn hay lệnh swing 4h.</summary>
+    public TradeStyle Style { get; set; } = TradeStyle.Intraday;
+
     public decimal Quantity { get; set; }
     public decimal? Leverage { get; set; } = 20m;
     public decimal Fee { get; set; }

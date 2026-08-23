@@ -83,7 +83,7 @@ public sealed class TraderStatisticsProvider : ITraderStatisticsProvider
         var openPositions = await _trades
             .Get(t => t.TradingAccountId == tradingAccountId && t.Status == TradeStatus.Open)
             .AsNoTracking()
-            .Select(t => new { t.Symbol, t.Direction, t.RiskPercent })
+            .Select(t => new { t.Symbol, t.Direction, t.RiskPercent, t.Style })
             .ToListAsync(ct);
 
         var ordered = closed.OrderByDescending(t => t.ClosedAt!.Value).ToList();
@@ -181,7 +181,7 @@ public sealed class TraderStatisticsProvider : ITraderStatisticsProvider
             // vị thế đang chạy là "không có rủi ro" sẽ khiến gate tương quan cộng dồn ra 0 và
             // cho qua đúng lúc tài khoản đang cầm nhiều nhất.
             OpenPositions = openPositions
-                .Select(p => new OpenPositionSnapshot(p.Symbol, p.Direction, p.RiskPercent ?? 1m))
+                .Select(p => new OpenPositionSnapshot(p.Symbol, p.Direction, p.RiskPercent ?? 1m, p.Style))
                 .ToList(),
         };
     }

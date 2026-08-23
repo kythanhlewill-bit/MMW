@@ -43,6 +43,19 @@
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-auto">
+                <label class="form-label">Nhóm lệnh</label>
+                <select name="style" class="form-select">
+                    <option value="">— tất cả —</option>
+                    @foreach (var st in Enum.GetValues<MMW.Domain.Enums.TradeStyle>())
+                    {
+                        var count = Model.StyleCounts.TryGetValue(st, out var c) ? c : 0;
+                        <option value="@st" selected="@(Model.Style == st)">
+                            @MMW.Web.Models.TradeStyleLabels.Name(st) (@count)
+                        </option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
                 <label class="form-label">Mã</label>
                 <input name="symbol" value="@Model.Symbol" class="form-control" placeholder="BTCUSDT" style="text-transform:uppercase" />
             </div>
@@ -141,6 +154,7 @@ else
                     <tr>
                         <th style="width:1rem"></th>
                         <th>Giờ VN</th>
+                        <th>Nhóm</th>
                         <th>Mã</th>
                         <th>Chiều</th>
                         <th class="text-end">Điểm</th>
@@ -164,6 +178,12 @@ else
                         aria-expanded="false" aria-controls="@id">
                         <td class="text-secondary">▸</td>
                         <td class="text-nowrap">@ScorecardListViewModel.Vn(card.CandleCloseTimeUtc)</td>
+                        <td>
+                            <span class="badge @MMW.Web.Models.TradeStyleLabels.BadgeClass(card.Style)"
+                                  title="@MMW.Web.Models.TradeStyleStats.DescriptionOf(card.Style)">
+                                @MMW.Web.Models.TradeStyleLabels.Short(card.Style)
+                            </span>
+                        </td>
                         <td class="text-nowrap"><strong>@card.Symbol</strong> <span class="text-secondary">@card.Interval</span></td>
                         <td>
                             @if (card.Direction is { } direction)
@@ -192,7 +212,7 @@ else
                        bỏ qua height và hàng nhảy phịch ra thay vì trượt. Bọc bằng một <div> trả
                        lại cho nó một hộp khối bình thường để chạy hoạt ảnh. *@
                     <tr>
-                        <td colspan="12" class="p-0 border-0">
+                        <td colspan="13" class="p-0 border-0">
                             <div class="collapse p-3 bg-surface-secondary" id="@id">
                             @if (reason.Length > 0)
                             {

@@ -86,7 +86,19 @@ public sealed class ScoreBasedPositionSizer : IPositionSizer
 
         var baseSize = BaseSize(score, settings);
         var setupMultiplier = 1m;
-        if (setup is not null && settings.StrategyVersion.UsesSidewaysV6())
+
+        // V7 dùng chung đường này với V6, và đó không phải tiện tay: với cả hai, thứ quyết định
+        // cỡ lệnh là CHẤT LƯỢNG SETUP chứ không phải điểm bối cảnh. Ở V7 điều đó còn bắt buộc
+        // hơn — bộ kích hoạt ghi đè điểm về đúng ngưỡng vào lệnh khi setup xác nhận, nên nếu chỉ
+        // đọc điểm thì mọi lệnh swing đều vào bằng cùng một cỡ nhỏ nhất, và cả thang hợp lưu
+        // 2–4 lớp trở thành vô nghĩa.
+        //
+        // Ba mốc chất lượng dùng lại của V6 (60/70/85). Chúng là mốc trên thang 0–100 chung, và
+        // điểm chất lượng của V7 cũng được dựng trong khoảng 60–100 để nằm đúng thang đó.
+        var qualitySized = settings.StrategyVersion.UsesSidewaysV6()
+                           || settings.StrategyVersion.UsesHtfSwing();
+
+        if (setup is not null && qualitySized)
         {
             baseSize = Math.Min(baseSize, RiskCap(setup.SetupType, settings));
             setupMultiplier = QualityMultiplier(setup.QualityScore, settings);

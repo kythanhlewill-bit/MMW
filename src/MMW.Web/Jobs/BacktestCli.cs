@@ -143,7 +143,8 @@ public static class BacktestCli
                 "v3" or "3" or "triggerfirstv3" => TradingStrategyVersion.TriggerFirstV3,
                 "v5" or "5" or "calibratedv5" => TradingStrategyVersion.CalibratedV5,
                 "v6" or "6" or "adaptivesidewaysv6" => TradingStrategyVersion.AdaptiveSidewaysV6,
-                _ => throw new ArgumentException("--version chỉ nhận v2, v3, v5 hoặc v6."),
+                "v7" or "7" or "htfswingv7" => TradingStrategyVersion.HtfSwingV7,
+                _ => throw new ArgumentException("--version chỉ nhận v2, v3, v5, v6 hoặc v7."),
             };
         }
 
@@ -893,7 +894,7 @@ public static class BacktestCli
               ordertest --account ID [--conditional true]
               positions --account ID
               repairtrades --account ID --ids 9,10 [--apply true]
-              backtest --account ID --symbol SYMBOL --from DATE --to DATE [--version v2|v3|v5|v6]
+              backtest --account ID --symbol SYMBOL --from DATE --to DATE [--version v2|v3|v5|v6|v7]
                        [--fill conservative|optimistic] [--telemetry true|false] [--name NAME]
                        [--set "Prop=Value;Prop2=Value2"]
                        [--dump FILE.csv]

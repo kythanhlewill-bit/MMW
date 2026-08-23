@@ -32,6 +32,16 @@ public class EntryScorecard : BaseEntity
 
     // ── Phiên bản/setup/trigger ────────────────────────────────────────
     public TradingStrategyVersion StrategyVersion { get; set; } = TradingStrategyVersion.AdaptiveV2;
+
+    /// <summary>
+    /// Nhóm lệnh mà phiếu này thuộc về. Suy ra từ <see cref="StrategyVersion"/> lúc ghi.
+    /// </summary>
+    /// <remarks>
+    /// Lưu sẵn thay vì suy lại mỗi lần đọc: màn hình phiếu lọc theo nhóm và sắp theo thời gian,
+    /// mà một cột tính toán trong bộ nhớ thì không dùng được chỉ mục nào.
+    /// </remarks>
+    public TradeStyle Style { get; set; } = TradeStyle.Intraday;
+
     public SetupType SetupType { get; set; } = SetupType.None;
     public SetupTriggerState TriggerState { get; set; } = SetupTriggerState.NotEvaluated;
     public string? TriggerDetail { get; set; }

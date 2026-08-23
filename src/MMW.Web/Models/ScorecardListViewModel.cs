@@ -13,6 +13,12 @@ public class ScorecardListViewModel
     /// <summary>Chỉ lấy phiếu có tổng điểm LỚN HƠN giá trị này. Null nghĩa là không lọc.</summary>
     public int? MinScore { get; set; }
 
+    /// <summary>Nhóm lệnh đang lọc. Null là xem tất cả.</summary>
+    public TradeStyle? Style { get; set; }
+
+    /// <summary>Số phiếu của từng nhóm, tính trên toàn bộ bảng chứ không theo bộ lọc.</summary>
+    public IReadOnlyDictionary<TradeStyle, int> StyleCounts { get; set; } = new Dictionary<TradeStyle, int>();
+
     public IReadOnlyList<EntryScorecard> Items { get; set; } = Array.Empty<EntryScorecard>();
 
     /// <summary>Đếm theo lý do từ chối, xếp giảm dần.</summary>
@@ -80,6 +86,12 @@ public class ScorecardListViewModel
         SetupTriggerState.MaPullbackStale => "Nhịp hồi MA đã cũ",
         SetupTriggerState.MaRejectionMissing => "Chưa có cú từ chối",
         SetupTriggerState.MaDeepZoneMissing => "Chưa về vùng MA99",
+        SetupTriggerState.HtfTrendUnclear => "Khung 4h chưa rõ xu hướng",
+        SetupTriggerState.HtfTrendOpposed => "Khung 4h ngược chiều",
+        SetupTriggerState.HtfValueZoneMissing => "Chưa vào vùng giá trị 4h",
+        SetupTriggerState.HtfValueZoneWeak => "Vùng giá trị thiếu hợp lưu",
+        SetupTriggerState.HtfEntryConfirmationMissing => "Khung 15 phút chưa xác nhận",
+        SetupTriggerState.HtfPullbackTooDeep => "Hồi quá sâu, hỏng cấu trúc",
         _ => state.ToString(),
     };
 
@@ -96,6 +108,7 @@ public class ScorecardListViewModel
         SetupType.MaPullback => "Hồi về MA7",
         SetupType.MaCrossFast => "Cắt MA khối lượng lớn",
         SetupType.MaDeepPullback => "Hồi sâu về MA99",
+        SetupType.HtfSwingPullback => "Hồi về vùng giá trị 4h",
         _ => setup.ToString(),
     };
 

@@ -40,6 +40,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
     private readonly IBaseRepository<EntryScorecard> _scorecards;
     private readonly IBaseRepository<TradingAccount> _accounts;
     private readonly IBaseRepository<RiskSetting> _riskSettings;
+    private readonly IBaseRepository<EngineSetting> _engineSettings;
     private readonly ITradeExecutionPlanner _executionPlanner;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ScorecardExecutionService> _logger;
@@ -51,6 +52,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         IBaseRepository<EntryScorecard> scorecards,
         IBaseRepository<TradingAccount> accounts,
         IBaseRepository<RiskSetting> riskSettings,
+        IBaseRepository<EngineSetting> engineSettings,
         ITradeExecutionPlanner executionPlanner,
         IUnitOfWork unitOfWork,
         ILogger<ScorecardExecutionService> logger)
@@ -61,6 +63,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         _scorecards = scorecards;
         _accounts = accounts;
         _riskSettings = riskSettings;
+        _engineSettings = engineSettings;
         _executionPlanner = executionPlanner;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -108,7 +111,9 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         // Lấy kế hoạch từ ĐÚNG hàm mà cổng chi phí đã dùng để chấm phiếu này. Đọc thẳng các mức
         // giá trên phiếu như trước là chỗ hai bên lệch nhau: cổng chấm một kế hoạch còn sàn nhận
         // một lệnh khác. Đi qua planner thì không còn hai nguồn sự thật để mà lệch.
-        var plan = _executionPlanner.PlanLive(card);
+        var engineSetting = await _engineSettings.FirstOrDefaultAsync(e => e.TradingAccountId == card.TradingAccountId);
+
+        var plan = _executionPlanner.PlanLive(card, engineSetting);
         if (plan is null)
         {
             _logger.LogWarning(
@@ -178,7 +183,16 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
             OrderType = tranche.IsLimit ? OrderType.Limit : OrderType.Market,
             EntryPrice = entry,
             StopLoss = stop,
-            TakeProfit = target,
+            // TakeProfit là mục tiêu CUỐI. Khi kế hoạch có hai mục tiêu thì `plan.FirstTakeProfit`
+            // là mục tiêu gần, còn mục tiêu cuối nằm ở `RunnerTakeProfit` — nên chỗ này không
+            // được đọc thẳng `FirstTakeProfit` như trước, nếu không toàn bộ phần runner biến mất
+            // đúng lúc nó vừa được dựng ra.
+            TakeProfit = plan.RunnerTakeProfit ?? target,
+            FirstTakeProfit = plan.RunnerTakeProfit is null ? null : target,
+            FirstTakeProfitFraction = plan.RunnerTakeProfit is null ? null : plan.FirstTakeProfitFraction,
+            InitialStopLoss = stop,
+            TrailPivotBars = plan.TrailRunnerPivotBars,
+            Style = card.Style,
             Quantity = quantity,
             // Để trống đòn bẩy: LiveOrderService rơi về LiveTrading.DefaultLeverage, nghĩa là đổi
             // cấu hình đòn bẩy chỉ phải sửa một chỗ.

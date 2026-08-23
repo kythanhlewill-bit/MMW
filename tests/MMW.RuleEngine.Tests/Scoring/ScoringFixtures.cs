@@ -25,6 +25,9 @@ internal static class ScoringFixtures
 
     public static readonly IIndicatorService Indicators = new IndicatorService();
     public static readonly ISwingDetector Swings = new SwingDetector();
+
+    /// <summary>Bộ đọc cấu trúc khung 4h dùng cho nhánh swing V7.</summary>
+    public static readonly IHtfSwingAnalyzer Htf = new HtfSwingAnalyzer(Swings, Indicators);
     public static readonly MarketStructureAnalyzer Structure = new(Swings);
 
     private static Candle Bar(int i, decimal close, decimal range, decimal volume, TimeSpan step) => new(

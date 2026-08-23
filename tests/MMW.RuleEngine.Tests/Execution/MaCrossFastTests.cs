@@ -21,7 +21,7 @@ public sealed class MaCrossFastTests
     private static readonly DateTime Start = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly SetupTriggerPolicy _triggers = new(
-        ScoringFixtures.Structure, new SidewaysPatternAnalyzer(ScoringFixtures.Swings));
+        ScoringFixtures.Structure, new SidewaysPatternAnalyzer(ScoringFixtures.Swings), ScoringFixtures.Htf, ScoringFixtures.Swings);
 
     [Fact]
     public void Cu_cat_vua_xay_ra_kem_khoi_luong_manh_thi_xac_nhan()

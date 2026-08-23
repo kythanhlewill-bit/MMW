@@ -25,7 +25,7 @@ public sealed class MaDeepPullbackTests
     private static readonly DateTime Start = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly SetupTriggerPolicy _triggers = new(
-        ScoringFixtures.Structure, new SidewaysPatternAnalyzer(ScoringFixtures.Swings));
+        ScoringFixtures.Structure, new SidewaysPatternAnalyzer(ScoringFixtures.Swings), ScoringFixtures.Htf, ScoringFixtures.Swings);
 
     [Fact]
     public void Tu_choi_ro_roi_hoi_sau_ve_MA99_thi_xac_nhan()

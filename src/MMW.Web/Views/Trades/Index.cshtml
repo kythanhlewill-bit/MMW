@@ -134,12 +134,99 @@
     </div>
 }
 
+@* ── Kết quả tách theo nhóm lệnh ───────────────────────────────────────────
+   Hai nhóm có tỉ lệ thắng và bội R khác hẳn nhau, nên mỗi nhóm một thẻ. Chỉ số quyết định là
+   KỲ VỌNG theo R, không phải tỉ lệ thắng — nên nó đứng ở vị trí to nhất, còn tỉ lệ thắng đứng
+   cạnh ngưỡng hoà vốn của chính nhóm đó để đọc được ý nghĩa. *@
+<div class="row row-cards mb-3">
+    @foreach (var s in Model.StyleStats)
+    {
+        <div class="col-md-6">
+            <div class="card @(Model.StyleFilter == s.Style ? "border-primary" : "")">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge @MMW.Web.Models.TradeStyleLabels.BadgeClass(s.Style) me-2">@s.NameVi</span>
+                        <span class="text-secondary small">@MMW.Web.Models.TradeStyleStats.DescriptionOf(s.Style)</span>
+                    </div>
+
+                    @if (s.Total == 0)
+                    {
+                        <div class="text-secondary">Chưa có lệnh nào thuộc nhóm này.</div>
+                    }
+                    else
+                    {
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <div class="text-secondary small">Kỳ vọng / lệnh</div>
+                                <div class="h2 mb-0 @(s.Expectancy > 0 ? "text-green" : s.Expectancy < 0 ? "text-red" : "")">
+                                    @s.Expectancy.ToString("N2")R
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-secondary small">Tổng R</div>
+                                <div class="h2 mb-0 @(s.TotalR > 0 ? "text-green" : s.TotalR < 0 ? "text-red" : "")">
+                                    @s.TotalR.ToString("N2")
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-secondary small">Lãi/lỗ</div>
+                                <div class="h2 mb-0 @(s.TotalPnl > 0 ? "text-green" : s.TotalPnl < 0 ? "text-red" : "")">
+                                    @s.TotalPnl.ToString("N2")
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2 small text-secondary">
+                            @s.Total lệnh (@s.Open đang mở, @s.Closed đã đóng) ·
+                            thắng @s.Wins / thua @s.Losses
+                            @if (s.Closed > 0)
+                            {
+                                <text> · tỉ lệ thắng <strong>@s.WinRate.ToString("N1")%</strong></text>
+                                @if (s.BreakevenWinRate is decimal be)
+                                {
+                                    <text>
+                                        , cần <strong class="@(s.WinRate >= be ? "text-green" : "text-red")">@be.ToString("N1")%</strong> để hoà vốn
+                                    </text>
+                                }
+                            }
+                        </div>
+
+                        @if (s.Closed >= 5 && s.AvgWinR != 0m && s.AvgLossR != 0m)
+                        {
+                            <div class="small text-secondary">
+                                Lệnh thắng trung bình @s.AvgWinR.ToString("N2")R · lệnh thua @s.AvgLossR.ToString("N2")R
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<ul class="nav nav-bordered mb-3 d-print-none">
+    <li class="nav-item">
+        <a class="nav-link @(Model.StyleFilter is null ? "active" : "")" asp-action="Index">Tất cả</a>
+    </li>
+    @foreach (var s in Model.StyleStats)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(Model.StyleFilter == s.Style ? "active" : "")"
+               asp-action="Index" asp-route-style="@s.Style">
+                @s.NameVi <span class="badge bg-secondary-lt ms-1">@s.Total</span>
+            </a>
+        </li>
+    }
+</ul>
+
 <div class="card">
     @if (Model.Trades.Count == 0)
     {
         <div class="empty">
             <div class="empty-icon"><i class="ti ti-clipboard-list" style="font-size:2.5rem"></i></div>
-            <p class="empty-title">Chưa có lệnh nào</p>
+            <p class="empty-title">
+                @(Model.StyleFilter is null ? "Chưa có lệnh nào" : $"Chưa có lệnh nào thuộc nhóm {MMW.Web.Models.TradeStyleLabels.Name(Model.StyleFilter.Value)}")
+            </p>
             <p class="empty-subtitle text-secondary">
                 Khi bạn thêm lệnh, hệ thống sẽ tự chấm rủi ro và phát hiện hành vi.
             </p>
@@ -152,11 +239,13 @@
                 <thead>
                     <tr>
                         <th>Tài khoản</th>
+                        <th>Nhóm</th>
                         <th>Symbol</th>
                         <th>Hướng</th>
                         <th>Trạng thái</th>
                         <th class="text-end">Giá vào</th>
                         <th class="text-end">SL</th>
+                        <th class="text-end">TP1</th>
                         <th class="text-end">TP</th>
                         <th class="text-end">Risk %</th>
                         <th class="text-end">R:R</th>
@@ -173,6 +262,12 @@
 
                         <tr class="@(hasAnalysis && analysis!.RiskLevel == "Critical" ? "table-danger" : hasAnalysis && analysis!.RiskLevel == "High" ? "table-warning" : "")">
                             <td class="text-secondary">@(t.AccountName ?? "—")</td>
+                            <td>
+                                <span class="badge @MMW.Web.Models.TradeStyleLabels.BadgeClass(t.Style)"
+                                      title="@MMW.Web.Models.TradeStyleStats.DescriptionOf(t.Style)">
+                                    @MMW.Web.Models.TradeStyleLabels.Short(t.Style)
+                                </span>
+                            </td>
                             <td>
                                 <strong>@t.Symbol</strong>
                                 @if (t.LiveStatus != MMW.Domain.Enums.LiveOrderStatus.None)
@@ -203,7 +298,31 @@
                             </td>
                             <td><span class="text-secondary">@t.Status</span></td>
                             <td class="text-end">@t.EntryPrice.ToString("N4")</td>
-                            <td class="text-end">@(t.StopLoss?.ToString("N4") ?? "—")</td>
+                            <td class="text-end">
+                                @(t.StopLoss?.ToString("N4") ?? "—")
+                                @if (t.TrailUpdateCount > 0)
+                                {
+                                    <span class="badge bg-teal-lt ms-1" title="Dừng lỗ đã được kéo @t.TrailUpdateCount lần">
+                                        ↑@t.TrailUpdateCount
+                                    </span>
+                                }
+                            </td>
+                            @* Mục tiêu gần chỉ có ở lệnh chốt hai phần. Đã chốt rồi thì đánh dấu, để
+                               nhìn một cái là biết lệnh đang chạy runner hay vẫn còn nguyên. *@
+                            <td class="text-end">
+                                @if (t.FirstTakeProfit is decimal tp1)
+                                {
+                                    <span class="@(t.FirstTargetFilledAt is not null ? "text-green" : "")">@tp1.ToString("N4")</span>
+                                    @if (t.FirstTargetFilledAt is not null)
+                                    {
+                                        <i class="ti ti-check ms-1 text-green" title="Đã chốt phần đầu"></i>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">—</span>
+                                }
+                            </td>
                             <td class="text-end">@(t.TakeProfit?.ToString("N4") ?? "—")</td>
                             <td class="text-end">@(t.RiskPercent?.ToString("N2") ?? "—")</td>
                             <td class="text-end">@(t.PlannedRiskReward?.ToString("N2") ?? "—")</td>
@@ -286,7 +405,7 @@
                         @if (hasAnalysis)
                         {
                             <tr class="trade-analysis-row">
-                                <td colspan="12" class="py-2 px-3">
+                                <td colspan="14" class="py-2 px-3">
                                     <div class="trade-analysis-card">
                                         <div class="trade-analysis-main">
                                             @if (analysis!.AiEnhanced)

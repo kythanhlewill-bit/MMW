@@ -191,6 +191,18 @@ try
         job => job.RetryPendingSltpAsync(CancellationToken.None),
         "*/2 * * * *");
 
+    // Job kéo dừng lỗ cho lệnh có phần runner: mỗi 3 phút.
+    //
+    // Nhịp này là một đánh đổi có chủ ý. Nhanh hơn thì mỗi lượt lại huỷ và đặt lại lệnh điều
+    // kiện trên sàn — tốn hạn mức gọi API mà chẳng đổi được gì, vì mức kéo bám theo điểm xoay
+    // khung 4 giờ và điểm xoay đó chỉ đổi vài lần mỗi ngày. Chậm hơn thì cú chốt phần đầu có
+    // thể nằm cả chục phút mà dừng lỗ vẫn ở mức gốc, tức là khoảng thời gian mà "đã lãi một
+    // nửa" vẫn có thể quay về lỗ trọn 1R.
+    RecurringJob.AddOrUpdate<MMW.Application.Services.ITradeTrailingService>(
+        "trade-trailing",
+        job => job.RunAsync(CancellationToken.None),
+        "*/3 * * * *");
+
     // Job làm phẳng vị thế trước cửa sổ chặn: mỗi phút, 0 lời gọi AI (FR-013, T063).
     RecurringJob.AddOrUpdate<IEngineJobs>(
         "position-manage",

@@ -887,6 +887,44 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 
+                    b.Property<decimal>("V7FirstTargetFraction")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V7HtfPivotBars")
+                        .HasColumnType("int");
+
+                    b.Property<int>("V7HtfStructureLookbackBars")
+                        .HasColumnType("int");
+
+                    b.Property<int>("V7MaxConcurrentSwingPositions")
+                        .HasColumnType("int");
+
+                    b.Property<int>("V7MaxSetupAgeBars")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V7MinFirstRr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("V7MinRunnerRr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V7MinZoneConfluence")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V7StopBufferAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("V7TrailPivotBars")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("V7ZoneHalfWidthAtr")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
                     b.Property<decimal>("VolatilitySweetSpotHigh")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
@@ -1055,6 +1093,9 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(9,4)");
 
                     b.Property<int>("StrategyVersion")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Style")
                         .HasColumnType("int");
 
                     b.Property<decimal?>("SuggestedEntry")
@@ -2204,7 +2245,26 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTime?>("FirstTargetFilledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("FirstTakeProfit")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("FirstTakeProfitFraction")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal?>("FirstTakeProfitQuantity")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
                     b.Property<decimal>("Fee")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("decimal(18,8)");
+
+                    b.Property<decimal?>("InitialStopLoss")
                         .HasPrecision(18, 8)
                         .HasColumnType("decimal(18,8)");
 
@@ -2276,6 +2336,9 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<long?>("StrategyId")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("Style")
+                        .HasColumnType("int");
+
                     b.Property<string>("Symbol")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -2287,6 +2350,12 @@ namespace MMW.Infrastructure.Persistence.Migrations
 
                     b.Property<long>("TradingAccountId")
                         .HasColumnType("bigint");
+
+                    b.Property<int>("TrailPivotBars")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TrailUpdateCount")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedDate")
                         .HasColumnType("datetime2");

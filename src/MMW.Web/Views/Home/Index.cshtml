@@ -136,6 +136,68 @@ else
         </div>
     }
 
+    @* ── Kết quả tách theo nhóm lệnh ──────────────────────────────────────
+       Con số gộp phía trên trộn hai hệ có hình dạng kết quả trái ngược nhau: lệnh ngắn thắng
+       nhiều nhưng ăn ít, lệnh H4 thắng ít nhưng ăn dày. Trung bình của hai thứ đó không mô tả
+       cái nào, và nó sẽ trông vẫn ổn ngay cả khi một trong hai đang hỏng nặng. *@
+    @if (Model.StyleStats.Any(s => s.Total > 0))
+    {
+        <div class="card mt-3">
+            <div class="card-header">
+                <h3 class="card-title">Kết quả theo nhóm lệnh</h3>
+                <div class="card-subtitle">
+                    Kỳ vọng theo R là con số quyết định — tỉ lệ thắng chỉ có nghĩa khi đặt cạnh
+                    ngưỡng hoà vốn của chính nhóm đó.
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table card-table table-vcenter">
+                    <thead>
+                        <tr>
+                            <th>Nhóm</th>
+                            <th class="text-end">Lệnh</th>
+                            <th class="text-end">Đang mở</th>
+                            <th class="text-end">Thắng/Thua</th>
+                            <th class="text-end">Tỉ lệ thắng</th>
+                            <th class="text-end">Cần để hoà</th>
+                            <th class="text-end">Kỳ vọng/lệnh</th>
+                            <th class="text-end">Tổng R</th>
+                            <th class="text-end">Lãi/lỗ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in Model.StyleStats)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge @MMW.Web.Models.TradeStyleLabels.BadgeClass(s.Style)">@s.NameVi</span>
+                                </td>
+                                <td class="text-end">@s.Total</td>
+                                <td class="text-end">@s.Open</td>
+                                <td class="text-end">
+                                    <span class="text-green">@s.Wins</span> / <span class="text-red">@s.Losses</span>
+                                </td>
+                                <td class="text-end">@(s.Closed > 0 ? s.WinRate.ToString("N1") + "%" : "—")</td>
+                                <td class="text-end text-secondary">
+                                    @(s.BreakevenWinRate is decimal be ? be.ToString("N1") + "%" : "—")
+                                </td>
+                                <td class="text-end @(s.Expectancy > 0 ? "text-green" : s.Expectancy < 0 ? "text-red" : "")">
+                                    <strong>@(s.Closed > 0 ? s.Expectancy.ToString("N2") + "R" : "—")</strong>
+                                </td>
+                                <td class="text-end @(s.TotalR > 0 ? "text-green" : s.TotalR < 0 ? "text-red" : "")">
+                                    @s.TotalR.ToString("N2")
+                                </td>
+                                <td class="text-end @(s.TotalPnl > 0 ? "text-green" : s.TotalPnl < 0 ? "text-red" : "")">
+                                    @s.TotalPnl.ToString("N2")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
     @if (Model.DisciplineGates.Count > 0)
     {
         <div class="card mt-3 @(Model.IsBlocked ? "border-danger" : "")">

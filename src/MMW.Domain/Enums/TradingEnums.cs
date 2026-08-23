@@ -157,14 +157,47 @@ public enum TradingStrategyVersion
     TriggerFirstV3 = 3,
     CalibratedV5 = 5,
     AdaptiveSidewaysV6 = 6,
+
+    /// <summary>
+    /// Xu hướng đọc từ khung 4 giờ, điểm vào tìm trên khung 15 phút, dừng lỗ và mục tiêu neo
+    /// vào cấu trúc 4 giờ.
+    /// </summary>
+    /// <remarks>
+    /// Khác mọi phiên bản trước ở ba điểm, và cả ba đều nhắm vào KỲ VỌNG chứ không vào tỉ lệ
+    /// thắng:
+    ///
+    /// <list type="number">
+    /// <item>Chiều lệnh lấy từ cấu trúc 4h CỦA CHÍNH MÃ ĐÓ (chuỗi HH/HL), không lấy từ chế độ
+    /// ngày của BTC. Hai mã có thể đi ngược nhau và kế hoạch ngày không diễn tả được điều đó.</item>
+    /// <item>Dừng lỗ đo bằng ATR khung 4h, không phải khung vào lệnh. Dừng lỗ hẹp theo 15m bị
+    /// nhiễu quét ra ngay cả khi nhận định 4h vẫn còn đúng — đó là thua vì đặt sai chỗ dừng,
+    /// không phải thua vì đọc sai hướng.</item>
+    /// <item>Chỉ vào khi giá lùi về VÙNG GIÁ TRỊ 4h, và bắt buộc có xác nhận trên 15m. Không
+    /// đuổi giá giữa không trung.</item>
+    /// </list>
+    ///
+    /// Đánh đổi đã biết trước và chấp nhận: dừng lỗ rộng hơn thì tỉ lệ thắng THẤP HƠN. Bù lại
+    /// mục tiêu cũng đo bằng cấu trúc 4h nên phần thắng lớn hơn nhiều, và runner được kéo theo
+    /// pivot 4h thay vì bị chặn trần ở TP1.
+    /// </remarks>
+    HtfSwingV7 = 7,
 }
 
 public static class TradingStrategyVersionExtensions
 {
+    /// <summary>
+    /// Bộ kích hoạt là điều kiện LÕI, còn thang điểm chỉ còn vai đánh giá chất lượng bối cảnh.
+    /// </summary>
+    /// <remarks>
+    /// V7 thuộc nhóm này, và với nó điều đó còn đúng hơn các bản trước: chiều lệnh đến từ cấu
+    /// trúc 4h chứ không từ thang điểm, nên một con số điểm cao trên một cấu trúc 4h đã hỏng
+    /// không được phép mở đường vào lệnh.
+    /// </remarks>
     public static bool UsesTriggerFirst(this TradingStrategyVersion version) => version is
         TradingStrategyVersion.TriggerFirstV3
         or TradingStrategyVersion.CalibratedV5
-        or TradingStrategyVersion.AdaptiveSidewaysV6;
+        or TradingStrategyVersion.AdaptiveSidewaysV6
+        or TradingStrategyVersion.HtfSwingV7;
 
     public static bool UsesV5Admission(this TradingStrategyVersion version) => version is
         TradingStrategyVersion.CalibratedV5
@@ -172,6 +205,31 @@ public static class TradingStrategyVersionExtensions
 
     public static bool UsesSidewaysV6(this TradingStrategyVersion version) =>
         version == TradingStrategyVersion.AdaptiveSidewaysV6;
+
+    /// <summary>Bộ luật swing khung 4h có được bật không.</summary>
+    public static bool UsesHtfSwing(this TradingStrategyVersion version) =>
+        version == TradingStrategyVersion.HtfSwingV7;
+
+    /// <summary>
+    /// Lệnh sinh ra từ phiên bản này thuộc nhóm nào khi xem sổ và làm báo cáo.
+    /// </summary>
+    /// <remarks>
+    /// Hai nhóm có kỳ vọng, thời gian giữ và tỉ lệ thắng khác hẳn nhau. Gộp chung khi thống kê
+    /// là cộng táo với cam: một hệ 20% thắng ăn 5R trộn với một hệ 55% thắng ăn 1R cho ra một
+    /// con số trung bình không mô tả hệ nào cả, và nó sẽ che mất đúng lúc một trong hai hỏng.
+    /// </remarks>
+    public static TradeStyle StyleOf(this TradingStrategyVersion version) =>
+        version.UsesHtfSwing() ? TradeStyle.HtfSwing : TradeStyle.Intraday;
+}
+
+/// <summary>Nhóm lệnh theo khung thời gian ra quyết định. Dùng để tách sổ và tách báo cáo.</summary>
+public enum TradeStyle
+{
+    /// <summary>Lệnh ngắn trong ngày: chiều theo kế hoạch ngày, mức neo vào khung 15 phút.</summary>
+    Intraday = 1,
+
+    /// <summary>Lệnh swing khung 4 giờ: chiều theo cấu trúc 4h, mức neo vào cấu trúc 4h.</summary>
+    HtfSwing = 2,
 }
 
 /// <summary>Playbook đã được nhận diện trước khi lập kế hoạch thực thi.</summary>
@@ -215,6 +273,17 @@ public enum SetupType
     /// thì cấu trúc xu hướng đã hỏng chứ không còn là một nhịp hồi.
     /// </remarks>
     MaDeepPullback = 10,
+
+    /// <summary>
+    /// Xu hướng 4h còn nguyên, giá lùi về vùng giá trị 4h, và khung 15 phút xác nhận quay đầu.
+    /// </summary>
+    /// <remarks>
+    /// Khác <see cref="MaPullback"/> ở chỗ "vùng để vào" không phải một đường trung bình động
+    /// trên khung vào lệnh, mà là chỗ hợp lưu của nhiều mức 4h: đáy/đỉnh xoay 4h, EMA20/50 4h,
+    /// dải Fibonacci của chân đẩy 4h gần nhất, và thân nến 4h đã tạo ra cú phá cấu trúc. Càng
+    /// nhiều lớp chồng lên nhau thì <c>SetupQualityScore</c> càng cao và cỡ lệnh càng lớn.
+    /// </remarks>
+    HtfSwingPullback = 11,
 }
 
 /// <summary>
@@ -271,6 +340,26 @@ public enum SetupTriggerState
 
     /// <summary>Đã có cú từ chối nhưng giá chưa hồi về vùng MA chậm nhất.</summary>
     MaDeepZoneMissing = 25,
+
+    // ── Nhánh swing khung 4 giờ (V7) ──
+
+    /// <summary>Khung 4h chưa có chuỗi đỉnh/đáy rõ ràng — không có xu hướng để bám.</summary>
+    HtfTrendUnclear = 26,
+
+    /// <summary>Khung 4h có xu hướng nhưng đang đi ngược chiều đang xét.</summary>
+    HtfTrendOpposed = 27,
+
+    /// <summary>Xu hướng 4h thuận chiều, nhưng giá chưa lùi về vùng giá trị nào.</summary>
+    HtfValueZoneMissing = 28,
+
+    /// <summary>Giá đã vào vùng giá trị nhưng vùng đó quá mỏng — chỉ một lớp, không hợp lưu.</summary>
+    HtfValueZoneWeak = 29,
+
+    /// <summary>Đã ở trong vùng giá trị nhưng khung 15 phút chưa xác nhận quay đầu.</summary>
+    HtfEntryConfirmationMissing = 30,
+
+    /// <summary>Nhịp hồi đã đi quá sâu — thủng mức mà nếu mất thì cấu trúc 4h coi như hỏng.</summary>
+    HtfPullbackTooDeep = 31,
 }
 
 /// <summary>

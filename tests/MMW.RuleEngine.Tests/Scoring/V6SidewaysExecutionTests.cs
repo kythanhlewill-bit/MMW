@@ -226,7 +226,7 @@ public sealed class V6SidewaysExecutionTests
 
     private static SetupTriggerPolicy Policy() => new(
         ScoringFixtures.Structure,
-        new SidewaysPatternAnalyzer(ScoringFixtures.Swings));
+        new SidewaysPatternAnalyzer(ScoringFixtures.Swings), ScoringFixtures.Htf, ScoringFixtures.Swings);
 
     private static EngineSetting V6Settings(Action<EngineSetting>? configure = null) =>
         ScoringFixtures.Settings(s =>

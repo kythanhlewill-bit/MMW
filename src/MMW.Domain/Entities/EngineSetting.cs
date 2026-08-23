@@ -233,6 +233,66 @@ public class EngineSetting : BaseEntity
     [Precision(9, 4)] public decimal V6RangeMaxCostToTargetPercent { get; set; } = 15m;
     [Precision(9, 4)] public decimal V6BreakoutMaxCostToTargetPercent { get; set; } = 12m;
 
+    // ── V7: swing khung 4 giờ ───────────────────────────────────────────
+    // Nhóm này chỉnh KHẨU VỊ của bộ luật swing. Những con số là ĐỊNH NGHĨA của nó — chu kỳ
+    // EMA 20/50/200, dải Fibonacci 38,2–61,8% — nằm trong mã kèm chú thích, theo đúng ranh
+    // giới mà nhóm ngưỡng chấm điểm bên dưới đã đặt ra.
+
+    /// <summary>Số nến 4h mỗi bên để xác nhận một điểm xoay khung lớn.</summary>
+    /// <remarks>
+    /// Lớn hơn <see cref="SwingPivotBars"/> (2, dùng cho khung 15 phút) là có chủ ý: một điểm
+    /// xoay 4h phải đại diện cho cấu trúc nhiều ngày, không phải cho một nhịp trong phiên. Với
+    /// 3 nến mỗi bên, mọi pivot chỉ biết được sau 12 giờ — chậm, nhưng đó chính là thứ khiến nó
+    /// đáng tin.
+    /// </remarks>
+    public int V7HtfPivotBars { get; set; } = 3;
+
+    /// <summary>Số nến 4h gần nhất dùng để đọc cấu trúc xu hướng. 60 nến = 10 ngày.</summary>
+    public int V7HtfStructureLookbackBars { get; set; } = 60;
+
+    /// <summary>Nửa bề rộng của một lớp vùng giá trị, tính theo ATR khung 4h.</summary>
+    [Precision(9, 4)] public decimal V7ZoneHalfWidthAtr { get; set; } = 0.25m;
+
+    /// <summary>Số lớp hợp lưu tối thiểu để một vùng được coi là vùng giá trị dùng được.</summary>
+    /// <remarks>
+    /// Hai lớp là sàn, không phải sở thích. Một mình EMA50 4h thì giá cắt qua nó vài lần mỗi
+    /// tuần mà chẳng nói lên điều gì; EMA50 trùng với đáy xoay trước đó mới là chỗ có người
+    /// thật sự đang chờ mua.
+    /// </remarks>
+    public int V7MinZoneConfluence { get; set; } = 2;
+
+    /// <summary>Đệm dừng lỗ ngoài rìa vùng giá trị, tính theo ATR khung 4h.</summary>
+    [Precision(9, 4)] public decimal V7StopBufferAtr { get; set; } = 0.25m;
+
+    /// <summary>Tỉ lệ vị thế đóng tại mục tiêu gần.</summary>
+    [Precision(9, 4)] public decimal V7FirstTargetFraction { get; set; } = 0.5m;
+
+    /// <summary>R:R tối thiểu tới mục tiêu GẦN. Dưới mức này thì chốt phần đầu không bù nổi phí.</summary>
+    [Precision(9, 4)] public decimal V7MinFirstRr { get; set; } = 1.0m;
+
+    /// <summary>
+    /// R:R tối thiểu tới mục tiêu CUỐI. Đây là con số quyết định hệ này lãi hay lỗ.
+    /// </summary>
+    /// <remarks>
+    /// Với dừng lỗ rộng theo cấu trúc 4h, tỉ lệ thắng dự kiến rơi về khoảng 35%. Ở mức đó, hoà
+    /// vốn cần R:R ≈ 1,9 và đó là TRƯỚC phí. 2,5 là biên an toàn, không phải mong muốn.
+    /// </remarks>
+    [Precision(9, 4)] public decimal V7MinRunnerRr { get; set; } = 2.5m;
+
+    /// <summary>Số nến 4h mỗi bên dùng để tìm pivot khi kéo dừng lỗ. 0 = không kéo.</summary>
+    public int V7TrailPivotBars { get; set; } = 2;
+
+    /// <summary>Số nến 4h tối đa kể từ lúc cấu trúc xác nhận. Quá thì nhịp không còn tươi.</summary>
+    public int V7MaxSetupAgeBars { get; set; } = 12;
+
+    /// <summary>Số lệnh swing được mở cùng lúc, đếm riêng với lệnh ngắn.</summary>
+    /// <remarks>
+    /// Đếm riêng vì hai nhóm tiêu hai loại ngân sách khác nhau: lệnh swing giữ nhiều ngày và
+    /// chiếm chỗ lâu, còn lệnh ngắn xoay vòng trong phiên. Dùng chung một hạn mức thì nhóm giữ
+    /// lâu sẽ khoá cửa nhóm kia suốt cả tuần.
+    /// </remarks>
+    public int V7MaxConcurrentSwingPositions { get; set; } = 2;
+
     /// <summary>Các mã engine theo dõi, đã tách và chuẩn hoá.</summary>
     public IReadOnlyList<string> SymbolList() =>
         (Symbols ?? string.Empty)

@@ -20,6 +20,12 @@ public class DashboardViewModel
     public int TotalFlags { get; set; }
     public int CriticalFlags { get; set; }
 
+    /// <summary>
+    /// Kết quả tách theo nhóm lệnh. Các con số gộp ở trên vẫn giữ, nhưng đây mới là chỗ đọc
+    /// được hệ nào đang lãi.
+    /// </summary>
+    public IReadOnlyList<TradeStyleStats> StyleStats { get; set; } = Array.Empty<TradeStyleStats>();
+
     public IReadOnlyList<TradingAccount> Accounts { get; set; } = new List<TradingAccount>();
 
     // ── Trạng thái kỷ luật của engine (T125, FR-035) ────────────────────

@@ -106,6 +106,68 @@ public class OpenPositionGateTests
         Assert.Equal(VetoReason.ConcurrentPositionLimit, result.VetoReason);
     }
 
+    /// <summary>
+    /// Hạn mức đếm RIÊNG từng nhóm lệnh.
+    /// </summary>
+    /// <remarks>
+    /// Một lệnh swing 4h giữ nhiều ngày. Nếu nó chiếm chỗ trong cùng hạn mức với lệnh trong
+    /// ngày thì hai lệnh swing là đủ khoá đường vào của bộ luật ngắn hạn suốt cả tuần — và nó
+    /// khoá âm thầm, chỉ để lại một dòng "đủ trần vị thế" chẳng nhắc gì tới việc chỗ đó đang bị
+    /// một nhóm khác giữ.
+    /// </remarks>
+    [Fact]
+    public void Vi_the_nhom_khac_khong_chiem_han_muc_cua_nhom_nay()
+    {
+        var result = new OpenPositionGate().Evaluate(Context(
+            symbol: "SOLUSDT",
+            configure: s =>
+            {
+                s.StrategyVersion = TradingStrategyVersion.AdaptiveSidewaysV6;
+                s.MaxConcurrentPositions = 2;
+            },
+            open: new[]
+            {
+                new OpenPositionSnapshot("BTCUSDT", TradeDirection.Long, 1m, TradeStyle.HtfSwing),
+                new OpenPositionSnapshot("ETHUSDT", TradeDirection.Long, 1m, TradeStyle.HtfSwing),
+            }));
+
+        Assert.Equal(GateAction.Allow, result.Action);
+    }
+
+    [Fact]
+    public void Nhom_swing_dung_han_muc_rieng_cua_no()
+    {
+        var result = new OpenPositionGate().Evaluate(Context(
+            symbol: "SOLUSDT",
+            configure: s =>
+            {
+                s.StrategyVersion = TradingStrategyVersion.HtfSwingV7;
+                s.V7MaxConcurrentSwingPositions = 1;
+                s.MaxConcurrentPositions = 9;
+            },
+            open: new[]
+            {
+                new OpenPositionSnapshot("BTCUSDT", TradeDirection.Long, 1m, TradeStyle.HtfSwing),
+            }));
+
+        Assert.Equal(GateAction.BlockTrade, result.Action);
+        Assert.Equal(VetoReason.ConcurrentPositionLimit, result.VetoReason);
+        Assert.Contains("lệnh H4", result.Reason);
+    }
+
+    /// <summary>Rào trùng mã vẫn chặn BẤT KỂ nhóm — cùng một mã là cùng một rủi ro.</summary>
+    [Fact]
+    public void Trung_ma_van_chan_du_khac_nhom()
+    {
+        var result = new OpenPositionGate().Evaluate(Context(
+            symbol: "ETHUSDT",
+            configure: s => s.StrategyVersion = TradingStrategyVersion.HtfSwingV7,
+            open: new OpenPositionSnapshot("ETHUSDT", TradeDirection.Long, 1m, TradeStyle.Intraday)));
+
+        Assert.Equal(GateAction.BlockTrade, result.Action);
+        Assert.Equal(VetoReason.PositionAlreadyOpen, result.VetoReason);
+    }
+
     [Fact]
     public void Khong_co_vi_the_nao_thi_cho_qua()
     {

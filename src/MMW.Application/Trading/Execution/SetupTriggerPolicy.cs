@@ -59,11 +59,19 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
 
     private readonly MarketStructureAnalyzer _structure;
     private readonly ISidewaysPatternAnalyzer _sideways;
+    private readonly IHtfSwingAnalyzer _htf;
+    private readonly ISwingDetector _swings;
 
-    public SetupTriggerPolicy(MarketStructureAnalyzer structure, ISidewaysPatternAnalyzer sideways)
+    public SetupTriggerPolicy(
+        MarketStructureAnalyzer structure,
+        ISidewaysPatternAnalyzer sideways,
+        IHtfSwingAnalyzer htf,
+        ISwingDetector swings)
     {
         _structure = structure;
         _sideways = sideways;
+        _htf = htf;
+        _swings = swings;
     }
 
     public SetupTriggerDecision Evaluate(ScoringContext context, RangeLocation? range)
@@ -74,6 +82,13 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
             return SetupTriggerDecision.Reject(
                 SetupTriggerState.ImpulseWeak,
                 $"V3 cần ít nhất {VolumeLookbackBars + 2} nến đã đóng để xác nhận trigger.");
+
+        // V7 THAY THẾ cả thang, không cộng thêm vào nó. Bộ luật swing đọc chiều từ cấu trúc 4h
+        // của chính mã, còn cả năm nhánh bên dưới đều đọc chiều từ kế hoạch ngày của BTC — chạy
+        // song song hai nguồn chiều trên cùng một tài khoản là mời hai hệ thống cãi nhau bằng
+        // tiền thật. Muốn chạy cả hai thì dùng hai tài khoản, mỗi tài khoản một phiên bản.
+        if (context.Settings.StrategyVersion.UsesHtfSwing())
+            return EvaluateHtfSwing(context);
 
         // Rẽ theo CẤU TRÚC ngày, không theo nhãn ngày. Trước đây chỗ này so thẳng với
         // DayRegime.Range, nên hai nhãn nguy hiểm — EventDay và HighVolatility — rơi hết vào
@@ -1233,5 +1248,315 @@ public sealed class SetupTriggerPolicy : ISetupTriggerPolicy
                 Math.Max(Math.Abs(candles[i].High - previousClose), Math.Abs(candles[i].Low - previousClose))));
         }
         return ranges.Average();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // V7 — swing khung 4 giờ
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>Số nến 15 phút dùng để dò cấu trúc nhỏ khi tìm xác nhận vào lệnh.</summary>
+    private const int MicroStructureLookbackBars = 24;
+
+    /// <summary>Số nến 15 phút mà xác nhận phải xảy ra trong đó. Cũ hơn thì không còn là sự kiện.</summary>
+    private const int MicroConfirmationFreshBars = 3;
+
+    /// <summary>Bội của chân đẩy dùng làm mục tiêu cuối khi giữ runner.</summary>
+    /// <remarks>
+    /// 1,618 là mức mở rộng Fibonacci, và nó có mặt ở đây vì một lý do đo được chứ không vì
+    /// huyền học: nó xấp xỉ khoảng giá mà một chân đẩy tiếp theo cùng độ lớn sẽ đi tới, tính từ
+    /// chân nhịp hồi. Đây là "mục tiêu đo được" cổ điển, chỉ viết dưới dạng tỉ lệ.
+    /// </remarks>
+    private const decimal RunnerExtension = 1.618m;
+
+    /// <summary>Cách xác nhận trên khung vào lệnh đã tìm thấy.</summary>
+    private enum MicroConfirmation
+    {
+        None = 0,
+
+        /// <summary>Khung 15 phút phá cấu trúc nhỏ THEO chiều xu hướng lớn.</summary>
+        MicroBreak = 1,
+
+        /// <summary>Nến từ chối có râu dài về phía vùng, đóng cửa quay lại.</summary>
+        Rejection = 2,
+
+        /// <summary>Giá xuyên qua đáy vùng rồi đóng cửa trở lại bên trong.</summary>
+        LiquiditySweep = 3,
+    }
+
+    /// <summary>
+    /// Xu hướng đọc trên khung 4h, điểm vào tìm trên khung 15 phút, mức neo vào cấu trúc 4h.
+    /// </summary>
+    /// <remarks>
+    /// <para>Trình tự bốn cửa, và thứ tự có ý nghĩa: mỗi cửa chỉ chạy khi cửa trước đã đóng lại
+    /// sau lưng, nên mã trạng thái trả về luôn chỉ đúng chỗ cơ hội chết. Đó là điều kiện để tuần
+    /// sau còn trả lời được câu "vì sao cả tuần không vào lệnh nào".</para>
+    ///
+    /// <list type="number">
+    /// <item><b>Xu hướng 4h</b> — chuỗi đỉnh/đáy phải nhất quán và thuận chiều đang xét.</item>
+    /// <item><b>Vùng giá trị</b> — giá phải đang nằm TRONG một vùng đủ hợp lưu.</item>
+    /// <item><b>Xác nhận 15 phút</b> — phải có một sự kiện, không chỉ là "giá đã tới nơi".</item>
+    /// <item><b>Hình học</b> — dừng lỗ ngoài vùng, hai mục tiêu, và cả hai tỉ lệ phải đạt.</item>
+    /// </list>
+    ///
+    /// <para><b>Vì sao dừng lỗ đo bằng ATR khung 4h.</b> Vùng giá trị là một cấu trúc 4h; đệm
+    /// quanh nó phải cùng đơn vị với thứ nó bảo vệ. Dùng ATR 15 phút cho ra đệm nhỏ hơn khoảng
+    /// bốn lần, và cái đệm đó bị chính nhiễu trong phiên quét sạch trong khi nhận định 4h chưa
+    /// hề sai. Đây là nguyên nhân gốc của kiểu thua "đúng hướng nhưng vẫn mất tiền".</para>
+    /// </remarks>
+    private SetupTriggerDecision EvaluateHtfSwing(ScoringContext context)
+    {
+        var s = context.Settings;
+        var isLong = context.Direction == TradeDirection.Long;
+        var entry = context.CurrentPrice;
+
+        if (entry <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfTrendUnclear, "Không có giá hiện tại.", SetupType.HtfSwingPullback);
+
+        // ── Cửa 1: xu hướng khung 4 giờ ──
+        var trend = _htf.ReadTrend(context.BiasCandles, s.V7HtfPivotBars, s.V7HtfStructureLookbackBars);
+
+        if (trend.Trend == HtfTrend.Unclear)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfTrendUnclear, trend.DetailVi,
+                SetupType.HtfSwingPullback, SetupFunnelStage.NotEligible);
+
+        if (!trend.Supports(context.Direction))
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfTrendOpposed,
+                $"{trend.DetailVi} — ngược chiều {(isLong ? "mua" : "bán")}.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.NotEligible);
+
+        if (trend.BarsSinceConfirmed > s.V7MaxSetupAgeBars)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfTrendUnclear,
+                $"Cấu trúc 4h xác nhận cách đây {trend.BarsSinceConfirmed} nến, vượt hạn "
+                + $"{s.V7MaxSetupAgeBars} nến — nhịp này không còn tươi.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.EligibleContext);
+
+        if (trend.Atr is not { } htfAtr || htfAtr <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfTrendUnclear, "Không tính được ATR khung 4h.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.EligibleContext);
+
+        // Nhịp hồi đã phá mức làm hỏng cấu trúc thì cấu trúc đã hỏng — không phải chỗ để mua rẻ.
+        if (trend.InvalidationPrice is { } invalid
+            && (isLong ? entry < invalid : entry > invalid))
+        {
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfPullbackTooDeep,
+                $"Giá {entry:N2} đã vượt qua mức làm hỏng cấu trúc {invalid:N2}.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.EligibleContext);
+        }
+
+        // ── Cửa 2: vùng giá trị ──
+        var zones = _htf.BuildValueZones(context.BiasCandles, trend, entry, s.V7ZoneHalfWidthAtr);
+        var inside = zones.FirstOrDefault(z => z.Contains(entry));
+
+        if (inside is null)
+        {
+            var nearest = zones.FirstOrDefault();
+            var hint = nearest is null
+                ? "chưa dựng được vùng nào"
+                : $"vùng gần nhất {nearest.Low:N2}–{nearest.High:N2} ({nearest.DescribeVi()})";
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfValueZoneMissing,
+                $"{trend.DetailVi} Giá {entry:N2} chưa vào vùng giá trị nào — {hint}.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.EligibleContext);
+        }
+
+        if (inside.Confluence < s.V7MinZoneConfluence)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfValueZoneWeak,
+                $"Vùng {inside.Low:N2}–{inside.High:N2} chỉ có {inside.Confluence} lớp "
+                + $"({inside.DescribeVi()}), cần {s.V7MinZoneConfluence}.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.StructureCandidate);
+
+        // ── Cửa 3: xác nhận trên khung vào lệnh ──
+        var confirmation = FindMicroConfirmation(context, inside, isLong, out var confirmDetail);
+        if (confirmation == MicroConfirmation.None)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfEntryConfirmationMissing,
+                $"Đã ở trong vùng {inside.Low:N2}–{inside.High:N2} ({inside.DescribeVi()}) "
+                + $"nhưng khung {s.EntryTimeframe} chưa xác nhận: {confirmDetail}",
+                SetupType.HtfSwingPullback, SetupFunnelStage.TriggerStarted);
+
+        // ── Cửa 4: hình học ──
+        var buffer = htfAtr * s.V7StopBufferAtr;
+        var stop = isLong ? inside.Low - buffer : inside.High + buffer;
+
+        var floor = entry * s.MinStopDistancePercent / 100m;
+        if (Math.Abs(entry - stop) < floor)
+            stop = isLong ? entry - floor : entry + floor;
+
+        var distance = Math.Abs(entry - stop);
+        if (distance <= 0m)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfValueZoneWeak, "Dừng lỗ trùng giá vào.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.TriggerStarted);
+
+        var (first, runner) = BuildHtfTargets(trend, entry, isLong);
+        if (first is null || runner is null)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfValueZoneWeak,
+                "Không dựng được mục tiêu từ chân đẩy 4h.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.TriggerStarted);
+
+        var firstRr = (isLong ? first.Value - entry : entry - first.Value) / distance;
+        var runnerRr = (isLong ? runner.Value - entry : entry - runner.Value) / distance;
+
+        if (firstRr < s.V7MinFirstRr)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfValueZoneWeak,
+                $"Mục tiêu gần {first.Value:N2} chỉ được {firstRr:N2}R, dưới sàn {s.V7MinFirstRr:N2}R.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.TriggerStarted);
+
+        if (runnerRr < s.V7MinRunnerRr)
+            return SetupTriggerDecision.Reject(
+                SetupTriggerState.HtfValueZoneWeak,
+                $"Mục tiêu cuối {runner.Value:N2} chỉ được {runnerRr:N2}R, dưới sàn "
+                + $"{s.V7MinRunnerRr:N2}R — với dừng lỗ rộng theo cấu trúc 4h thì dưới mức này "
+                + "kỳ vọng âm.",
+                SetupType.HtfSwingPullback, SetupFunnelStage.TriggerStarted);
+
+        var quality = HtfSwingQuality(inside.Confluence, trend.Strength, runnerRr, s);
+
+        return new SetupTriggerDecision(
+            Passed: true,
+            SetupType: SetupType.HtfSwingPullback,
+            State: SetupTriggerState.Confirmed,
+            DetailVi:
+                $"{trend.DetailVi} Giá {entry:N2} vào vùng {inside.Low:N2}–{inside.High:N2} "
+                + $"({inside.DescribeVi()}, {inside.Confluence} lớp); {confirmDetail} "
+                + $"Dừng lỗ {stop:N2} ({distance / entry * 100m:N2}%), "
+                + $"chốt gần {first.Value:N2} ({firstRr:N2}R), chốt cuối {runner.Value:N2} ({runnerRr:N2}R).",
+            // Vào bằng lệnh chờ ở giữa vùng: mép vùng là nơi giá có thể không chạm tới, còn giữa
+            // vùng là nơi cả bốn lớp hợp lưu đều đã có hiệu lực.
+            SuggestedLimitEntry: inside.Mid,
+            Stage: SetupFunnelStage.Confirmed,
+            EventId: $"{context.Symbol}:HtfSwing:{context.Direction}:{inside.Low:F2}-{inside.High:F2}",
+            SetupQualityScore: quality,
+            SuggestedStopLoss: stop,
+            SuggestedFirstTakeProfit: first,
+            SuggestedRunnerTakeProfit: runner);
+    }
+
+    /// <summary>
+    /// Hai mục tiêu dựng từ chân đẩy 4h gần nhất: mục tiêu gần là đỉnh/đáy xoay vừa rồi, mục
+    /// tiêu cuối là mở rộng <see cref="RunnerExtension"/> của chính chân đó.
+    /// </summary>
+    /// <remarks>
+    /// Khi giá đã vượt qua đỉnh xoay gần nhất — nhịp hồi nông tới mức không chạm lại nó — thì
+    /// mục tiêu gần rơi lại phía sau giá vào. Lúc đó dùng nửa chân đẩy tính từ giá vào thay vì
+    /// bỏ setup: cấu trúc vẫn đúng, chỉ có mốc tham chiếu là đã bị vượt.
+    /// </remarks>
+    private static (decimal? First, decimal? Runner) BuildHtfTargets(
+        HtfTrendRead trend, decimal entry, bool isLong)
+    {
+        if (trend.LastSwingHigh is not { } high || trend.LastSwingLow is not { } low) return (null, null);
+
+        var leg = high - low;
+        if (leg <= 0m) return (null, null);
+
+        var swingTarget = isLong ? high : low;
+        var beyond = isLong ? swingTarget > entry : swingTarget < entry;
+
+        var first = beyond
+            ? swingTarget
+            : isLong ? entry + leg * 0.5m : entry - leg * 0.5m;
+
+        var runner = isLong
+            ? low + leg * RunnerExtension
+            : high - leg * RunnerExtension;
+
+        // Mục tiêu cuối phải xa hơn mục tiêu gần, nếu không thì hai lệnh chốt sẽ tranh nhau.
+        if (isLong ? runner <= first : runner >= first)
+            runner = isLong ? first + leg * 0.5m : first - leg * 0.5m;
+
+        return (first, runner);
+    }
+
+    /// <summary>
+    /// Tìm sự kiện xác nhận trên khung vào lệnh, trong vài nến gần nhất.
+    /// </summary>
+    /// <remarks>
+    /// Ba hình dạng, và chỉ cần một cái đúng. Điểm chung của cả ba là chúng đòi một CÚ ĐÓNG NẾN,
+    /// không chỉ đòi giá chạm tới. "Giá đã vào vùng" là điều kiện cần; "và người mua đã xuất
+    /// hiện ở đó" mới là điều kiện đủ, và chỉ nến đóng mới nói được vế thứ hai.
+    /// </remarks>
+    private MicroConfirmation FindMicroConfirmation(
+        ScoringContext context, HtfValueZone zone, bool isLong, out string detail)
+    {
+        var candles = context.EntryCandles;
+        var fresh = Math.Min(MicroConfirmationFreshBars, candles.Count);
+        var recent = candles.Skip(candles.Count - fresh).ToList();
+
+        // (1) Phá cấu trúc nhỏ thuận chiều xu hướng lớn.
+        var lookback = Math.Min(MicroStructureLookbackBars, candles.Count);
+        var micro = candles.Skip(candles.Count - lookback).ToList();
+        var microPivots = _swings.Detect(micro, context.Settings.SwingPivotBars);
+        var microLevel = isLong
+            ? microPivots.Where(p => p.IsHigh).Select(p => (decimal?)p.Price).LastOrDefault()
+            : microPivots.Where(p => !p.IsHigh).Select(p => (decimal?)p.Price).LastOrDefault();
+
+        if (microLevel is { } lvl)
+        {
+            foreach (var c in recent)
+            {
+                if (isLong ? c.Close > lvl : c.Close < lvl)
+                {
+                    detail = $"khung nhỏ phá {(isLong ? "đỉnh" : "đáy")} {lvl:N2} bằng nến đóng {c.Close:N2}.";
+                    return MicroConfirmation.MicroBreak;
+                }
+            }
+        }
+
+        // (2) Nến từ chối: râu dài về phía vùng, thân đóng ngược lại.
+        foreach (var c in recent)
+        {
+            var range = c.High - c.Low;
+            if (range <= 0m) continue;
+
+            var wick = isLong ? Math.Min(c.Open, c.Close) - c.Low : c.High - Math.Max(c.Open, c.Close);
+            if (wick / range < RejectionWickRatio) continue;
+
+            var location = CloseLocation(c);
+            if (isLong ? location < 1m - RejectionCloseLocation : location > RejectionCloseLocation) continue;
+
+            detail = $"nến từ chối râu {wick / range:P0} biên độ, đóng {c.Close:N2}.";
+            return MicroConfirmation.Rejection;
+        }
+
+        // (3) Quét thanh khoản: xuyên ra ngoài vùng rồi đóng cửa trở vào trong.
+        foreach (var c in recent)
+        {
+            var pierced = isLong ? c.Low < zone.Low : c.High > zone.High;
+            if (!pierced) continue;
+            if (!zone.Contains(c.Close)) continue;
+
+            detail = $"quét thanh khoản qua {(isLong ? zone.Low : zone.High):N2} rồi đóng lại trong vùng ở {c.Close:N2}.";
+            return MicroConfirmation.LiquiditySweep;
+        }
+
+        detail = $"{fresh} nến gần nhất không có phá cấu trúc nhỏ, nến từ chối hay cú quét nào.";
+        return MicroConfirmation.None;
+    }
+
+    /// <summary>
+    /// Chất lượng 60–100. Ba nguồn điểm, và cả ba đều là thứ ĐO ĐƯỢC trước khi vào lệnh.
+    /// </summary>
+    /// <remarks>
+    /// Hợp lưu nặng nhất (tối đa 20 điểm) vì nó là biến duy nhất trong ba biến nói về việc có
+    /// bao nhiêu người khác cũng đang nhìn thấy cùng mức giá đó. Tỉ lệ lãi/lỗ đứng thứ hai và bị
+    /// chặn trần: một con số R:R rất cao thường có nghĩa mục tiêu ở quá xa chứ không có nghĩa
+    /// setup tốt hơn, nên thưởng cho nó không giới hạn là thưởng cho ảo tưởng.
+    /// </remarks>
+    private static int HtfSwingQuality(
+        int confluence, HtfTrendStrength strength, decimal runnerRr, EngineSetting settings)
+    {
+        var confluenceScore = Math.Min(20m, (confluence - settings.V7MinZoneConfluence + 1) * 7m);
+        var strengthScore = strength == HtfTrendStrength.Aligned ? 10m : 0m;
+        var rrScore = Math.Min(10m, (runnerRr - settings.V7MinRunnerRr) * 4m);
+        return (int)Math.Clamp(60m + confluenceScore + strengthScore + rrScore, 60m, 100m);
     }
 }

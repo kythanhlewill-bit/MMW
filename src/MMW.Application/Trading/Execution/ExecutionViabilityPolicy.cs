@@ -48,6 +48,25 @@ public sealed class ExecutionViabilityPolicy : IExecutionViabilityPolicy
         var stopSlippageR = 0m;
         var grossTargetR = 0m;
 
+        // Kế hoạch chốt hai phần của V7 được chấm trên CẢ HAI mục tiêu, theo đúng tỉ lệ đóng ở
+        // mỗi mức. Chấm riêng mục tiêu gần là đo nửa lệnh rồi kết luận cho cả lệnh, và với V7 nó
+        // sai theo hướng chí mạng: bộ luật đó cố tình đặt mục tiêu gần ở khoảng 1,0R và dồn phần
+        // lãi vào runner ở 2,5R trở lên, nên cổng chi phí sẽ đánh trượt gần như MỌI setup của nó
+        // vì "R:R quá thấp" — trong khi kinh tế thật rất tốt.
+        //
+        // Đây là giá bình quân gia quyền của hai lần thoát, không phải kỳ vọng có xác suất: nó
+        // giả định cả hai mục tiêu đều chạm. Lạc quan, nhưng lạc quan đúng bằng mức mà cách tính
+        // một-mục-tiêu vẫn luôn giả định.
+        //
+        // ⚠️ CHỈ áp cho V7, và điều kiện là phiên bản chứ không phải "kế hoạch có runner hay
+        // không". Kế hoạch V6 cũng có runner, nên nới điều kiện ra sẽ đổi luôn kinh tế của bộ
+        // luật đang chạy thật: cùng phiếu 13:31 ngày 14/08 nhảy từ gross 1,960R lên 2,049R, tức
+        // cổng chi phí bắt đầu cho qua những setup mà nó đã từng chặn. Đó là một thay đổi chiến
+        // lược, và nó không được phép xảy ra như tác dụng phụ của việc thêm một bộ luật mới.
+        var blendedTarget = plan.RunnerTakeProfit is { } runner && settings.StrategyVersion.UsesHtfSwing()
+            ? plan.FirstTakeProfit * plan.FirstTakeProfitFraction + runner * (1m - plan.FirstTakeProfitFraction)
+            : plan.FirstTakeProfit;
+
         foreach (var entry in plan.Entries)
         {
             var stopDistance = Math.Abs(entry.Price - plan.StopLoss);
@@ -63,13 +82,13 @@ public sealed class ExecutionViabilityPolicy : IExecutionViabilityPolicy
             if (!entry.IsLimit)
                 entrySlippageR += entry.Price * settings.BacktestEntrySlippageBps / 10_000m * quantityPerRiskR;
 
-            targetFeeR += plan.FirstTakeProfit * settings.BacktestMakerFeePercent / 100m * quantityPerRiskR;
+            targetFeeR += blendedTarget * settings.BacktestMakerFeePercent / 100m * quantityPerRiskR;
             stopFeeR += plan.StopLoss * settings.BacktestTakerFeePercent / 100m * quantityPerRiskR;
             stopSlippageR += plan.StopLoss * settings.BacktestStopSlippageBps / 10_000m * quantityPerRiskR;
 
             var move = direction == TradeDirection.Long
-                ? plan.FirstTakeProfit - entry.Price
-                : entry.Price - plan.FirstTakeProfit;
+                ? blendedTarget - entry.Price
+                : entry.Price - blendedTarget;
             grossTargetR += move * quantityPerRiskR;
         }
 

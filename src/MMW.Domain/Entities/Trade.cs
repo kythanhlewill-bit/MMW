@@ -31,6 +31,15 @@ public class Trade : BaseEntity
     public TradeSource Source { get; set; } = TradeSource.Manual;
     public OrderType OrderType { get; set; } = OrderType.Market;
 
+    /// <summary>
+    /// Nhóm lệnh theo khung ra quyết định. Lệnh nhập tay mặc định là lệnh ngắn.
+    /// </summary>
+    /// <remarks>
+    /// Lưu thẳng vào lệnh chứ không suy ra từ phiếu chấm điểm, vì phần lớn truy vấn báo cáo đi
+    /// từ bảng này và lệnh nhập tay thì không có phiếu nào để suy ra cả.
+    /// </remarks>
+    public TradeStyle Style { get; set; } = TradeStyle.Intraday;
+
     // --- Giá & khối lượng ---
     [Precision(18, 8)] public decimal EntryPrice { get; set; }
     [Precision(18, 8)] public decimal? ExitPrice { get; set; }
@@ -40,6 +49,44 @@ public class Trade : BaseEntity
     [Precision(9, 4)] public decimal? Leverage { get; set; } = 20m;
     [Precision(18, 8)] public decimal Fee { get; set; }
     [Precision(18, 8)] public decimal? RealizedPnl { get; set; }
+
+    // --- Chốt lời hai phần: chốt một nửa ở mục tiêu gần, giữ phần còn lại chạy ---
+
+    /// <summary>
+    /// Mục tiêu GẦN, nơi đóng một phần vị thế. Null nghĩa là lệnh chỉ có một mục tiêu duy nhất.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TakeProfit"/> luôn là mục tiêu CUỐI. Trước khi có trường này, đường chạy thật
+    /// đặt đúng một lệnh chốt lời cỡ đầy đủ ngay tại mục tiêu cuối, nên mọi lệnh không tới đích
+    /// đều quay về chạm dừng lỗ và mất trọn 1R — kể cả những lệnh đã đi đúng hướng hơn nửa
+    /// đường. Đó là chỗ rò rỉ lớn nhất của bộ luật cũ.
+    /// </remarks>
+    [Precision(18, 8)] public decimal? FirstTakeProfit { get; set; }
+
+    /// <summary>Phần vị thế đóng tại <see cref="FirstTakeProfit"/>, theo tỉ lệ 0–1.</summary>
+    [Precision(9, 4)] public decimal? FirstTakeProfitFraction { get; set; }
+
+    /// <summary>Khối lượng đã tính sẵn cho lệnh chốt phần đầu, sau khi làm tròn theo bước của sàn.</summary>
+    [Precision(18, 8)] public decimal? FirstTakeProfitQuantity { get; set; }
+
+    /// <summary>Thời điểm phần đầu thật sự khớp trên sàn. Null nghĩa là chưa chạm.</summary>
+    public DateTime? FirstTargetFilledAt { get; set; }
+
+    /// <summary>
+    /// Dừng lỗ BAN ĐẦU, giữ nguyên kể cả sau khi dừng lỗ đã được kéo lên.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="StopLoss"/> đổi giá trị mỗi lần kéo, nên nếu tính R từ nó thì một lệnh được
+    /// kéo về hoà vốn sẽ hiện ra như lệnh có rủi ro bằng không — chia cho số không. R phải đo
+    /// bằng rủi ro đã CHẤP NHẬN lúc vào, và đây là nơi giữ nó.
+    /// </remarks>
+    [Precision(18, 8)] public decimal? InitialStopLoss { get; set; }
+
+    /// <summary>Số nến mỗi bên dùng để tìm pivot khi kéo dừng lỗ. 0 = không kéo.</summary>
+    public int TrailPivotBars { get; set; }
+
+    /// <summary>Số lần dừng lỗ đã được kéo. Chỉ để đọc nhật ký, không tham gia tính toán.</summary>
+    public int TrailUpdateCount { get; set; }
 
     // --- Chỉ số rủi ro tính sẵn (do service/Rule Engine ghi) ---
     /// <summary>Tiền rủi ro = |Entry - StopLoss| * Quantity.</summary>

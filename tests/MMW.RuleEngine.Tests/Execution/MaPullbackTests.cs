@@ -22,7 +22,7 @@ public sealed class MaPullbackTests
     private static readonly DateTime Start = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly SetupTriggerPolicy _triggers = new(
-        ScoringFixtures.Structure, new SidewaysPatternAnalyzer(ScoringFixtures.Swings));
+        ScoringFixtures.Structure, new SidewaysPatternAnalyzer(ScoringFixtures.Swings), ScoringFixtures.Htf, ScoringFixtures.Swings);
 
     // ── Nhận đúng nhịp hồi ──────────────────────────────────────────────
 

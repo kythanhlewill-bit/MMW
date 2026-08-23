@@ -23,9 +23,15 @@ public class ScorecardController : Controller
     public ScorecardController(MmwDbContext db) => _db = db;
 
     public async Task<IActionResult> Index(
-        string? symbol, VetoReason? veto, ScorecardOutcome? outcome, int? minScore, CancellationToken ct)
+        string? symbol, VetoReason? veto, ScorecardOutcome? outcome, int? minScore,
+        TradeStyle? style, CancellationToken ct)
     {
         var query = _db.EntryScorecards.AsNoTracking().Where(c => !c.IsBacktest);
+
+        // Lọc theo nhóm lệnh. Hai bộ luật chấm trên hai nguồn chiều khác nhau, nên trộn phiếu của
+        // chúng vào một danh sách sẽ khiến mọi câu hỏi kiểu "vì sao hôm nay không vào lệnh" trả
+        // lời bằng lý do của bộ luật KHÔNG chạy.
+        if (style is { } st) query = query.Where(c => c.Style == st);
 
         if (!string.IsNullOrWhiteSpace(symbol))
             query = query.Where(c => c.Symbol == symbol.ToUpperInvariant());
@@ -43,6 +49,12 @@ public class ScorecardController : Controller
             Veto = veto,
             Outcome = outcome,
             MinScore = minScore,
+            Style = style,
+            StyleCounts = await _db.EntryScorecards.AsNoTracking()
+                .Where(c => !c.IsBacktest)
+                .GroupBy(c => c.Style)
+                .Select(g => new { Style = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Style, x => x.Count, ct),
             Items = await query
                 .Include(c => c.Lines)
                 .OrderByDescending(c => c.EvaluatedAtUtc)

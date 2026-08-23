@@ -87,11 +87,22 @@ public class TradesController : Controller
         _liveTradingOptions = liveTradingOptions.Value;
     }
 
-    public async Task<IActionResult> Index(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+    /// <param name="style">
+    /// Lọc theo nhóm lệnh. Bỏ trống là xem tất cả.
+    /// </param>
+    /// <remarks>
+    /// Thống kê ở đầu trang luôn tính trên TOÀN BỘ sổ chứ không tính trên trang đang xem hay
+    /// trên nhóm đang lọc — người xem cần thấy hai nhóm cạnh nhau để so, và một con số đổi theo
+    /// bộ lọc thì không so được với chính nó của lần xem trước.
+    /// </remarks>
+    public async Task<IActionResult> Index(
+        int page = 1, int pageSize = 20, TradeStyle? style = null, CancellationToken cancellationToken = default)
     {
         var all = await _tradeService.GetAllAsync();
-        var pager = PagerModel.Build(page, pageSize, all.Count);
-        var trades = all
+        var filtered = style is { } s ? all.Where(t => t.Style == s).ToList() : all;
+
+        var pager = PagerModel.Build(page, pageSize, filtered.Count);
+        var trades = filtered
             .Skip((pager.CurrentPage - 1) * pager.PageSize)
             .Take(pager.PageSize)
             .ToList();
@@ -105,6 +116,8 @@ public class TradesController : Controller
         {
             Trades = trades,
             Analyses = analysisMap,
+            StyleFilter = style,
+            StyleStats = TradeStyleStats.Split(all),
         };
 
         // Lệnh chờ trên sàn chỉ hiển thị ở trang đầu (đọc live, tránh làm chậm khi lật trang sâu).

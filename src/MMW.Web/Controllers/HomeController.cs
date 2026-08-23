@@ -108,6 +108,12 @@ public class HomeController : Controller
             var closedTrades = await _trades.FindListAsync(t => t.TradingAccountId == account.Id && t.RealizedPnl != null);
             vm.TotalPnl = closedTrades.Sum(t => t.RealizedPnl ?? 0);
 
+            // Thống kê theo nhóm phải đọc TOÀN BỘ sổ, không chỉ lệnh đã có lãi/lỗ: số lệnh đang
+            // mở của mỗi nhóm cũng là thông tin, và nó chính là thứ cho biết bộ luật nào đang
+            // thật sự chạy.
+            var allTrades = await _trades.FindListAsync(t => t.TradingAccountId == account.Id);
+            vm.StyleStats = TradeStyleStats.Split(allTrades);
+
             vm.TotalFlags = await _flags.CountAsync(f => f.TradingAccountId == account.Id);
             vm.CriticalFlags = await _flags.CountAsync(f => f.TradingAccountId == account.Id && f.Severity == FlagSeverity.Critical);
 

@@ -11,7 +11,9 @@ public sealed class V3ExecutionPolicyTests
 {
     private readonly SetupTriggerPolicy _triggers = new(
         ScoringFixtures.Structure,
-        new MMW.Application.Trading.Structure.SidewaysPatternAnalyzer(ScoringFixtures.Swings));
+        new MMW.Application.Trading.Structure.SidewaysPatternAnalyzer(ScoringFixtures.Swings),
+        ScoringFixtures.Htf,
+        ScoringFixtures.Swings);
     private readonly ExecutionViabilityPolicy _economics = new();
 
     [Fact]
