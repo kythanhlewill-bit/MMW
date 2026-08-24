@@ -171,8 +171,8 @@ try
         "*/2 * * * *");
 
     // Job phân tích lệnh đang mở: mỗi 3 phút. Cron trước đây là */1 dù chú thích ghi 3 phút —
-    // phần tính máy chạy thừa 3 lần, và phần AI thì tốn tiền thật. Nhịp gọi AI còn bị chặn thêm
-    // một lớp nữa bên trong service, xem TradeAdvisorService.ShouldAskLlm.
+    // phần tính máy chạy thừa 3 lần. Job này KHÔNG còn gọi AI: phần hỏi LLM đã bị gỡ, giờ chỉ
+    // còn đọc giá và tính chỉ số, nên mỗi lượt chạy không tốn gì ngoài một lời gọi nến.
     RecurringJob.AddOrUpdate<ITradeAdvisorService>(
         "trade-advisor",
         job => job.AnalyzeOpenTradesAsync(CancellationToken.None),

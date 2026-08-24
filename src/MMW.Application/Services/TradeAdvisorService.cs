@@ -9,8 +9,13 @@ using MMW.Shared.Interfaces;
 namespace MMW.Application.Services;
 
 /// <summary>
-/// Phân tích lệnh đang mở: lấy giá + indicator hiện tại → đưa ra lời khuyên deterministic.
-/// Chạy bởi Hangfire job mỗi 3 phút.
+/// Phân tích lệnh đang mở: lấy giá + indicator hiện tại → PnL chưa chốt, mức rủi ro và một
+/// dòng nhận định TÍNH BẰNG MÁY. Chạy bởi Hangfire job mỗi 3 phút.
+///
+/// Trước đây lớp này còn hỏi thêm LLM để viết lại lời khuyên. Phần đó đã bị gỡ theo yêu cầu:
+/// nó tốn tiền thật mỗi lượt, trong khi thứ có giá trị nhất ở đây — giá hiện tại, PnL chưa chốt,
+/// khoảng cách tới SL/TP, RSI, EMA — đều tính tại chỗ và không tốn gì. Cột AiEnhanced trong CSDL
+/// được giữ lại nhưng từ nay luôn là false.
 /// </summary>
 public class TradeAdvisorService : ITradeAdvisorService
 {
@@ -21,15 +26,7 @@ public class TradeAdvisorService : ITradeAdvisorService
     private readonly IMarketDataProvider _marketData;
     private readonly IIndicatorService _indicators;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ILlmService _llm;
     private readonly ILogger<TradeAdvisorService> _logger;
-
-    private const string SystemPrompt =
-        "Bạn là cố vấn giao dịch crypto chuyên nghiệp. " +
-        "Dựa trên dữ liệu indicator và trạng thái lệnh được cung cấp, " +
-        "hãy đưa ra lời khuyên ngắn gọn, thực tế bằng tiếng Việt (tối đa 3 câu). " +
-        "Tập trung vào hành động cụ thể: giữ lệnh, dời SL, chốt lời một phần, hoặc cắt lỗ. " +
-        "Không lặp lại dữ liệu đã cung cấp.";
 
     public TradeAdvisorService(
         IBaseRepository<Trade> trades,
@@ -37,7 +34,6 @@ public class TradeAdvisorService : ITradeAdvisorService
         IMarketDataProvider marketData,
         IIndicatorService indicators,
         IUnitOfWork unitOfWork,
-        ILlmService llm,
         ILogger<TradeAdvisorService> logger)
     {
         _trades = trades;
@@ -45,7 +41,6 @@ public class TradeAdvisorService : ITradeAdvisorService
         _marketData = marketData;
         _indicators = indicators;
         _unitOfWork = unitOfWork;
-        _llm = llm;
         _logger = logger;
     }
 
@@ -89,21 +84,6 @@ public class TradeAdvisorService : ITradeAdvisorService
                     try
                     {
                         var analysis = BuildAnalysis(trade, currentPrice, rsi, ema20, ema50, bias);
-
-                        // Phần tính toán ở trên rẻ và chạy mọi lượt; phần AI thì không. Trước đây
-                        // nó gọi vô điều kiện mỗi lượt job, tức 1.440 lời gọi mỗi ngày cho MỘT lệnh
-                        // nằm im — lời khuyên y hệt nhau, sinh lại gần nghìn lần.
-                        var previous = (await _analyses.FindListAsync(a => a.TradeId == trade.Id)).FirstOrDefault();
-                        if (ShouldAskLlm(previous, analysis))
-                            await EnhanceWithLlmAsync(trade, analysis, cancellationToken);
-                        else if (previous is not null)
-                        {
-                            // Giữ nguyên lời khuyên AI cũ. Thay bằng lời khuyên tính máy sẽ khiến ô
-                            // tư vấn nhấp nháy đổi giọng mỗi vài phút dù chẳng có gì mới.
-                            analysis.Advice = previous.Advice;
-                            analysis.AiEnhanced = previous.AiEnhanced;
-                        }
-
                         await UpsertAnalysisAsync(trade.Id, analysis);
                         analyzed++;
                     }
@@ -239,57 +219,6 @@ public class TradeAdvisorService : ITradeAdvisorService
         lines.Add($"Xu hướng: {bias}");
 
         return string.Join(" | ", lines);
-    }
-
-    /// <summary>Khoảng cách tối thiểu giữa hai lần hỏi AI về CÙNG một lệnh.</summary>
-    /// <remarks>
-    /// Trần cứng, không phải gợi ý: dù giá có nhảy thế nào thì một lệnh cũng chỉ tốn tối đa
-    /// 6 lời gọi mỗi giờ. Đây là thứ chặn hoá đơn, hai điều kiện dưới chỉ quyết định có dùng
-    /// hết ngạch đó hay không.
-    /// </remarks>
-    private static readonly TimeSpan LlmMinInterval = TimeSpan.FromMinutes(10);
-
-    /// <summary>Quá hạn này thì làm mới dù giá đứng yên — để lời khuyên không cũ hẳn.</summary>
-    private static readonly TimeSpan LlmMaxStale = TimeSpan.FromMinutes(30);
-
-    /// <summary>
-    /// Mức đổi lãi/lỗ đủ để hỏi lại sớm, tính theo phần trăm giá trị hợp đồng (đòn bẩy không
-    /// nhân vào đây). Nhỏ hơn ngần này thì bối cảnh chưa đổi đủ để AI nói khác đi.
-    /// </summary>
-    private const decimal LlmPnlDeltaPercent = 0.8m;
-
-    private static bool ShouldAskLlm(TradeAnalysis? previous, TradeAnalysis fresh)
-    {
-        if (previous is null || !previous.AiEnhanced) return true;
-
-        var age = fresh.AnalyzedAt - previous.AnalyzedAt;
-        if (age >= LlmMaxStale) return true;
-        if (age < LlmMinInterval) return false;
-
-        return Math.Abs(fresh.UnrealizedPnlPercent - previous.UnrealizedPnlPercent) >= LlmPnlDeltaPercent;
-    }
-
-    private async Task EnhanceWithLlmAsync(Trade trade, TradeAnalysis analysis, CancellationToken ct)
-    {
-        if (!_llm.IsConfigured) return;
-
-        var userMessage =
-            $"Lệnh: {trade.Direction} {trade.Symbol}, Entry: {trade.EntryPrice}, Qty: {trade.Quantity}\n" +
-            $"SL: {trade.StopLoss?.ToString() ?? "không có"}, TP: {trade.TakeProfit?.ToString() ?? "không có"}\n" +
-            $"Giá hiện tại: {analysis.CurrentPrice}, PnL: {analysis.UnrealizedPnlPercent:N2}%\n" +
-            $"Khoảng cách SL: {(analysis.DistanceToSlPercent.HasValue ? $"{analysis.DistanceToSlPercent:N2}%" : "N/A")}\n" +
-            $"RSI(14): {(analysis.Rsi.HasValue ? $"{analysis.Rsi:N1}" : "N/A")}, " +
-            $"EMA20: {(analysis.Ema20.HasValue ? $"{analysis.Ema20:N4}" : "N/A")}, " +
-            $"EMA50: {(analysis.Ema50.HasValue ? $"{analysis.Ema50:N4}" : "N/A")}\n" +
-            $"Xu hướng: {analysis.Bias}, Mức rủi ro: {analysis.RiskLevel}\n" +
-            $"Phân tích cơ bản: {analysis.Advice}";
-
-        var aiAdvice = await _llm.ChatAsync(SystemPrompt, userMessage, ct);
-        if (!string.IsNullOrWhiteSpace(aiAdvice))
-        {
-            analysis.Advice = aiAdvice.Length > 2000 ? aiAdvice[..2000] : aiAdvice;
-            analysis.AiEnhanced = true;
-        }
     }
 
     private async Task UpsertAnalysisAsync(long tradeId, TradeAnalysis analysis)

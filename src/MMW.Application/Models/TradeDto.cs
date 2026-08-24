@@ -46,6 +46,9 @@ public class TradeDto
     public EmotionState EmotionBefore { get; set; }
     public EmotionState EmotionAfter { get; set; }
 
+    /// <summary>Thời điểm bản ghi lệnh được tạo — sớm hơn OpenedAt đúng bằng thời gian chờ khớp.</summary>
+    public DateTime CreatedDate { get; set; }
+
     public DateTime? OpenedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
 

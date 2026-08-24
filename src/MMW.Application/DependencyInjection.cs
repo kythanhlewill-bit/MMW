@@ -162,7 +162,7 @@ public static class DependencyInjection
         services.AddScoped<IScorecardExecutionService, ScorecardExecutionService>();
         services.AddScoped<IScorecardOutcomeReviewService, ScorecardOutcomeReviewService>();
 
-        // Trade advisor (phân tích lệnh mở + lời khuyên)
+        // Trade advisor (PnL chưa chốt + chỉ số của lệnh đang mở, tính bằng máy)
         services.AddScoped<ITradeAdvisorService, TradeAdvisorService>();
 
         return services;

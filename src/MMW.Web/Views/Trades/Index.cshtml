@@ -243,6 +243,7 @@
                         <th>Symbol</th>
                         <th>Hướng</th>
                         <th>Trạng thái</th>
+                        <th>Tạo lúc</th>
                         <th class="text-end">Giá vào</th>
                         <th class="text-end">SL</th>
                         <th class="text-end">TP1</th>
@@ -297,7 +298,28 @@
                                 }
                             </td>
                             <td><span class="text-secondary">@t.Status</span></td>
-                            <td class="text-end">@t.EntryPrice.ToString("N4")</td>
+                            @*  Lệnh đóng chỉ chạm ĐÚNG MỘT mức, nhưng CSDL không lưu "đóng vì lý do gì" —
+                                chỉ có giá thoát. Nên giờ đóng được gắn cho mức nào nằm trong 0,1% giá
+                                thoát. Không mức nào khớp (đóng tay, hết giờ, hoặc dừng lỗ đã bị kéo đi
+                                chỗ khác) thì KHÔNG mức nào được gắn giờ — thà để trống còn hơn gắn nhầm
+                                một cái giờ mà người đọc sẽ tin là thật. *@
+                            @{
+                                bool ClosedAt(decimal? level) =>
+                                    t.ClosedAt is not null
+                                    && t.ExitPrice is decimal exit
+                                    && level is decimal lv && lv > 0m
+                                    && Math.Abs(exit - lv) / lv <= 0.001m;
+                            }
+                            <td class="text-nowrap text-secondary small">
+                                @VietnamTimeHelper.Format(t.CreatedDate, "HH:mm dd/MM")
+                            </td>
+                            <td class="text-end">
+                                @t.EntryPrice.ToString("N4")
+                                @if (t.OpenedAt is DateTime opened)
+                                {
+                                    <div class="text-secondary small text-nowrap">@VietnamTimeHelper.Format(opened, "HH:mm dd/MM")</div>
+                                }
+                            </td>
                             <td class="text-end">
                                 @(t.StopLoss?.ToString("N4") ?? "—")
                                 @if (t.TrailUpdateCount > 0)
@@ -306,6 +328,10 @@
                                         ↑@t.TrailUpdateCount
                                     </span>
                                 }
+                                @if (ClosedAt(t.StopLoss))
+                                {
+                                    <div class="text-red small text-nowrap">@VietnamTimeHelper.Format(t.ClosedAt!.Value, "HH:mm dd/MM")</div>
+                                }
                             </td>
                             @* Mục tiêu gần chỉ có ở lệnh chốt hai phần. Đã chốt rồi thì đánh dấu, để
                                nhìn một cái là biết lệnh đang chạy runner hay vẫn còn nguyên. *@
@@ -313,9 +339,10 @@
                                 @if (t.FirstTakeProfit is decimal tp1)
                                 {
                                     <span class="@(t.FirstTargetFilledAt is not null ? "text-green" : "")">@tp1.ToString("N4")</span>
-                                    @if (t.FirstTargetFilledAt is not null)
+                                    @if (t.FirstTargetFilledAt is DateTime tp1At)
                                     {
                                         <i class="ti ti-check ms-1 text-green" title="Đã chốt phần đầu"></i>
+                                        <div class="text-green small text-nowrap">@VietnamTimeHelper.Format(tp1At, "HH:mm dd/MM")</div>
                                     }
                                 }
                                 else
@@ -323,7 +350,13 @@
                                     <span class="text-secondary">—</span>
                                 }
                             </td>
-                            <td class="text-end">@(t.TakeProfit?.ToString("N4") ?? "—")</td>
+                            <td class="text-end">
+                                @(t.TakeProfit?.ToString("N4") ?? "—")
+                                @if (ClosedAt(t.TakeProfit))
+                                {
+                                    <div class="text-green small text-nowrap">@VietnamTimeHelper.Format(t.ClosedAt!.Value, "HH:mm dd/MM")</div>
+                                }
+                            </td>
                             <td class="text-end">@(t.RiskPercent?.ToString("N2") ?? "—")</td>
                             <td class="text-end">@(t.PlannedRiskReward?.ToString("N2") ?? "—")</td>
                             <td class="text-end">
@@ -405,22 +438,13 @@
                         @if (hasAnalysis)
                         {
                             <tr class="trade-analysis-row">
-                                <td colspan="14" class="py-2 px-3">
+                                <td colspan="15" class="py-2 px-3">
                                     <div class="trade-analysis-card">
                                         <div class="trade-analysis-main">
-                                            @if (analysis!.AiEnhanced)
-                                            {
-                                                <span class="badge trade-analysis-provider trade-analysis-provider-ai">
-                                                    <i class="ti ti-sparkles"></i> AI
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge trade-analysis-provider trade-analysis-provider-auto">
-                                                    <i class="ti ti-chart-line"></i> Auto
-                                                </span>
-                                            }
-                                            <span class="trade-analysis-advice">@analysis.Advice</span>
+                                            <span class="badge trade-analysis-provider trade-analysis-provider-auto">
+                                                <i class="ti ti-chart-line"></i> Auto
+                                            </span>
+                                            <span class="trade-analysis-advice">@analysis!.Advice</span>
                                         </div>
                                         <div class="trade-analysis-details small">
                                             @analysis.Details
