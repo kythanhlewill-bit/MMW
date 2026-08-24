@@ -1258,3 +1258,305 @@ html[data-bs-theme="dark"] .daterangepicker .next span { border-color: #e6e3f5; 
         grid-template-columns: 1fr 1fr;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NHẬT KÝ LỆNH
+   Một bộ đánh dấu, hai bố cục: bảng 16 cột từ 1400px trở lên, thẻ xếp dọc bên
+   dưới. Không có bản sao HTML cho điện thoại, nên hai bố cục không thể lệch
+   nhau khi sửa về sau — chỗ duy nhất phải nhớ đồng bộ là danh sách grid-area
+   dưới đây khi thêm/bớt cột.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Con số giá phải xếp thẳng cột để so được bằng mắt. Chữ số tỉ lệ làm "1" hẹp
+   hơn "8", và cả cột giá lệch nhau từng dòng. */
+.trade-table .num,
+.trade-table .price-now,
+.trade-table .cell-time {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+.trade-table .trade-symbol { letter-spacing: 0.01em; }
+
+.trade-table .cell-time {
+    margin-top: 0.15rem;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    color: var(--mmw-text-muted);
+}
+
+.trade-table .cell-sub {
+    margin-top: 0.1rem;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    color: var(--mmw-text-muted);
+}
+
+.trade-table .price-now {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+/* --- Thanh "giá đang ở đâu": 0% chạm SL, 100% chạm TP --- */
+.price-track {
+    position: relative;
+    height: 5px;
+    margin-top: 0.35rem;
+    min-width: 74px;
+    border-radius: 999px;
+    background: linear-gradient(90deg,
+        rgba(239, 68, 68, 0.55) 0%,
+        rgba(148, 163, 184, 0.35) 50%,
+        rgba(34, 197, 94, 0.55) 100%);
+    overflow: visible;
+}
+
+.price-track-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.price-track-pin {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: var(--mmw-accent-1, #7c5cff);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+    transform: translateY(-50%);
+}
+
+.price-track-legend {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.1rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.04em;
+    color: var(--mmw-text-muted);
+}
+
+/* Dòng lệnh rủi ro cao: viền trái thay vì tô nền cả dòng. Nền đỏ kín làm mọi
+   chữ bên trong tụt tương phản, mà đây lại đúng là dòng cần đọc kỹ nhất. */
+.trade-table tbody tr.trade-row-critical > td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+.trade-table tbody tr.trade-row-high > td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
+
+.trade-table .trade-actions { gap: 0.375rem; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ĐIỆN THOẠI / MÁY TÍNH BẢNG / LAPTOP HẸP (< 1400px): mỗi dòng gập thành một thẻ
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 1399.98px) {
+
+    /* Bảng nằm trong .table-responsive, vốn bật cuộn ngang. Ở chế độ thẻ thì
+       không còn gì để cuộn, và cuộn ngang sót lại chỉ tạo ra kéo lệch. */
+    .card > .table-responsive:has(.trade-table) { overflow-x: visible; }
+
+    .trade-table thead { display: none; }
+
+    .trade-table,
+    .trade-table tbody { display: block; width: 100%; }
+
+    .trade-table tbody tr.trade-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-areas:
+            "sym     sym     dir"
+            "grp     status  result"
+            "now     now     pnl"
+            "entry   sl      tp"
+            "tp1     risk    rr"
+            "act     act     act";
+        gap: 0.55rem 0.6rem;
+        margin-bottom: 0.7rem;
+        padding: 0.85rem 0.9rem;
+        border: 1px solid var(--mmw-card-border);
+        border-radius: var(--mmw-radius-sm);
+        background: var(--mmw-card-bg);
+        box-shadow: var(--mmw-shadow);
+    }
+
+    .trade-table tbody tr.trade-row-critical { border-left: 3px solid #ef4444; }
+    .trade-table tbody tr.trade-row-high { border-left: 3px solid #f59e0b; }
+    .trade-table tbody tr.trade-row-critical > td:first-child,
+    .trade-table tbody tr.trade-row-high > td:first-child { box-shadow: none; }
+
+    .trade-table tbody tr.trade-row > td {
+        display: block;
+        padding: 0;
+        border: 0 !important;
+        background: none !important;
+        text-align: left !important;
+        min-width: 0;
+    }
+
+    /* Bỏ <thead> đi thì con số mất tên. Nhãn lấy lại từ data-label của chính ô
+       đó — cùng một chuỗi với tiêu đề cột, nên không có đường nào lệch. */
+    .trade-table tbody tr.trade-row > td[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.1rem;
+        font-size: 0.66rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--mmw-text-muted);
+    }
+
+    .trade-table .c-grp    { grid-area: grp; }
+    .trade-table .c-sym    { grid-area: sym; }
+    .trade-table .c-dir    { grid-area: dir; }
+    .trade-table .c-status { grid-area: status; }
+    .trade-table .c-entry  { grid-area: entry; }
+    .trade-table .c-now    { grid-area: now; }
+    .trade-table .c-sl     { grid-area: sl; }
+    .trade-table .c-tp1    { grid-area: tp1; }
+    .trade-table .c-tp     { grid-area: tp; }
+    .trade-table .c-risk   { grid-area: risk; }
+    .trade-table .c-rr     { grid-area: rr; }
+    .trade-table .c-pnl    { grid-area: pnl; }
+    .trade-table .c-result { grid-area: result; }
+    .trade-table .c-act    { grid-area: act; }
+
+    /* Mã và hướng là hai thứ mắt tìm trước nhất trên một màn hình hẹp. */
+    .trade-table .c-sym::before,
+    .trade-table .c-dir::before { display: none !important; }
+
+    .trade-table .c-sym { align-self: center; }
+    .trade-table .c-sym .trade-symbol { font-size: 1.06rem; }
+    .trade-table .c-dir { align-self: center; text-align: right !important; }
+
+    .trade-table .c-now .price-now { font-size: 1.18rem; }
+    .trade-table .c-now .price-track { min-width: 0; }
+
+    .trade-table .c-pnl { text-align: right !important; }
+    .trade-table .c-pnl > span { font-size: 1.05rem; font-weight: 600; }
+    .trade-table .c-result { text-align: right !important; }
+
+    /* Nút chạm: tối thiểu 44×44px và cách nhau ≥8px. Cỡ btn-sm cũ khoảng 31px
+       cao — đủ cho con trỏ chuột, không đủ cho ngón tay. */
+    .trade-table .c-act .trade-actions {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    .trade-table .c-act .trade-actions > form { display: block; }
+    .trade-table .c-act .btn {
+        width: 100%;
+        min-height: 44px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+    }
+
+    /* Ô phân tích dán liền dưới thẻ của chính lệnh đó, không đứng rời ra. */
+    .trade-table tbody tr.trade-row:has(+ .trade-analysis-row) {
+        margin-bottom: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+    }
+    .trade-table tbody tr.trade-analysis-row { display: block; }
+    .trade-table tbody tr.trade-analysis-row > td {
+        display: block;
+        padding: 0 !important;
+        border: 0 !important;
+        background: none !important;
+    }
+    .trade-table tbody tr.trade-analysis-row .trade-analysis-card {
+        margin: 0 0 0.7rem;
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }
+
+    /* Bảng lệnh chờ trên sàn hẹp hơn nhiều, cuộn ngang là đủ — nhưng phải cuộn
+       mượt bằng ngón tay chứ không giật từng khấc. */
+    .table-responsive { -webkit-overflow-scrolling: touch; }
+}
+
+/* Không có chuyển động nào ở đây là bắt buộc để hiểu nội dung. */
+@media (prefers-reduced-motion: reduce) {
+    .trade-table tbody tr.trade-row,
+    .price-track-pin { transition: none !important; }
+}
+
+/* --- Nhật ký lệnh: chỉnh sau khi soi thật trên trình duyệt --- */
+
+/* Cột "Giá hiện tại" chứa giá + phần trăm + thanh vị trí. Không đặt sàn chiều
+   rộng thì bảng 16 cột bóp nó còn ~20px, và thanh SL→TP teo lại thành một dấu
+   chấm — tức là mất hẳn thứ mà cột này sinh ra để nói. */
+.trade-table .c-now { min-width: 132px; }
+.trade-table .c-entry,
+.trade-table .c-sl,
+.trade-table .c-tp1,
+.trade-table .c-tp { min-width: 88px; }
+
+/* Dấu rủi ro ở mép trái dòng. Chỉ có nghĩa ở chế độ BẢNG: dưới 992px ô đầu tiên
+   trôi vào giữa thẻ, và một vạch đỏ nằm giữa đó chỉ là rác thị giác — thẻ đã có
+   viền trái riêng rồi. */
+@media (min-width: 1400px) {
+    .trade-table tbody tr.trade-row-critical > td:first-child {
+        box-shadow: inset 3px 0 0 #ef4444 !important;
+    }
+    .trade-table tbody tr.trade-row-high > td:first-child {
+        box-shadow: inset 3px 0 0 #f59e0b !important;
+    }
+}
+
+@media (max-width: 1399.98px) {
+    /* Ở chế độ thẻ, sàn chiều rộng của cột là thứ duy nhất có thể đẩy thẻ rộng
+       quá màn hình. Bỏ hết. */
+    .trade-table .c-now,
+    .trade-table .c-entry,
+    .trade-table .c-sl,
+    .trade-table .c-tp1,
+    .trade-table .c-tp { min-width: 0; }
+
+    /* Nút "Xoá" kiểu ghost không có nền lẫn viền — trên màn cảm ứng nó trông
+       như chữ chứ không như nút, dù vùng chạm đã đủ 44px. Cho nó một đường
+       viền mờ để nhìn ra là bấm được. */
+    .trade-table .c-act .btn-ghost-danger {
+        border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+
+    /* Ô phân tích thừa hưởng luôn dấu rủi ro của lệnh phía trên, để hai khối
+       đọc thành một thẻ chứ không phải hai. */
+    .trade-table tbody tr.trade-row-critical + .trade-analysis-row .trade-analysis-card {
+        border-left: 3px solid #ef4444;
+    }
+    .trade-table tbody tr.trade-row-high + .trade-analysis-row .trade-analysis-card {
+        border-left: 3px solid #f59e0b;
+    }
+}
+
+/* Thẻ trên màn rộng hơn điện thoại (768–1400px): vẫn là thẻ, nhưng dàn 6 cột
+   thay vì 3. Giữ 3 cột ở đây tạo ra một cột thẻ cao lêu nghêu với hai phần ba
+   bề ngang bỏ trống — dữ liệu thì vẫn phải cuộn dọc mới đọc hết. */
+@media (min-width: 768px) and (max-width: 1399.98px) {
+    .trade-table tbody tr.trade-row {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        grid-template-areas:
+            "sym  sym   grp    status  dir  result"
+            "now  now   entry  sl      tp1  tp"
+            "pnl  risk  rr     .       .    ."
+            "act  act   act    act     act  act";
+        gap: 0.6rem 0.9rem;
+        padding: 1rem 1.1rem;
+    }
+
+    .trade-table .c-dir { text-align: left !important; }
+
+    /* Nút không cần kéo dài hết chiều ngang thẻ ở cỡ này. */
+    .trade-table .c-act .trade-actions {
+        grid-auto-columns: minmax(110px, 160px);
+        justify-content: start;
+    }
+}

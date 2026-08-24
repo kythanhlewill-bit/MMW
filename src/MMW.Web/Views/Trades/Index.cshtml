@@ -234,17 +234,20 @@
     }
     else
     {
+        @*  Một bộ đánh dấu, hai bố cục. Dưới 992px mỗi <tr> tự gập thành một thẻ nhờ CSS grid
+            (xem .trade-table trong site.css) — không có bản sao HTML thứ hai cho điện thoại,
+            nên không có đường nào để hai bố cục lệch nhau khi sửa về sau. Nhãn cột trên thẻ lấy
+            từ data-label của chính ô đó, vì <thead> bị ẩn ở chế độ thẻ. *@
         <div class="table-responsive">
-            <table class="table table-vcenter card-table">
+            <table class="table table-vcenter card-table trade-table">
                 <thead>
                     <tr>
-                        <th>Tài khoản</th>
                         <th>Nhóm</th>
                         <th>Symbol</th>
                         <th>Hướng</th>
                         <th>Trạng thái</th>
-                        <th>Tạo lúc</th>
                         <th class="text-end">Giá vào</th>
+                        <th class="text-end">Giá hiện tại</th>
                         <th class="text-end">SL</th>
                         <th class="text-end">TP1</th>
                         <th class="text-end">TP</th>
@@ -260,17 +263,55 @@
                     {
                         var hasAnalysis = t.Status == MMW.Domain.Enums.TradeStatus.Open && Model.Analyses.ContainsKey(t.Id);
                         var analysis = hasAnalysis ? Model.Analyses[t.Id] : null;
+                        var isLong = t.Direction == MMW.Domain.Enums.TradeDirection.Long;
 
-                        <tr class="@(hasAnalysis && analysis!.RiskLevel == "Critical" ? "table-danger" : hasAnalysis && analysis!.RiskLevel == "High" ? "table-warning" : "")">
-                            <td class="text-secondary">@(t.AccountName ?? "—")</td>
-                            <td>
+                        @*  Giá đang ở đâu. Lệnh đang mở lấy giá mới nhất từ ô phân tích (làm mới mỗi
+                            3 phút); lệnh đã đóng thì "hiện tại" của nó chính là giá thoát. *@
+                        var livePrice = hasAnalysis && analysis!.CurrentPrice > 0m
+                            ? analysis.CurrentPrice
+                            : t.Status == MMW.Domain.Enums.TradeStatus.Closed ? t.ExitPrice : null;
+
+                        decimal? movePercent = livePrice is decimal lp && t.EntryPrice > 0m
+                            ? (isLong ? lp - t.EntryPrice : t.EntryPrice - lp) / t.EntryPrice * 100m
+                            : null;
+
+                        @*  Vị trí của giá trên trục SL → TP, tính theo phần trăm. Đây là thứ trả lời
+                            "giá đang ở đâu" nhanh hơn mọi con số: 0% là chạm dừng lỗ, 100% là chạm
+                            mục tiêu. Kẹp về [0,100] để giá vượt ra ngoài không đẩy con trỏ ra khỏi
+                            thanh — vượt rồi thì lệnh cũng sắp đóng. *@
+                        decimal? trackPosition = null;
+                        if (livePrice is decimal cur && t.StopLoss is decimal sl && t.TakeProfit is decimal tp)
+                        {
+                            var span = isLong ? tp - sl : sl - tp;
+                            if (span > 0m)
+                            {
+                                var travelled = isLong ? cur - sl : sl - cur;
+                                trackPosition = Math.Clamp(travelled / span * 100m, 0m, 100m);
+                            }
+                        }
+
+                        @*  Lệnh đóng chỉ chạm ĐÚNG MỘT mức, nhưng CSDL không lưu "đóng vì lý do gì" —
+                            chỉ có giá thoát. Nên giờ đóng được gắn cho mức nào nằm trong 0,1% giá
+                            thoát. Không mức nào khớp (đóng tay, hết giờ, hoặc dừng lỗ đã bị kéo đi
+                            chỗ khác) thì KHÔNG mức nào được gắn giờ — thà để trống còn hơn gắn nhầm
+                            một cái giờ mà người đọc sẽ tin là thật. *@
+                        bool ClosedAt(decimal? level) =>
+                            t.ClosedAt is not null
+                            && t.ExitPrice is decimal exit
+                            && level is decimal lv && lv > 0m
+                            && Math.Abs(exit - lv) / lv <= 0.001m;
+
+                        var rowRisk = hasAnalysis ? analysis!.RiskLevel : null;
+
+                        <tr class="trade-row @(rowRisk == "Critical" ? "trade-row-critical" : rowRisk == "High" ? "trade-row-high" : "")">
+                            <td data-label="Nhóm" class="c-grp">
                                 <span class="badge @MMW.Web.Models.TradeStyleLabels.BadgeClass(t.Style)"
                                       title="@MMW.Web.Models.TradeStyleStats.DescriptionOf(t.Style)">
                                     @MMW.Web.Models.TradeStyleLabels.Short(t.Style)
                                 </span>
                             </td>
-                            <td>
-                                <strong>@t.Symbol</strong>
+                            <td data-label="Symbol" class="c-sym">
+                                <strong class="trade-symbol">@t.Symbol</strong>
                                 @if (t.LiveStatus != MMW.Domain.Enums.LiveOrderStatus.None)
                                 {
                                     var liveBadge = t.LiveStatus switch
@@ -286,9 +327,14 @@
                                     };
                                     <span class="badge @liveBadge.Item1 ms-1" title="@t.LiveNote">@liveBadge.Item2</span>
                                 }
+                                @*  Tên tài khoản từng chiếm hẳn một cột. Bảng 16 cột không bao giờ
+                                    vừa bề ngang khung container-xl (~1290px), và thứ bị đẩy ra khỏi
+                                    mép luôn là cột cuối — đúng cột chứa nút Đóng/Sửa/Xoá. Gộp vào
+                                    đây, nơi còn chỗ trống sẵn, tốn 0px bề ngang. *@
+                                <div class="cell-sub">@(t.AccountName ?? "—")</div>
                             </td>
-                            <td>
-                                @if (t.Direction == MMW.Domain.Enums.TradeDirection.Long)
+                            <td data-label="Hướng" class="c-dir">
+                                @if (isLong)
                                 {
                                     <span class="badge bg-green text-green-fg">Long</span>
                                 }
@@ -297,30 +343,61 @@
                                     <span class="badge bg-red text-red-fg">Short</span>
                                 }
                             </td>
-                            <td><span class="text-secondary">@t.Status</span></td>
-                            @*  Lệnh đóng chỉ chạm ĐÚNG MỘT mức, nhưng CSDL không lưu "đóng vì lý do gì" —
-                                chỉ có giá thoát. Nên giờ đóng được gắn cho mức nào nằm trong 0,1% giá
-                                thoát. Không mức nào khớp (đóng tay, hết giờ, hoặc dừng lỗ đã bị kéo đi
-                                chỗ khác) thì KHÔNG mức nào được gắn giờ — thà để trống còn hơn gắn nhầm
-                                một cái giờ mà người đọc sẽ tin là thật. *@
-                            @{
-                                bool ClosedAt(decimal? level) =>
-                                    t.ClosedAt is not null
-                                    && t.ExitPrice is decimal exit
-                                    && level is decimal lv && lv > 0m
-                                    && Math.Abs(exit - lv) / lv <= 0.001m;
-                            }
-                            <td class="text-nowrap text-secondary small">
-                                @VietnamTimeHelper.Format(t.CreatedDate, "HH:mm dd/MM")
+                            @*  Trạng thái từng là chữ xám nhạt trên nền tím — dưới ngưỡng tương phản
+                                4.5:1 và là thứ đầu tiên mắt cần tìm khi lướt sổ. Đổi thành nhãn có
+                                nền, mỗi trạng thái một màu. *@
+                            <td data-label="Trạng thái" class="c-status">
+                                @{
+                                    var statusBadge = t.Status switch
+                                    {
+                                        MMW.Domain.Enums.TradeStatus.Open => ("bg-azure-lt", "Đang mở"),
+                                        MMW.Domain.Enums.TradeStatus.Closed => ("bg-secondary-lt", "Đã đóng"),
+                                        MMW.Domain.Enums.TradeStatus.Cancelled => ("bg-red-lt", "Đã huỷ"),
+                                        _ => ("bg-purple-lt", "Kế hoạch")
+                                    };
+                                }
+                                <span class="badge @statusBadge.Item1">@statusBadge.Item2</span>
                             </td>
-                            <td class="text-end">
+                            <td data-label="Giá vào" class="c-entry text-end num">
                                 @t.EntryPrice.ToString("N4")
+                                @*  Hai mốc thời gian của cùng một lệnh, xếp cạnh nhau: lúc bộ luật
+                                    quyết định vào, và lúc sàn khớp. Khoảng cách giữa chúng chính là
+                                    thời gian lệnh chờ nằm treo — thứ mà tách ra hai cột rời thì
+                                    không ai trừ nhẩm. *@
+                                <div class="cell-time">tạo @VietnamTimeHelper.Format(t.CreatedDate, "HH:mm dd/MM")</div>
                                 @if (t.OpenedAt is DateTime opened)
                                 {
-                                    <div class="text-secondary small text-nowrap">@VietnamTimeHelper.Format(opened, "HH:mm dd/MM")</div>
+                                    <div class="cell-time">vào @VietnamTimeHelper.Format(opened, "HH:mm dd/MM")</div>
                                 }
                             </td>
-                            <td class="text-end">
+                            <td data-label="Giá hiện tại" class="c-now text-end num">
+                                @if (livePrice is decimal now)
+                                {
+                                    var moveClass = movePercent is decimal mv ? (mv > 0m ? "text-green" : mv < 0m ? "text-red" : "") : "";
+                                    <span class="price-now @moveClass">@now.ToString("N4")</span>
+                                    @if (movePercent is decimal move)
+                                    {
+                                        <div class="cell-sub @moveClass">@(move >= 0m ? "+" : "")@move.ToString("N2")% so giá vào</div>
+                                    }
+                                    @if (trackPosition is decimal pos)
+                                    {
+                                        <div class="price-track" role="img"
+                                             aria-label="Giá đang ở @pos.ToString("N0")% quãng đường từ dừng lỗ tới mục tiêu"
+                                             title="0% = chạm SL · 100% = chạm TP">
+                                            <span class="price-track-fill" style="width:@pos.ToString("N1", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                                            <span class="price-track-pin" style="left:@pos.ToString("N1", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                                        </div>
+                                        <div class="price-track-legend">
+                                            <span>SL</span><span>TP</span>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">—</span>
+                                }
+                            </td>
+                            <td data-label="SL" class="c-sl text-end num">
                                 @(t.StopLoss?.ToString("N4") ?? "—")
                                 @if (t.TrailUpdateCount > 0)
                                 {
@@ -330,19 +407,19 @@
                                 }
                                 @if (ClosedAt(t.StopLoss))
                                 {
-                                    <div class="text-red small text-nowrap">@VietnamTimeHelper.Format(t.ClosedAt!.Value, "HH:mm dd/MM")</div>
+                                    <div class="cell-time text-red">@VietnamTimeHelper.Format(t.ClosedAt!.Value, "HH:mm dd/MM")</div>
                                 }
                             </td>
                             @* Mục tiêu gần chỉ có ở lệnh chốt hai phần. Đã chốt rồi thì đánh dấu, để
                                nhìn một cái là biết lệnh đang chạy runner hay vẫn còn nguyên. *@
-                            <td class="text-end">
+                            <td data-label="TP1" class="c-tp1 text-end num">
                                 @if (t.FirstTakeProfit is decimal tp1)
                                 {
                                     <span class="@(t.FirstTargetFilledAt is not null ? "text-green" : "")">@tp1.ToString("N4")</span>
                                     @if (t.FirstTargetFilledAt is DateTime tp1At)
                                     {
                                         <i class="ti ti-check ms-1 text-green" title="Đã chốt phần đầu"></i>
-                                        <div class="text-green small text-nowrap">@VietnamTimeHelper.Format(tp1At, "HH:mm dd/MM")</div>
+                                        <div class="cell-time text-green">@VietnamTimeHelper.Format(tp1At, "HH:mm dd/MM")</div>
                                     }
                                 }
                                 else
@@ -350,21 +427,22 @@
                                     <span class="text-secondary">—</span>
                                 }
                             </td>
-                            <td class="text-end">
+                            <td data-label="TP" class="c-tp text-end num">
                                 @(t.TakeProfit?.ToString("N4") ?? "—")
                                 @if (ClosedAt(t.TakeProfit))
                                 {
-                                    <div class="text-green small text-nowrap">@VietnamTimeHelper.Format(t.ClosedAt!.Value, "HH:mm dd/MM")</div>
+                                    <div class="cell-time text-green">@VietnamTimeHelper.Format(t.ClosedAt!.Value, "HH:mm dd/MM")</div>
                                 }
                             </td>
-                            <td class="text-end">@(t.RiskPercent?.ToString("N2") ?? "—")</td>
-                            <td class="text-end">@(t.PlannedRiskReward?.ToString("N2") ?? "—")</td>
-                            <td class="text-end">
+                            <td data-label="Risk %" class="c-risk text-end num">@(t.RiskPercent?.ToString("N2") ?? "—")</td>
+                            <td data-label="R:R" class="c-rr text-end num">@(t.PlannedRiskReward?.ToString("N2") ?? "—")</td>
+                            <td data-label="PnL" class="c-pnl text-end num">
                                 @if (hasAnalysis)
                                 {
                                     <span class="@(analysis!.UnrealizedPnl < 0 ? "text-red" : "text-green")">
                                         @analysis.UnrealizedPnl.ToString("N2")
                                     </span>
+                                    <div class="cell-sub">chưa chốt</div>
                                 }
                                 else
                                 {
@@ -373,15 +451,15 @@
                                     </span>
                                 }
                             </td>
-                            <td>
+                            <td data-label="Kết quả" class="c-result">
                                 @if (hasAnalysis)
                                 {
                                     var badgeClass = analysis!.RiskLevel switch
                                     {
-                                        "Critical" => "bg-red",
-                                        "High" => "bg-orange",
+                                        "Critical" => "bg-red text-red-fg",
+                                        "High" => "bg-orange text-orange-fg",
                                         "Warning" => "bg-yellow text-yellow-fg",
-                                        "Profit" => "bg-green",
+                                        "Profit" => "bg-green text-green-fg",
                                         _ => "bg-blue-lt"
                                     };
                                     <span class="badge @badgeClass">@analysis.RiskLevel</span>
@@ -405,8 +483,8 @@
                                     }
                                 }
                             </td>
-                            <td>
-                                <div class="btn-list flex-nowrap">
+                            <td class="c-act">
+                                <div class="btn-list flex-nowrap trade-actions">
                                     @{
                                         var canRetry = t.Status != MMW.Domain.Enums.TradeStatus.Closed
                                             && (t.Status == MMW.Domain.Enums.TradeStatus.Cancelled
@@ -438,7 +516,7 @@
                         @if (hasAnalysis)
                         {
                             <tr class="trade-analysis-row">
-                                <td colspan="15" class="py-2 px-3">
+                                <td colspan="14" class="py-2 px-3">
                                     <div class="trade-analysis-card">
                                         <div class="trade-analysis-main">
                                             <span class="badge trade-analysis-provider trade-analysis-provider-auto">
