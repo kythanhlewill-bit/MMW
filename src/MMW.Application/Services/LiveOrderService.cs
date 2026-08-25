@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
@@ -225,12 +225,24 @@ public class LiveOrderService : ILiveOrderService
             _logger.LogWarning("Trade {TradeId}: notional {N:N2} vượt cap {Max:N2} nhưng BỎ QUA do AllowOverrideRisk.", tradeId, notional, _options.MaxNotionalUsdt);
         }
 
+        // Trần lệnh live/ngày đếm RIÊNG từng nhóm. Gộp chung nghĩa là bộ luật trong ngày — vốn
+        // quét mỗi 15 phút — ăn hết suất trước khi bộ luật swing kịp thấy nhịp hồi 4h của mình,
+        // và dòng lý do bị chặn sẽ không nhắc gì tới việc suất đã bị nhóm khác dùng.
         var sinceMidnight = DateTime.UtcNow.Date;
         var todayLive = await _trades.FindListAsync(t =>
-            t.TradingAccountId == account.Id && t.IsLive && t.CreatedDate >= sinceMidnight);
-        if (todayLive.Count >= _options.MaxOrdersPerDay && !overrideRisk)
+            t.TradingAccountId == account.Id
+            && t.IsLive
+            && t.Style == trade.Style
+            && t.CreatedDate >= sinceMidnight);
+
+        var isHtf = trade.Style == TradeStyle.HtfSwing;
+        var orderLimit = isHtf ? _options.MaxOrdersPerDayHtf : _options.MaxOrdersPerDay;
+        var styleName = isHtf ? "lệnh H4" : "lệnh ngắn";
+
+        if (todayLive.Count >= orderLimit && !overrideRisk)
         {
-            await BlockAsync(trade, account, $"Đã đạt giới hạn {_options.MaxOrdersPerDay} lệnh live/ngày.", cancellationToken);
+            await BlockAsync(trade, account,
+                $"Đã đạt giới hạn {orderLimit} {styleName} live/ngày.", cancellationToken);
             return;
         }
 

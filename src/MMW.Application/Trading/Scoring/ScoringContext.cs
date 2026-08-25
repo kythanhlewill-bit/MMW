@@ -1,4 +1,4 @@
-using MMW.Application.MarketData.Models;
+﻿using MMW.Application.MarketData.Models;
 using MMW.Application.Trading.TimeGuard;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
@@ -99,6 +99,51 @@ public sealed record TraderStatistics(
     /// thắng cùng nhau và thua cùng nhau.
     /// </remarks>
     public IReadOnlyList<OpenPositionSnapshot> OpenPositions { get; init; } = Array.Empty<OpenPositionSnapshot>();
+
+    /// <summary>Số lệnh đã VÀO hôm nay, tách theo nhóm.</summary>
+    /// <remarks>
+    /// <see cref="TradesToday"/> gộp cả tài khoản và vẫn còn nguyên cho các nơi hỏi câu hỏi
+    /// toàn tài khoản. Bản tách theo nhóm là thứ các hạn mức đọc: hai bộ luật chạy song song
+    /// tiêu hai ngân sách khác nhau, nên đếm chung là để bộ luật này bị khoá bởi hoạt động của
+    /// bộ luật kia.
+    /// </remarks>
+    /// <remarks>
+    /// Không ai đặt thì toàn bộ quy về nhóm trong ngày, chứ không phải rỗng. Đó là sự thật lịch
+    /// sử chứ không phải một mặc định cho tiện: trước khi có bộ luật swing, mọi lệnh đều là lệnh
+    /// trong ngày. Nhờ vậy mọi nơi dựng thống kê bằng con số toàn tài khoản vẫn đọc ra đúng
+    /// con số đó — thay vì đọc ra 0 và làm mọi hạn mức im lặng cho qua.
+    /// </remarks>
+    public IReadOnlyDictionary<TradeStyle, int> TradesTodayByStyle
+    {
+        get => _tradesTodayByStyle ?? new Dictionary<TradeStyle, int> { [TradeStyle.Intraday] = TradesToday };
+        init => _tradesTodayByStyle = value;
+    }
+
+    private readonly IReadOnlyDictionary<TradeStyle, int>? _tradesTodayByStyle;
+
+    /// <summary>% lỗ trong ngày, tách theo nhóm. Luôn là số dương hoặc 0.</summary>
+    /// <remarks>
+    /// Mẫu số vẫn là vốn TOÀN tài khoản, không phải vốn của riêng ví mà nhóm đó tiêu. Đây là
+    /// phép xấp xỉ có ý thức: hạn mức lỗ ngày là câu hỏi "hôm nay tôi đã mất bao nhiêu phần
+    /// vốn", và người đọc nghĩ về vốn của mình như một con số. Khi hai ví lệch nhau nhiều thì
+    /// con số này rộng tay hơn thực tế với ví nhỏ — chỗ cần sửa lại nếu điều đó xảy ra.
+    /// </remarks>
+    public IReadOnlyDictionary<TradeStyle, decimal> DailyLossPercentByStyle
+    {
+        get => _dailyLossPercentByStyle
+               ?? new Dictionary<TradeStyle, decimal> { [TradeStyle.Intraday] = DailyLossPercent };
+        init => _dailyLossPercentByStyle = value;
+    }
+
+    private readonly IReadOnlyDictionary<TradeStyle, decimal>? _dailyLossPercentByStyle;
+
+    /// <summary>Số lệnh đã vào hôm nay của một nhóm.</summary>
+    public int TradesTodayOf(TradeStyle style) =>
+        TradesTodayByStyle.TryGetValue(style, out var n) ? n : 0;
+
+    /// <summary>% lỗ trong ngày của một nhóm.</summary>
+    public decimal DailyLossPercentOf(TradeStyle style) =>
+        DailyLossPercentByStyle.TryGetValue(style, out var v) ? v : 0m;
 
     /// <summary>Tài khoản chưa có lịch sử — dùng khi không tính được thống kê.</summary>
     public static TraderStatistics Empty { get; } =

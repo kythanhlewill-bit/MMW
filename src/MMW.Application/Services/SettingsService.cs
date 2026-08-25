@@ -1,4 +1,4 @@
-using MMW.Application.Interfaces;
+﻿using MMW.Application.Interfaces;
 using MMW.Domain.Entities;
 using MMW.Shared.Interfaces;
 
@@ -80,6 +80,8 @@ public class SettingsService : ISettingsService
         tracked.MinRiskRewardRatio = values.MinRiskRewardRatio;
         tracked.MaxTradesPerDay = values.MaxTradesPerDay;
         tracked.MaxDailyLossPercent = values.MaxDailyLossPercent;
+        tracked.MaxTradesPerDayHtf = values.MaxTradesPerDayHtf;
+        tracked.MaxDailyLossPercentHtf = values.MaxDailyLossPercentHtf;
         tracked.RequireStopLoss = values.RequireStopLoss;
         tracked.RevengeTradeWindowMinutes = values.RevengeTradeWindowMinutes;
         tracked.LossStreakThreshold = values.LossStreakThreshold;

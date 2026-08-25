@@ -1,4 +1,4 @@
-namespace MMW.Application.MarketData;
+﻿namespace MMW.Application.MarketData;
 
 /// <summary>
 /// Cấu hình GIAO DỊCH THẬT. Mặc định an toàn (tắt) — phải bật rõ ràng trong
@@ -28,4 +28,12 @@ public class LiveTradingOptions
 
     /// <summary>Cap cứng số lệnh live gửi trong 1 ngày.</summary>
     public int MaxOrdersPerDay { get; set; } = 10;
+
+    /// <summary>Trần lệnh live/ngày RIÊNG cho nhóm swing khung 4 giờ.</summary>
+    /// <remarks>
+    /// Đếm riêng vì hai bộ luật chạy song song tiêu hai ngân sách khác nhau. Dùng chung thì bộ
+    /// swing — vốn chỉ vào vài lệnh mỗi ngày — vẫn có thể bị bộ trong ngày đẩy hết suất, hoặc
+    /// ngược lại, mà lý do chặn không nhắc gì tới nhóm kia.
+    /// </remarks>
+    public int MaxOrdersPerDayHtf { get; set; } = 4;
 }

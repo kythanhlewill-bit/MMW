@@ -32,6 +32,7 @@ services:
       LiveTrading__DefaultLeverage: "${LIVE_TRADING_DEFAULT_LEVERAGE:-5}"
       LiveTrading__MaxNotionalUsdt: "${LIVE_TRADING_MAX_NOTIONAL_USDT:-120}"
       LiveTrading__MaxOrdersPerDay: "${LIVE_TRADING_MAX_ORDERS_PER_DAY:-5}"
+      LiveTrading__MaxOrdersPerDayHtf: "${LIVE_TRADING_MAX_ORDERS_PER_DAY_HTF:-4}"
 
       # PHẢI ≥ MIN_NOTIONAL của sàn, nếu không lệnh bị Binance từ chối. App tự ép khối lượng lên
       # mức này nhưng KHÔNG đọc MIN_NOTIONAL từ exchangeInfo, nên con số ở đây là nguồn sự thật

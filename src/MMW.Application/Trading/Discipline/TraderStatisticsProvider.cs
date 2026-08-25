@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using MMW.Application.Trading.Scoring;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
@@ -63,19 +63,29 @@ public sealed class TraderStatisticsProvider : ITraderStatisticsProvider
                 t.RealizedPnl,
                 t.RiskPercent,
                 t.EntryScorecardId,
+                t.Style,
             })
             .ToListAsync(ct);
 
         var dayStart = utcNow.Date;
 
-        var tradesToday = await _trades
+        // Đọc về danh sách nhóm thay vì đếm thẳng: cùng một lượt truy vấn phải trả lời được cả
+        // câu hỏi toàn tài khoản lẫn câu hỏi từng nhóm, vì hai bộ luật chạy song song có hạn mức
+        // riêng và đếm chung sẽ để bộ luật này bị khoá bởi hoạt động của bộ luật kia.
+        var openedTodayByStyle = await _trades
             .Get(t => t.TradingAccountId == tradingAccountId
                       && t.Status != TradeStatus.Cancelled
                       && t.Status != TradeStatus.Planned
                       && t.OpenedAt != null
                       && t.OpenedAt >= dayStart
                       && t.OpenedAt < dayStart.AddDays(1))
-            .CountAsync(ct);
+            .AsNoTracking()
+            .GroupBy(t => t.Style)
+            .Select(g => new { Style = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var tradesTodayByStyle = openedTodayByStyle.ToDictionary(x => x.Style, x => x.Count);
+        var tradesToday = openedTodayByStyle.Sum(x => x.Count);
 
         // Vị thế ĐANG MỞ — khác hẳn `tradesToday`, thứ chỉ đếm số lệnh đã vào trong ngày. Không
         // có danh sách này thì không gate nào biết hệ thống đang cầm gì, và một setup tốt chấm
@@ -157,6 +167,19 @@ public sealed class TraderStatisticsProvider : ITraderStatisticsProvider
             ? Math.Abs(todayPnl) / balance * 100m
             : 0m;
 
+        // Cùng quy ước dấu, áp riêng cho từng nhóm. Một nhóm lãi và nhóm kia lỗ thì con số gộp
+        // che mất phần lỗ — đúng lúc phanh của nhóm đang lỗ cần nhìn thấy nó nhất.
+        var dailyLossPercentByStyle = closed
+            .Where(t => t.ClosedAt!.Value >= dayStart && t.ClosedAt.Value < dayStart.AddDays(1))
+            .GroupBy(t => t.Style)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var pnl = g.Sum(t => t.RealizedPnl ?? 0m);
+                    return balance > 0m && pnl < 0m ? Math.Abs(pnl) / balance * 100m : 0m;
+                });
+
         var worstHours = closed
             .Where(t => t.OpenedAt is not null && t.Outcome == TradeOutcome.Loss)
             .GroupBy(t => t.OpenedAt!.Value.Hour)
@@ -183,6 +206,9 @@ public sealed class TraderStatisticsProvider : ITraderStatisticsProvider
             OpenPositions = openPositions
                 .Select(p => new OpenPositionSnapshot(p.Symbol, p.Direction, p.RiskPercent ?? 1m, p.Style))
                 .ToList(),
+
+            TradesTodayByStyle = tradesTodayByStyle,
+            DailyLossPercentByStyle = dailyLossPercentByStyle,
         };
     }
 }

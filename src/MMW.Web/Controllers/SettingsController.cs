@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using MMW.Application.Interfaces;
 using MMW.Application.Models;
@@ -75,6 +75,8 @@ public class SettingsController : Controller
             MinRiskRewardRatio = rs.MinRiskRewardRatio,
             MaxTradesPerDay = rs.MaxTradesPerDay,
             MaxDailyLossPercent = rs.MaxDailyLossPercent,
+            MaxTradesPerDayHtf = rs.MaxTradesPerDayHtf,
+            MaxDailyLossPercentHtf = rs.MaxDailyLossPercentHtf,
             RequireStopLoss = rs.RequireStopLoss,
             RevengeTradeWindowMinutes = rs.RevengeTradeWindowMinutes,
             LossStreakThreshold = rs.LossStreakThreshold,
@@ -93,6 +95,8 @@ public class SettingsController : Controller
             MinRiskRewardRatio = model.MinRiskRewardRatio,
             MaxTradesPerDay = model.MaxTradesPerDay,
             MaxDailyLossPercent = model.MaxDailyLossPercent,
+            MaxTradesPerDayHtf = model.MaxTradesPerDayHtf,
+            MaxDailyLossPercentHtf = model.MaxDailyLossPercentHtf,
             RequireStopLoss = model.RequireStopLoss,
             RevengeTradeWindowMinutes = model.RevengeTradeWindowMinutes,
             LossStreakThreshold = model.LossStreakThreshold,

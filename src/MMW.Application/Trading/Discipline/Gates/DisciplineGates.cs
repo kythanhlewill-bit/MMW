@@ -55,16 +55,25 @@ public sealed class DailyLossLimitGate : IDisciplineGate
 
     public GateResult Evaluate(DisciplineContext context)
     {
-        var lossPercent = context.Stats.DailyLossPercent;
-        var limit = context.RiskSettings.MaxDailyLossPercent;
+        // Đếm và chặn theo NHÓM. Dùng chung một bộ đếm nghĩa là bộ luật swing thua một lệnh thì
+        // bộ luật trong ngày đứng luôn tới nửa đêm UTC — bị khoá bởi kết quả của một bộ luật
+        // khác, trên những mã khác, với một ví ký quỹ khác. Lý do dừng khi đó cũng không nhắc
+        // gì tới nhóm kia, nên nhìn vào nhật ký sẽ không hiểu vì sao mình bị dừng.
+        var style = context.Settings.StrategyVersion.StyleOf();
+        var lossPercent = context.Stats.DailyLossPercentOf(style);
+        var limit = style == TradeStyle.HtfSwing
+            ? context.RiskSettings.MaxDailyLossPercentHtf
+            : context.RiskSettings.MaxDailyLossPercent;
+        var styleName = style == TradeStyle.HtfSwing ? "lệnh H4" : "lệnh ngắn";
 
         if (lossPercent >= limit)
         {
             return GateResult.StopDay(VetoReason.DailyLossStop,
-                $"Lỗ trong ngày {lossPercent:N2}% đã chạm giới hạn {limit:N2}% — dừng giao dịch đến hết ngày UTC.");
+                $"Lỗ trong ngày của nhóm {styleName} {lossPercent:N2}% đã chạm giới hạn {limit:N2}% — "
+                + "dừng nhóm này đến hết ngày UTC.");
         }
 
-        return GateResult.Pass($"Lỗ trong ngày {lossPercent:N2}%, dưới giới hạn {limit:N2}%.");
+        return GateResult.Pass($"Lỗ trong ngày của nhóm {styleName} {lossPercent:N2}%, dưới giới hạn {limit:N2}%.");
     }
 }
 
@@ -155,16 +164,24 @@ public sealed class MaxTradesGate : IDisciplineGate
 
     public GateResult Evaluate(DisciplineContext context)
     {
-        var today = context.Stats.TradesToday;
-        var max = context.DailyPlan.MaxTradesToday;
+        var style = context.Settings.StrategyVersion.StyleOf();
+        var today = context.Stats.TradesTodayOf(style);
+
+        // Nhóm swing KHÔNG đọc hạn mức của kế hoạch ngày. Kế hoạch ngày được dựng từ chế độ
+        // ngày của mã dẫn dắt để phục vụ sổ lệnh trong ngày; ngân sách lệnh của nó không mô tả
+        // gì về một bộ luật đọc chiều từ cấu trúc 4h của từng mã riêng.
+        var isHtf = style == TradeStyle.HtfSwing;
+        var max = isHtf ? context.RiskSettings.MaxTradesPerDayHtf : context.DailyPlan.MaxTradesToday;
+        var source = isHtf ? "hạn mức lệnh H4/ngày" : "kế hoạch ngày";
+        var styleName = isHtf ? "lệnh H4" : "lệnh ngắn";
 
         if (today >= max)
         {
             return GateResult.Block(VetoReason.MaxTradesReached,
-                $"Đã vào {today} lệnh hôm nay, đủ hạn mức {max} của kế hoạch ngày.");
+                $"Đã vào {today} {styleName} hôm nay, đủ hạn mức {max} của {source}.");
         }
 
-        return GateResult.Pass($"Đã vào {today}/{max} lệnh hôm nay.");
+        return GateResult.Pass($"Đã vào {today}/{max} {styleName} hôm nay.");
     }
 }
 

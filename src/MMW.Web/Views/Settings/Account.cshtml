@@ -1,4 +1,4 @@
-@model MMW.Web.Models.RiskSettingForm
+﻿@model MMW.Web.Models.RiskSettingForm
 @{
     ViewData["Title"] = $"Cấu hình rủi ro · {Model.AccountName}";
 }
@@ -31,6 +31,19 @@
             <div class="col-md-6">
                 <label class="form-label" asp-for="MaxDailyLossPercent"></label>
                 <input asp-for="MaxDailyLossPercent" class="form-control" type="number" step="0.01" />
+            </div>
+            @*  Hạn mức của nhóm swing đếm RIÊNG. Để chung một bộ đếm thì một lệnh H4 thua
+                khoá luôn bộ luật trong ngày tới nửa đêm UTC — bị dừng bởi kết quả của một bộ
+                luật khác, trên mã khác, với ví ký quỹ khác. Chỉ có tác dụng khi DualEngine bật. *@
+            <div class="col-md-6">
+                <label class="form-label" asp-for="MaxTradesPerDayHtf"></label>
+                <input asp-for="MaxTradesPerDayHtf" class="form-control" type="number" min="0" />
+                <div class="form-hint">Đếm riêng với lệnh ngắn. Chỉ dùng khi chạy song song hai bộ luật.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" asp-for="MaxDailyLossPercentHtf"></label>
+                <input asp-for="MaxDailyLossPercentHtf" class="form-control" type="number" step="0.01" />
+                <div class="form-hint">Dừng nhóm H4 không dừng nhóm lệnh ngắn, và ngược lại.</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label" asp-for="RevengeTradeWindowMinutes"></label>

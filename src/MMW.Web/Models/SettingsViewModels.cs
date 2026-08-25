@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 
@@ -48,6 +48,12 @@ public class RiskSettingForm
 
     [Display(Name = "% lỗ tối đa / ngày")]
     public decimal MaxDailyLossPercent { get; set; }
+
+    [Display(Name = "Số lệnh H4 tối đa / ngày")]
+    public int MaxTradesPerDayHtf { get; set; }
+
+    [Display(Name = "% lỗ tối đa / ngày (H4)")]
+    public decimal MaxDailyLossPercentHtf { get; set; }
 
     [Display(Name = "Bắt buộc Stop Loss")]
     public bool RequireStopLoss { get; set; }
