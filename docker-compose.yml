@@ -38,6 +38,13 @@ services:
       # duy nhất. Testnet BTCUSDT/ETHUSDT hiện yêu cầu 50 — để 60 cho có biên khi giá trượt.
       LiveTrading__MinOrderNotionalUsdt: "${LIVE_TRADING_MIN_NOTIONAL_USDT:-60}"
 
+      # Hai bộ luật song song trên một tài khoản. Đường swing 4h chạy các cặp USDC của cùng
+      # tài sản gốc, nên nó không gặp đường trong ngày trên bất kỳ mã nào và tiêu ký quỹ từ
+      # ví USDC riêng. DUAL_ENGINE_HTF_SYMBOLS phải không trùng mã nào của tài khoản.
+      DualEngine__Enabled: "${DUAL_ENGINE_ENABLED:-false}"
+      DualEngine__HtfSymbols: "${DUAL_ENGINE_HTF_SYMBOLS:-BTCUSDC,ETHUSDC}"
+      DualEngine__HtfStrategyVersion: "${DUAL_ENGINE_HTF_STRATEGY_VERSION:-7}"
+
       # KHÔNG khai Binance__ApiKey ở đây: mọi consumer (LiveOrderService, LiveBalanceService,
       # TradeResultSyncService) đọc key theo từng tài khoản từ bảng TradingAccounts, nhập qua
       # giao diện /Accounts. Cấu hình Binance:ApiKey không có nơi nào dùng tới.

@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using MMW.Domain.Enums;
 
 namespace MMW.Domain.Entities;
@@ -423,6 +423,19 @@ public class EngineSetting : BaseEntity
 
     public ICollection<SessionQualityRow> SessionQualityRows { get; set; } = new List<SessionQualityRow>();
     public ICollection<BlackoutRule> BlackoutRules { get; set; } = new List<BlackoutRule>();
+
+    /// <summary>
+    /// Bản sao nông, dùng để dựng một cấu hình phái sinh trong bộ nhớ mà không đụng CSDL.
+    /// </summary>
+    /// <remarks>
+    /// Đây là thứ cho phép chạy hai bộ luật trên cùng một tài khoản mà không cần thêm cột nào:
+    /// mọi knob của bộ luật swing (V7*) ĐÃ là cột trên chính dòng này, nên sao chép rồi lật
+    /// StrategyVersion là ra một cấu hình swing đầy đủ và hợp lệ.
+    ///
+    /// Bản sao KHÔNG được đưa cho EF theo dõi — nó mang cùng khoá chính với bản gốc, và lưu nó
+    /// sẽ ghi đè cấu hình thật của tài khoản. Mọi nơi dùng nó đều đọc bằng AsNoTracking.
+    /// </remarks>
+    public EngineSetting ShallowCopy() => (EngineSetting)MemberwiseClone();
 
     /// <summary>
     /// Kiểm tra toàn bộ ràng buộc cấu hình. Rỗng nghĩa là hợp lệ.

@@ -1,4 +1,4 @@
-using MMW.Application.Trading.Discipline;
+﻿using MMW.Application.Trading.Discipline;
 using MMW.Application.Trading.Discipline.Gates;
 using MMW.Application.Trading.Scoring;
 using MMW.Domain.Entities;
@@ -64,6 +64,46 @@ public class OpenPositionGateTests
 
         Assert.Equal(GateAction.BlockTrade, result.Action);
         Assert.Equal(VetoReason.PositionAlreadyOpen, result.VetoReason);
+    }
+
+    /// <summary>
+    /// Cùng tài sản gốc, khác tài sản định giá — vẫn là MỘT phơi nhiễm.
+    /// </summary>
+    /// <remarks>
+    /// Sinh ra cùng lúc với việc chạy hai bộ luật song song trên một tài khoản, nơi đường swing
+    /// được đẩy sang các cặp USDC để không gặp đường trong ngày. Cách tách đó giải quyết ký quỹ
+    /// và khoá chống trùng, nhưng BTCUSDT với BTCUSDC vẫn bám giá nhau vài phần vạn: vào cùng
+    /// chiều là một lệnh cỡ đôi đội lốt hai lệnh, vào ngược chiều là tự hedge chính mình.
+    ///
+    /// Rào tương quan không bắt được: nó cộng dồn theo CHIỀU, nên cặp ngược chiều lọt sạch.
+    /// </remarks>
+    [Theory]
+    [InlineData(TradeDirection.Long)]
+    [InlineData(TradeDirection.Short)]
+    public void Cung_tai_san_goc_khac_dinh_gia_thi_chan(TradeDirection openDirection)
+    {
+        var result = new OpenPositionGate().Evaluate(Context(
+            symbol: "BTCUSDC",
+            direction: TradeDirection.Long,
+            open: new OpenPositionSnapshot("BTCUSDT", openDirection, 1m)));
+
+        Assert.Equal(GateAction.BlockTrade, result.Action);
+        Assert.Equal(VetoReason.PositionAlreadyOpen, result.VetoReason);
+    }
+
+    /// <summary>
+    /// Tài sản gốc KHÁC nhau thì không chặn, dù đuôi định giá khác nhau.
+    /// </summary>
+    [Fact]
+    public void Khac_tai_san_goc_thi_khong_chan_vi_ly_do_nay()
+    {
+        var result = new OpenPositionGate().Evaluate(Context(
+            symbol: "BTCUSDC",
+            direction: TradeDirection.Long,
+            leaderCorrelation: null,
+            open: new OpenPositionSnapshot("ETHUSDT", TradeDirection.Long, 1m)));
+
+        Assert.NotEqual(GateAction.BlockTrade, result.Action);
     }
 
     /// <summary>

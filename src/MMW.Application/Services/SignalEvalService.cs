@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MMW.Application.Abstractions;
@@ -112,6 +112,7 @@ public sealed class SignalEvalService : ISignalEvalService
     private readonly IBaseRepository<RiskSetting> _riskSettings;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SignalEvalService> _logger;
+    private readonly Trading.DualEngineOptions _dualEngine;
     private readonly Dictionary<long, EngineSetting> _transientSettings = new();
     private readonly Dictionary<long, RiskSetting> _transientRiskSettings = new();
     private readonly Dictionary<(long AccountId, DateOnly Date), TraderStatistics> _transientStats = new();
@@ -144,6 +145,7 @@ public sealed class SignalEvalService : ISignalEvalService
         IBaseRepository<EntryScorecard> scorecards,
         IBaseRepository<RiskSetting> riskSettings,
         IUnitOfWork unitOfWork,
+        Microsoft.Extensions.Options.IOptions<Trading.DualEngineOptions> dualEngine,
         ILogger<SignalEvalService> logger)
     {
         _dailyPlan = dailyPlan;
@@ -169,6 +171,7 @@ public sealed class SignalEvalService : ISignalEvalService
         _scorecards = scorecards;
         _riskSettings = riskSettings;
         _unitOfWork = unitOfWork;
+        _dualEngine = dualEngine.Value;
         _logger = logger;
     }
 
@@ -178,20 +181,83 @@ public sealed class SignalEvalService : ISignalEvalService
         var setting = await LoadSettingAsync(tradingAccountId, ct);
         var results = new List<EntryScorecard>();
 
-        foreach (var symbol in setting.SymbolList())
+        // Đường trong ngày: cấu hình của chính tài khoản, danh sách mã của chính nó.
+        await ScanAsync(tradingAccountId, setting, setting.SymbolList(), null, results, utcNow, ct);
+
+        // Đường swing 4h, nếu đang bật. Nó chạy trên MỘT danh sách mã khác — cùng tài sản gốc
+        // nhưng khác tài sản định giá — nên hai bộ luật không bao giờ gặp nhau trên cùng một mã,
+        // và mỗi bên tiêu ký quỹ từ ví riêng của mình.
+        var htfSetting = BuildHtfSetting(setting);
+        if (htfSetting is not null)
         {
-            try
-            {
-                results.Add(await EvaluateAsync(tradingAccountId, symbol, utcNow, ct));
-            }
-            catch (Exception ex)
-            {
-                // Một mã lỗi không được kéo theo các mã còn lại.
-                _logger.LogError(ex, "Lỗi chấm điểm {Symbol} cho tài khoản {AccountId}.", symbol, tradingAccountId);
-            }
+            await ScanAsync(
+                tradingAccountId, htfSetting, _dualEngine.HtfSymbolList(), htfSetting, results, utcNow, ct);
         }
 
         return results;
+    }
+
+    private async Task ScanAsync(
+        long tradingAccountId,
+        EngineSetting setting,
+        IReadOnlyList<string> symbols,
+        EngineSetting? settingsOverride,
+        List<EntryScorecard> results,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        foreach (var symbol in symbols)
+        {
+            try
+            {
+                results.Add(await EvaluateCoreAsync(
+                    tradingAccountId, symbol, utcNow, persist: true,
+                    statisticsOverride: null, settingsOverride, ct));
+            }
+            catch (Exception ex)
+            {
+                // Một mã lỗi không được kéo theo các mã còn lại — kể cả sang đường bộ luật kia.
+                _logger.LogError(ex, "Lỗi chấm điểm {Symbol} (V{Version}) cho tài khoản {AccountId}.",
+                    symbol, (int)setting.StrategyVersion, tradingAccountId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cấu hình cho đường swing, hoặc <c>null</c> khi tắt / cấu hình không dùng được.
+    /// </summary>
+    /// <remarks>
+    /// Bản sao nông của chính cấu hình tài khoản, chỉ lật phiên bản bộ luật và danh sách mã.
+    /// Mọi knob riêng của bộ luật swing đã là cột trên cùng dòng đó, nên không có gì phải dựng
+    /// thêm — và không có migration nào phải viết.
+    ///
+    /// Cấu hình sai thì GHI CẢNH BÁO rồi bỏ đường swing, không ném lỗi: vòng quét này chạy cho
+    /// cả đường trong ngày, và một dòng cấu hình gõ nhầm không được phép đánh sập bộ luật đang
+    /// giữ tiền thật.
+    /// </remarks>
+    private EngineSetting? BuildHtfSetting(EngineSetting accountSetting)
+    {
+        if (!_dualEngine.Enabled) return null;
+
+        var problem = _dualEngine.Validate(accountSetting.SymbolList());
+        if (problem is not null)
+        {
+            _logger.LogWarning("DualEngine không dùng được — bỏ qua đường swing. {Problem}", problem);
+            return null;
+        }
+
+        if (!Enum.IsDefined(typeof(TradingStrategyVersion), _dualEngine.HtfStrategyVersion))
+        {
+            _logger.LogWarning(
+                "DualEngine.HtfStrategyVersion = {Version} không phải phiên bản được hỗ trợ — bỏ qua đường swing.",
+                _dualEngine.HtfStrategyVersion);
+            return null;
+        }
+
+        var htf = accountSetting.ShallowCopy();
+        htf.StrategyVersion = (TradingStrategyVersion)_dualEngine.HtfStrategyVersion;
+        htf.Symbols = string.Join(',', _dualEngine.HtfSymbolList());
+        return htf;
     }
 
     public async Task<EntryScorecard> EvaluateAsync(
@@ -252,13 +318,21 @@ public sealed class SignalEvalService : ISignalEvalService
         var entryCandles = await ClosedCandlesAsync(symbol, setting.EntryTimeframe, EntryCandleLimit, ct);
         var candleClose = entryCandles.Count > 0 ? entryCandles[^1].CloseTime : utcNow;
 
-        // FR-051: khoá logic là (Symbol, CandleCloseTimeUtc, IsBacktest). Job chạy chồng lấn
-        // hoặc chạy lại bù sẽ gặp đúng cây nến cũ — trả phiếu đã có thay vì sinh bản trùng.
+        // FR-051: khoá logic là (Symbol, CandleCloseTimeUtc, Style, IsBacktest). Job chạy chồng
+        // lấn hoặc chạy lại bù sẽ gặp đúng cây nến cũ — trả phiếu đã có thay vì sinh bản trùng.
+        //
+        // Style nằm trong khoá là lưới đỡ chứ không phải điều kiện cần: hai bộ luật chạy song
+        // song đã được tách bằng DANH SÁCH MÃ rời nhau, nên chúng không thể gặp nhau ở đây.
+        // Nhưng nếu ai đó cấu hình trùng mã và phép kiểm lúc dựng cấu hình bị vượt qua, thiếu
+        // Style ở khoá này nghĩa là bộ luật chạy sau nhận PHIẾU CỦA BỘ LUẬT KIA và tưởng là của
+        // mình — sai lệch không để lại dấu vết nào ngoài một cỡ lệnh khó hiểu.
+        var style = setting.StrategyVersion.StyleOf();
         var existing = persist
             ? await _scorecards
                 .Get(s => s.TradingAccountId == tradingAccountId
                           && s.Symbol == symbol
                           && s.CandleCloseTimeUtc == candleClose
+                          && s.Style == style
                           && !s.IsBacktest)
                 .Include(s => s.Lines)
                 .FirstOrDefaultAsync(ct)

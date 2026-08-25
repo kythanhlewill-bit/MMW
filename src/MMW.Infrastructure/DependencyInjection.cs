@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -79,6 +79,10 @@ public static class DependencyInjection
 
         // --- Đặt lệnh THẬT (live trading, mặc định tắt qua LiveTradingOptions) ---
         services.Configure<LiveTradingOptions>(configuration.GetSection(LiveTradingOptions.SectionName));
+
+        // --- Hai bộ luật song song trên một tài khoản (mặc định tắt) ---
+        services.Configure<MMW.Application.Trading.DualEngineOptions>(
+            configuration.GetSection(MMW.Application.Trading.DualEngineOptions.SectionName));
         services.AddHttpClient("BinanceFutures");
         services.AddScoped<IExchangeOrderProviderFactory, BinanceFuturesOrderProviderFactory>();
 

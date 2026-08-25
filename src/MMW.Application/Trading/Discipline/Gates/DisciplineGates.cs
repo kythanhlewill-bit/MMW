@@ -1,3 +1,4 @@
+﻿using MMW.Domain.Constants;
 using MMW.Domain.Enums;
 
 namespace MMW.Application.Trading.Discipline.Gates;
@@ -207,6 +208,33 @@ public sealed class OpenPositionGate : IDisciplineGate
                 $"Đang có vị thế {Describe(sameSymbol.Direction)} mở trên {context.Symbol} " +
                 $"({sameSymbol.SizeR:N2}R) — setup mới trên cùng mã là cùng một ý tưởng vào lần hai, " +
                 "không phải một lệnh độc lập.");
+        }
+
+        // Cùng tài sản gốc, khác tài sản định giá. BTCUSDT và BTCUSDC là hai hợp đồng riêng trên
+        // sàn nhưng bám giá nhau trong khoảng vài phần vạn — chúng là MỘT phơi nhiễm.
+        //
+        // Rào này sinh ra cùng lúc với việc chạy hai bộ luật song song, nơi đường swing được đẩy
+        // sang các cặp USDC đúng để tránh gặp đường trong ngày. Cách tách đó giải quyết được
+        // chuyện ký quỹ và chuyện khoá chống trùng, nhưng KHÔNG giải quyết được chuyện phơi
+        // nhiễm — và nếu không chặn ở đây thì:
+        //   • cùng chiều  → một lệnh cỡ đôi đội lốt hai lệnh trên hai mã
+        //   • ngược chiều → tự hedge chính mình, trả phí và funding hai chân để giữ một vị thế
+        //     ròng gần bằng không
+        // Cả hai đều vô hình với rào tương quan, vì nó cộng dồn theo chiều chứ không theo mã.
+        var sameAsset = open.FirstOrDefault(p =>
+            SymbolConventions.SameBaseAsset(p.Symbol, context.Symbol)
+            && !string.Equals(p.Symbol, context.Symbol, StringComparison.OrdinalIgnoreCase));
+
+        if (sameAsset is not null)
+        {
+            var opposed = sameAsset.Direction != context.Direction;
+            return GateResult.Block(VetoReason.PositionAlreadyOpen,
+                $"Đang có vị thế {Describe(sameAsset.Direction)} mở trên {sameAsset.Symbol} " +
+                $"({sameAsset.SizeR:N2}R) — cùng tài sản gốc {SymbolConventions.BaseAssetOf(context.Symbol)} " +
+                $"với {context.Symbol}, chỉ khác tài sản định giá. " +
+                (opposed
+                    ? "Vào ngược chiều là tự hedge chính mình: phơi nhiễm ròng gần bằng không mà vẫn trả phí hai chân."
+                    : "Vào cùng chiều là một lệnh cỡ đôi đội lốt hai lệnh trên hai mã."));
         }
 
         // Hạn mức đếm RIÊNG từng nhóm. Một lệnh swing 4h giữ nhiều ngày; nếu nó chiếm chỗ trong
