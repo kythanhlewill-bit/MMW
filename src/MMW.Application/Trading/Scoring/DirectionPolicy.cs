@@ -1,4 +1,4 @@
-using MMW.Application.MarketData.Models;
+﻿using MMW.Application.MarketData.Models;
 using MMW.Application.Trading.Structure;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
@@ -125,6 +125,26 @@ public sealed class DirectionPolicy : IDirectionPolicy
         if (settings.StrategyVersion.UsesSidewaysV6())
             return new DirectionCandidates(planned, range, null,
                 "V6 chuyển quyền chọn chiều ngày Range cho detector Rectangle/Triangle M15.");
+
+        // V7 cũng không chịu phép kiểm vị trí này, và vì một lý do khác hẳn V6.
+        //
+        // DayRegime tính từ hành vi khung ngày của MÃ DẪN DẮT, còn V7 đọc chiều từ cấu trúc 4h
+        // của CHÍNH MÃ đang xét — hai câu hỏi khác nhau trên hai tập dữ liệu khác nhau. Nhãn
+        // "hôm nay BTC đi ngang" không nói được gì về việc cấu trúc 4h của ETHUSDC còn nguyên
+        // hay đã hỏng.
+        //
+        // Tệ hơn: phép kiểm này chặn ĐÚNG thứ V7 sinh ra để làm. Luận điểm của V7 là vào khi giá
+        // lùi về VÙNG GIÁ TRỊ 4h, mà vùng giá trị nằm ở giữa biên độ — đúng vị trí bị từ chối ở
+        // đây. Ngày đầu tiên chạy thật, cả hai mã đều veto tại đây với vị trí 65,5% và 68,6%.
+        // Với 63% số ngày mang nhãn Range, để nguyên nghĩa là bật V7 mà nó gần như không bao giờ
+        // vào được lệnh.
+        //
+        // Bỏ cổng này KHÔNG nới lỏng gì: V7 còn nguyên bộ cổng riêng và chặt hơn — xu hướng 4h
+        // phải rõ và chưa quá hạn, giá phải nằm trong vùng giá trị với hợp lưu tối thiểu, phải
+        // có xác nhận trên 15m, và R:R của phần runner phải đạt sàn.
+        if (settings.StrategyVersion.UsesHtfSwing())
+            return new DirectionCandidates(planned, range, null,
+                "V7 đọc chiều từ cấu trúc 4h của chính mã — vị trí trong biên độ ngày của mã dẫn dắt không ràng buộc nó.");
 
         if (range is null)
         {

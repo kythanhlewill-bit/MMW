@@ -1,4 +1,4 @@
-using MMW.Application.MarketData.Models;
+﻿using MMW.Application.MarketData.Models;
 using MMW.Application.Trading.Scoring;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
@@ -243,6 +243,73 @@ public class DirectionSelectionTests
     }
 
     // ── Bộ dựng ─────────────────────────────────────────────────────────
+
+    // ── V7: cổng vị trí này không áp cho bộ luật swing 4h ───────────────
+
+    /// <summary>
+    /// V7 đứng giữa biên độ ngày Range vẫn được đi tiếp.
+    /// </summary>
+    /// <remarks>
+    /// DayRegime tính từ hành vi khung ngày của mã dẫn dắt, còn V7 đọc chiều từ cấu trúc 4h của
+    /// chính mã đang xét. Tệ hơn, phép kiểm này chặn đúng thứ V7 sinh ra để làm: luận điểm của
+    /// V7 là vào khi giá lùi về vùng giá trị 4h, mà vùng giá trị nằm ở GIỮA biên độ.
+    ///
+    /// Ngày đầu chạy thật (25/08), cả BTCUSDC lẫn ETHUSDC đều veto tại đây ở vị trí 68,6% và
+    /// 65,5%, trong khi 63% số ngày trong sổ mang nhãn Range.
+    /// </remarks>
+    [Fact]
+    public void V7_giua_bien_do_ngay_range_van_di_tiep()
+    {
+        var candles = ZigZag4h();
+
+        var result = Candidates(candles, Mid(candles),
+            configure: s => s.StrategyVersion = TradingStrategyVersion.HtfSwingV7);
+
+        Assert.Null(result.Veto);
+        Assert.NotEmpty(result.Allowed);
+    }
+
+    /// <summary>Kể cả khi giá đã ra hẳn ngoài biên độ — V7 tự phán bằng cấu trúc 4h của nó.</summary>
+    [Fact]
+    public void V7_ngoai_bien_do_cung_khong_bi_cong_nay_chan()
+    {
+        var candles = ZigZag4h();
+        var bounds = Policy().Locate(candles, 2, Mid(candles))!;
+
+        var result = Candidates(candles, bounds.High + (bounds.High - bounds.Low),
+            configure: s => s.StrategyVersion = TradingStrategyVersion.HtfSwingV7);
+
+        Assert.Null(result.Veto);
+    }
+
+    /// <summary>
+    /// Nhưng V7 VẪN chịu ràng buộc chiều của kế hoạch ngày. Đây là ràng buộc rủi ro toàn tài
+    /// khoản, khác hẳn phép kiểm vị trí ở trên, nên nó không được gỡ theo.
+    /// </summary>
+    [Fact]
+    public void V7_van_chiu_rang_buoc_chieu_cua_ke_hoach_ngay()
+    {
+        var result = Policy().Candidates(
+            ScoringFixtures.Plan(AllowedDirections.None, DayRegime.Range),
+            ScoringFixtures.Settings(s => s.StrategyVersion = TradingStrategyVersion.HtfSwingV7),
+            ZigZag4h(),
+            1000m);
+
+        Assert.Empty(result.Allowed);
+        Assert.Equal(VetoReason.DirectionNotAllowed, result.Veto);
+    }
+
+    /// <summary>Bộ luật trong ngày KHÔNG được nới theo: cổng vị trí vẫn áp nguyên với nó.</summary>
+    [Fact]
+    public void Bo_luat_trong_ngay_van_bi_cong_vi_tri_chan()
+    {
+        var candles = ZigZag4h();
+
+        var result = Candidates(candles, Mid(candles),
+            configure: s => s.StrategyVersion = TradingStrategyVersion.TriggerFirstV3);
+
+        Assert.Equal(VetoReason.NotAtRangeEdge, result.Veto);
+    }
 
     private static DirectionCandidates Candidates(
         IReadOnlyList<Candle> biasCandles, decimal price, Action<EngineSetting>? configure = null) =>
