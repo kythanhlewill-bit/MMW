@@ -1,9 +1,10 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
 using MMW.Application.Models;
+using MMW.Domain.Constants;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -220,7 +221,7 @@ public class TradesController : Controller
                 form.EntryPrice = signal.Entry;
                 form.StopLoss = signal.StopLoss;
                 form.TakeProfit = signal.TakeProfit;
-                form.Quantity = await AutoSizeAsync(accountId, signal.Entry, signal.StopLoss);
+                form.Quantity = await AutoSizeAsync(accountId, signal.Symbol, signal.Entry, signal.StopLoss);
                 form.Note = $"Từ đề xuất #{signal.Id} ({signal.Symbol} {signal.Direction})";
                 hint = $"đề xuất #{signal.Id}";
             }
@@ -676,14 +677,19 @@ public class TradesController : Controller
     }
 
     /// <summary>Khối lượng = (vốn × maxRisk%) / |Entry − StopLoss|.</summary>
-    private async Task<decimal> AutoSizeAsync(long accountId, decimal entry, decimal stopLoss)
+    /// <remarks>
+    /// Vốn lấy từ ví trả ký quỹ cho chính cặp này, không phải một ví mặc định: BTCUSDC tiêu
+    /// ví USDC, BTCUSDT tiêu ví USDT, và ở chế độ ký quỹ đơn tài sản hai ví đó không thông nhau.
+    /// </remarks>
+    private async Task<decimal> AutoSizeAsync(long accountId, string? symbol, decimal entry, decimal stopLoss)
     {
         var account = await _accounts.FindAsync(accountId);
         var risk = await _settings.GetRiskSettingAsync(accountId);
         var stopDistance = Math.Abs(entry - stopLoss);
         if (account is null || stopDistance <= 0m)
             return 0m;
-        var balance = await _liveBalance.GetEffectiveBalanceAsync(account); // số dư thật từ Binance
+        var balance = await _liveBalance.GetEffectiveBalanceAsync(
+            account, SymbolConventions.QuoteAssetOf(symbol)); // số dư thật từ Binance
         if (balance <= 0m)
             return 0m;
         var riskAmount = balance * risk.MaxRiskPerTradePercent / 100m;

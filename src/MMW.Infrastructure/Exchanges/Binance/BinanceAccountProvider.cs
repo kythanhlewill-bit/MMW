@@ -35,15 +35,18 @@ public class BinanceAccountProvider : IExchangeAccountProvider
         return balances;
     }
 
-    public async Task<decimal?> GetFuturesUsdtBalanceAsync(CancellationToken cancellationToken = default)
+    public async Task<decimal?> GetFuturesBalanceAsync(
+        string quoteAsset, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(quoteAsset)) return null;
+
         var futuresBase = string.IsNullOrWhiteSpace(_options.FuturesApiBaseUrl)
             ? "https://fapi.binance.com"
             : _options.FuturesApiBaseUrl;
         using var doc = await SignedGetAsync("/fapi/v2/balance", "", cancellationToken, absoluteBase: futuresBase);
         foreach (var item in doc.RootElement.EnumerateArray())
         {
-            if (string.Equals(item.GetProperty("asset").GetString(), "USDT", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(item.GetProperty("asset").GetString(), quoteAsset, StringComparison.OrdinalIgnoreCase))
                 return ParseDecimal(item.GetProperty("balance").GetString());
         }
         return null;

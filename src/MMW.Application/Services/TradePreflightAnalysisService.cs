@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -6,6 +6,7 @@ using MMW.Application.Indicators;
 using MMW.Application.Interfaces;
 using MMW.Application.MarketData;
 using MMW.Application.Models;
+using MMW.Domain.Constants;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -80,8 +81,11 @@ public class TradePreflightAnalysisService : ITradePreflightAnalysisService
 
         var account = await _accounts.FindAsync(request.TradingAccountId);
         var riskSetting = await _settings.GetRiskSettingAsync(request.TradingAccountId, cancellationToken);
-        // Số dư tính rủi ro: ưu tiên số dư Futures USDT THẬT trên Binance, fallback CurrentBalance.
-        var balance = account is null ? 0m : await _liveBalance.GetEffectiveBalanceAsync(account, cancellationToken);
+        // Số dư tính rủi ro: ưu tiên số dư THẬT của đúng ví trả ký quỹ cho cặp này, fallback CurrentBalance.
+        var balance = account is null
+            ? 0m
+            : await _liveBalance.GetEffectiveBalanceAsync(
+                account, SymbolConventions.QuoteAssetOf(request.Symbol), cancellationToken);
         var metrics = await BuildMetricsAsync(request, balance, cancellationToken);
         var macroContext = await _macroEvents.GetContextForTradeAsync(request.Symbol, DateTime.UtcNow, cancellationToken);
         var warnings = BuildDeterministicWarnings(request, account, riskSetting, metrics);

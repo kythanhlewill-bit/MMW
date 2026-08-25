@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using MMW.Application.Interfaces;
@@ -6,6 +6,7 @@ using MMW.Application.MarketData;
 using MMW.Application.Abstractions;
 using MMW.Application.Trading.DailyPlanning;
 using MMW.Application.Trading.Discipline;
+using MMW.Domain.Constants;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -88,7 +89,8 @@ public class HomeController : Controller
                 try
                 {
                     var provider = _exchangeFactory.Create(account.ApiKey, account.ApiSecret, _liveTrading.UseTestnet);
-                    vm.LiveBalance = await provider.GetFuturesUsdtBalanceAsync();
+                    // Bảng tổng quan không gắn với một cặp nào, nên vẫn hỏi ví mặc định.
+                    vm.LiveBalance = await provider.GetFuturesBalanceAsync(SymbolConventions.DefaultQuoteAsset);
                 }
                 catch (Exception ex)
                 {

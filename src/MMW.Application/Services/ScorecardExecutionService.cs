@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using MMW.Application.Interfaces;
 using MMW.Application.Models;
 using MMW.Application.Trading.Execution;
+using MMW.Domain.Constants;
 using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 using MMW.Shared.Interfaces;
@@ -42,6 +43,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
     private readonly IBaseRepository<RiskSetting> _riskSettings;
     private readonly IBaseRepository<EngineSetting> _engineSettings;
     private readonly ITradeExecutionPlanner _executionPlanner;
+    private readonly ILiveBalanceService _liveBalance;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ScorecardExecutionService> _logger;
 
@@ -54,6 +56,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         IBaseRepository<RiskSetting> riskSettings,
         IBaseRepository<EngineSetting> engineSettings,
         ITradeExecutionPlanner executionPlanner,
+        ILiveBalanceService liveBalance,
         IUnitOfWork unitOfWork,
         ILogger<ScorecardExecutionService> logger)
     {
@@ -65,6 +68,7 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         _riskSettings = riskSettings;
         _engineSettings = engineSettings;
         _executionPlanner = executionPlanner;
+        _liveBalance = liveBalance;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -158,16 +162,36 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         var riskSetting = await _riskSettings.FirstOrDefaultAsync(r => r.TradingAccountId == account.Id)
                           ?? new RiskSetting { TradingAccountId = account.Id };
 
+        // Vốn để tính cỡ lệnh phải là vốn mà LỆNH NÀY tiêu được, nghĩa là số dư của đúng ví trả
+        // ký quỹ cho cặp đó. Ở chế độ ký quỹ đơn tài sản, ví USDT và ví USDC không dùng chung
+        // được một đồng nào; một lệnh BTCUSDC tính cỡ theo ví USDT là tính theo túi tiền của
+        // người khác.
+        //
+        // Trước đây chỗ này đọc thẳng account.CurrentBalance — sổ nội bộ, chỉ nhúc nhích khi
+        // chính app đóng lệnh. Nạp/rút trên sàn hoặc một fill mà app đọc hụt đều làm nó trôi
+        // khỏi thực tế trong im lặng, và mọi lệnh sau đó vào sai cỡ mà không có cảnh báo nào.
+        // ILiveBalanceService tự rơi về CurrentBalance khi tài khoản chưa có key hoặc gọi sàn
+        // lỗi, nên đường cũ vẫn còn nguyên làm lưới đỡ.
+        var quoteAsset = SymbolConventions.QuoteAssetOf(card.Symbol);
+        var balance = await _liveBalance.GetEffectiveBalanceAsync(account, quoteAsset, ct);
+        if (balance <= 0m)
+        {
+            _logger.LogWarning(
+                "Phiếu #{ScorecardId} {Symbol}: ví {Asset} không có số dư dùng được — bỏ qua.",
+                card.Id, card.Symbol, quoteAsset);
+            return false;
+        }
+
         // FinalSizeR là kích thước tính theo R, với 1R = MaxRiskPerTradePercent phần trăm vốn.
         // Quy đổi sang khối lượng chính là phép chia cho khoảng cách dừng lỗ — cùng công thức
         // mà CreateFromSignalAsync đang dùng cho đường tín hiệu AI, chỉ nhân thêm hệ số R.
-        var riskAmount = account.CurrentBalance * riskSetting.MaxRiskPerTradePercent / 100m * card.FinalSizeR;
+        var riskAmount = balance * riskSetting.MaxRiskPerTradePercent / 100m * card.FinalSizeR;
         var quantity = Math.Round(riskAmount / stopDistance, 8, MidpointRounding.AwayFromZero);
         if (quantity <= 0m)
         {
             _logger.LogWarning(
-                "Phiếu #{ScorecardId} {Symbol}: khối lượng tính ra 0 (vốn {Balance}, risk {Risk}%, {SizeR}R) — bỏ qua.",
-                card.Id, card.Symbol, account.CurrentBalance, riskSetting.MaxRiskPerTradePercent, card.FinalSizeR);
+                "Phiếu #{ScorecardId} {Symbol}: khối lượng tính ra 0 (ví {Asset} {Balance}, risk {Risk}%, {SizeR}R) — bỏ qua.",
+                card.Id, card.Symbol, quoteAsset, balance, riskSetting.MaxRiskPerTradePercent, card.FinalSizeR);
             return false;
         }
 
