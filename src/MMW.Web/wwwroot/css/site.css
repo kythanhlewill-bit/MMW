@@ -1560,3 +1560,106 @@ html[data-bs-theme="dark"] .daterangepicker .next span { border-color: #e6e3f5; 
         justify-content: start;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NHẬT KÝ LỆNH — LÝ DO HUỶ & BIỂU ĐỒ
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Lý do huỷ/chặn/lỗi: một dòng ngang hết bề rộng, cùng khuôn với ô phân tích của
+   lệnh đang mở. Nhét nó vào ô "Trạng thái" rộng ~100px thì câu "Lệnh chờ quá 60
+   phút chưa khớp — đã huỷ" vỡ thành sáu dòng chữ 0,72rem, và đó là lý do trước
+   đây nó bị giấu vào thuộc tính title. */
+.trade-note-card {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-left: 4px solid #94a3b8;
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.08);
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.trade-note-card .ti { color: #94a3b8; }
+
+.trade-note-label {
+    flex: none;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--mmw-text-muted);
+}
+
+.trade-note-text { min-width: 0; }
+
+/* Lỗi sàn khác huỷ theo kế hoạch: một cái là hệ thống làm đúng, cái kia là hỏng. */
+.trade-note-card:has(.ti-alert-triangle) {
+    border-left-color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.28);
+    background: rgba(245, 158, 11, 0.08);
+}
+.trade-note-card:has(.ti-alert-triangle) .ti { color: #f59e0b; }
+
+/* --- Modal biểu đồ --- */
+.chart-host {
+    height: 62vh;
+    min-height: 340px;
+}
+.chart-host .tradingview-widget-container,
+.chart-host iframe { height: 100% !important; width: 100% !important; }
+
+.chart-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--mmw-card-border);
+}
+
+.chart-level {
+    padding: 0.2rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.chart-level b { margin-right: 0.3rem; font-weight: 600; opacity: 0.75; }
+
+.chart-level.lvl-long  { border-color: rgba(34, 197, 94, 0.4);  background: rgba(34, 197, 94, 0.12); }
+.chart-level.lvl-short { border-color: rgba(239, 68, 68, 0.4);  background: rgba(239, 68, 68, 0.12); }
+.chart-level.lvl-sl    { border-color: rgba(239, 68, 68, 0.4);  background: rgba(239, 68, 68, 0.12); }
+.chart-level.lvl-tp    { border-color: rgba(34, 197, 94, 0.4);  background: rgba(34, 197, 94, 0.12); }
+
+@media (max-width: 1399.98px) {
+    /* Cùng cách xử lý như dòng phân tích: bỏ vai <tr>, dán liền dưới thẻ của
+       chính lệnh đó, và thẻ phía trên cắt bo góc dưới để hai khối đọc thành một. */
+    .trade-table tbody tr.trade-row:has(+ .trade-note-row) {
+        margin-bottom: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+    }
+    .trade-table tbody tr.trade-note-row { display: block; }
+    .trade-table tbody tr.trade-note-row > td {
+        display: block;
+        padding: 0 !important;
+        border: 0 !important;
+        background: none !important;
+    }
+    .trade-table tbody tr.trade-note-row .trade-note-card {
+        margin: 0 0 0.7rem;
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }
+
+    .chart-host { height: 55vh; }
+}
+
+@media (max-width: 575.98px) {
+    /* Trên điện thoại biểu đồ đứng phải cao hơn theo tỉ lệ, không thì nến bị bóp
+       thành một dải ngang không đọc được gì. */
+    .chart-host { height: 60vh; min-height: 300px; }
+}

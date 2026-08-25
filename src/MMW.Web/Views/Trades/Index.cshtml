@@ -291,15 +291,41 @@
                         }
 
                         @*  Lệnh đóng chỉ chạm ĐÚNG MỘT mức, nhưng CSDL không lưu "đóng vì lý do gì" —
-                            chỉ có giá thoát. Nên giờ đóng được gắn cho mức nào nằm trong 0,1% giá
-                            thoát. Không mức nào khớp (đóng tay, hết giờ, hoặc dừng lỗ đã bị kéo đi
-                            chỗ khác) thì KHÔNG mức nào được gắn giờ — thà để trống còn hơn gắn nhầm
-                            một cái giờ mà người đọc sẽ tin là thật. *@
+                            chỉ có giá thoát. Nên giờ đóng được gắn cho mức GẦN giá thoát nhất, và
+                            chỉ khi mức đó lệch dưới 0,5%.
+
+                            Ngưỡng cũ là 0,1% và nó quá chặt: lệnh chốt lời đi bằng TAKE_PROFIT_MARKET,
+                            tức là chạm giá thì bắn lệnh thị trường, nên giá khớp thật luôn trượt khỏi
+                            mức đặt vài phần nghìn. Lệnh #42 thoát ở 2.459,99 với mục tiêu 2.455,65 —
+                            lệch 0,18%, thắng đúng ở mục tiêu, mà cột TP vẫn trống trơn.
+
+                            So GẦN NHẤT thay vì so từng mức riêng cũng loại luôn khả năng hai mức cùng
+                            được gắn giờ khi chúng nằm sát nhau. Không mức nào lọt (đóng tay, hết giờ,
+                            dừng lỗ đã bị kéo đi chỗ khác) thì không mức nào có giờ — giờ đóng vẫn còn
+                            nguyên ở ô "Giá hiện tại", nên không mất thông tin, chỉ là không đoán bừa
+                            xem nó chạm cái gì. *@
+                        decimal? closedLevel = null;
+                        if (t.ClosedAt is not null && t.ExitPrice is decimal exitPx)
+                        {
+                            var best = 0.005m;
+                            foreach (var lv in new[] { t.StopLoss, t.FirstTakeProfit, t.TakeProfit })
+                            {
+                                if (lv is not decimal level || level <= 0m) continue;
+                                var gap = Math.Abs(exitPx - level) / level;
+                                if (gap <= best) { best = gap; closedLevel = level; }
+                            }
+                        }
+
                         bool ClosedAt(decimal? level) =>
-                            t.ClosedAt is not null
-                            && t.ExitPrice is decimal exit
-                            && level is decimal lv && lv > 0m
-                            && Math.Abs(exit - lv) / lv <= 0.001m;
+                            closedLevel is decimal cl && level is decimal lv && lv == cl;
+
+                        @*  Lý do huỷ đã có sẵn trong LiveNote từ lâu — nhưng chỉ nằm trong thuộc tính
+                            title của nhãn LIVE, tức là phải rê chuột mới thấy, và trên điện thoại thì
+                            không thấy được bằng cách nào cả. *@
+                        var showNote = !string.IsNullOrWhiteSpace(t.LiveNote)
+                            && (t.Status == MMW.Domain.Enums.TradeStatus.Cancelled
+                                || t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Blocked
+                                || t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Error);
 
                         var rowRisk = hasAnalysis ? analysis!.RiskLevel : null;
 
@@ -378,6 +404,13 @@
                                     @if (movePercent is decimal move)
                                     {
                                         <div class="cell-sub @moveClass">@(move >= 0m ? "+" : "")@move.ToString("N2")% so giá vào</div>
+                                    }
+                                    @*  Với lệnh đã đóng, "giá hiện tại" chính là giá thoát — nên giờ
+                                        đóng thuộc về đúng ô này, và nó luôn hiện, không phụ thuộc vào
+                                        việc có đoán ra được lệnh chạm mức nào hay không. *@
+                                    @if (t.ClosedAt is DateTime closedAt)
+                                    {
+                                        <div class="cell-time">đóng @VietnamTimeHelper.Format(closedAt, "HH:mm dd/MM")</div>
                                     }
                                     @if (trackPosition is decimal pos)
                                     {
@@ -491,6 +524,21 @@
                                                 || t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Blocked
                                                 || t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Error);
                                     }
+                                    @*  Biểu đồ trực tiếp. Các mức của lệnh đi kèm dưới dạng data-*
+                                        và được vẽ lại thành bảng cạnh biểu đồ: widget miễn phí của
+                                        TradingView không nhận đường kẻ từ bên ngoài, nên thà liệt kê
+                                        số rõ ràng còn hơn hứa một thứ nó không làm được. *@
+                                    <button type="button" class="btn btn-sm btn-outline-info js-chart"
+                                            title="Xem biểu đồ @t.Symbol"
+                                            data-symbol="@t.Symbol"
+                                            data-interval="@(t.Style == MMW.Domain.Enums.TradeStyle.HtfSwing ? "240" : "15")"
+                                            data-dir="@(isLong ? "Long" : "Short")"
+                                            data-entry="@t.EntryPrice.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture)"
+                                            data-sl="@(t.StopLoss?.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                            data-tp1="@(t.FirstTakeProfit?.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                            data-tp="@(t.TakeProfit?.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) ?? "")">
+                                        <i class="ti ti-chart-candle"></i> Chart
+                                    </button>
                                     @if (canRetry)
                                     {
                                         <form asp-action="Reactivate" asp-route-id="@t.Id" method="post" class="m-0">
@@ -513,6 +561,20 @@
                                 </div>
                             </td>
                         </tr>
+                        @if (showNote)
+                        {
+                            var noteIcon = t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Error
+                                ? "ti-alert-triangle" : "ti-ban";
+                            <tr class="trade-note-row">
+                                <td colspan="14" class="py-2 px-3">
+                                    <div class="trade-note-card">
+                                        <i class="ti @noteIcon"></i>
+                                        <span class="trade-note-label">Lý do</span>
+                                        <span class="trade-note-text">@t.LiveNote</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                         @if (hasAnalysis)
                         {
                             <tr class="trade-analysis-row">
@@ -542,4 +604,102 @@
 @if (ViewBag.Pager != null)
 {
     @await Html.PartialAsync("_Pagination", (MMW.Web.Models.PagerModel)ViewBag.Pager)
+}
+
+@*  Một modal dùng chung cho mọi dòng. Nhúng sẵn một widget cho mỗi lệnh thì trang này sẽ mở
+    vài chục iframe cùng lúc — mỗi cái là một kết nối dữ liệu thật. Dựng lúc bấm, dỡ lúc đóng. *@
+<div class="modal modal-blur fade" id="chartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chartModalTitle">Biểu đồ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="chart-levels" id="chartLevels"></div>
+                <div id="chartHost" class="chart-host"></div>
+                <div class="chart-fallback text-secondary small px-3 py-2" id="chartFallback" hidden>
+                    Không tải được biểu đồ TradingView — thường là do mạng đang chặn
+                    <code>s3.tradingview.com</code>. Các mức của lệnh vẫn hiện đầy đủ ở trên.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var modalEl = document.getElementById('chartModal');
+    if (!modalEl) return;
+
+    var host = document.getElementById('chartHost');
+    var levelsEl = document.getElementById('chartLevels');
+    var titleEl = document.getElementById('chartModalTitle');
+    var fallbackEl = document.getElementById('chartFallback');
+    var modal = new bootstrap.Modal(modalEl);
+
+    function chip(label, value, cls) {
+        if (!value) return '';
+        return '<span class="chart-level ' + cls + '"><b>' + label + '</b> ' + value + '</span>';
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-chart');
+        if (!btn) return;
+
+        var d = btn.dataset;
+        var dirCls = d.dir === 'Long' ? 'lvl-long' : 'lvl-short';
+        titleEl.textContent = d.symbol + ' · ' + d.dir + ' · khung ' + (d.interval === '240' ? '4h' : '15m');
+        levelsEl.innerHTML =
+            chip('Vào', d.entry, dirCls) +
+            chip('SL', d.sl, 'lvl-sl') +
+            chip('TP1', d.tp1, 'lvl-tp') +
+            chip('TP', d.tp, 'lvl-tp');
+
+        fallbackEl.hidden = true;
+        host.innerHTML = '';
+        modal.show();
+
+        // Widget dựng sau khi modal đã mở: TradingView đo bề rộng vùng chứa lúc khởi tạo, và
+        // vùng chứa của một modal đang ẩn có bề rộng bằng 0.
+        modalEl.addEventListener('shown.bs.modal', function once() {
+            modalEl.removeEventListener('shown.bs.modal', once);
+
+            var s = document.createElement('script');
+            s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+            s.async = true;
+            s.onerror = function () { fallbackEl.hidden = false; };
+            s.innerHTML = JSON.stringify({
+                // Hậu tố .P là hợp đồng vĩnh viễn. Bỏ nó đi thì TradingView trả về biểu đồ
+                // giao ngay — giá gần giống nhưng KHÔNG phải thị trường mà lệnh này đang nằm.
+                symbol: 'BINANCE:' + d.symbol + '.P',
+                interval: d.interval,
+                theme: 'dark',
+                style: '1',
+                locale: 'vi_VN',
+                timezone: 'Asia/Ho_Chi_Minh',
+                autosize: true,
+                hide_side_toolbar: false,
+                allow_symbol_change: false,
+                studies: ['STD;EMA'],
+                support_host: 'https://www.tradingview.com'
+            });
+
+            var wrap = document.createElement('div');
+            wrap.className = 'tradingview-widget-container';
+            wrap.style.height = '100%';
+            var inner = document.createElement('div');
+            inner.className = 'tradingview-widget-container__widget';
+            inner.style.height = '100%';
+            wrap.appendChild(inner);
+            wrap.appendChild(s);
+            host.appendChild(wrap);
+        });
+    });
+
+    // Dỡ hẳn iframe khi đóng: để lại thì nó vẫn chạy nền và vẫn nuốt dữ liệu.
+    modalEl.addEventListener('hidden.bs.modal', function () { host.innerHTML = ''; });
+})();
+</script>
 }
