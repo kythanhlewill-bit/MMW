@@ -137,6 +137,39 @@ public sealed record TraderStatistics(
 
     private readonly IReadOnlyDictionary<TradeStyle, decimal>? _dailyLossPercentByStyle;
 
+    /// <summary>Chuỗi thua liên tiếp XUYÊN NGÀY, tách theo nhóm.</summary>
+    /// <remarks>
+    /// Ngưỡng riêng mà bộ đếm chung thì vẫn hỏng, chỉ hỏng kín đáo hơn: một chuỗi thua của nhóm
+    /// lệnh ngắn sẽ dừng nhóm swing dù cấu trúc 4h chưa hề sai. Hai bộ luật đọc chiều từ hai
+    /// nguồn khác nhau, nên chuỗi thua của bên này không mang thông tin gì về bên kia.
+    /// </remarks>
+    public IReadOnlyDictionary<TradeStyle, int> ConsecutiveLossesByStyle
+    {
+        get => _consecutiveLossesByStyle
+               ?? new Dictionary<TradeStyle, int> { [TradeStyle.Intraday] = ConsecutiveLosses };
+        init => _consecutiveLossesByStyle = value;
+    }
+
+    private readonly IReadOnlyDictionary<TradeStyle, int>? _consecutiveLossesByStyle;
+
+    /// <summary>Chuỗi thua liên tiếp TRONG NGÀY UTC hiện tại, tách theo nhóm.</summary>
+    public IReadOnlyDictionary<TradeStyle, int> ConsecutiveLossesTodayByStyle
+    {
+        get => _consecutiveLossesTodayByStyle
+               ?? new Dictionary<TradeStyle, int> { [TradeStyle.Intraday] = ConsecutiveLossesToday };
+        init => _consecutiveLossesTodayByStyle = value;
+    }
+
+    private readonly IReadOnlyDictionary<TradeStyle, int>? _consecutiveLossesTodayByStyle;
+
+    /// <summary>Chuỗi thua xuyên ngày của một nhóm.</summary>
+    public int ConsecutiveLossesOf(TradeStyle style) =>
+        ConsecutiveLossesByStyle.TryGetValue(style, out var n) ? n : 0;
+
+    /// <summary>Chuỗi thua trong ngày UTC hiện tại của một nhóm.</summary>
+    public int ConsecutiveLossesTodayOf(TradeStyle style) =>
+        ConsecutiveLossesTodayByStyle.TryGetValue(style, out var n) ? n : 0;
+
     /// <summary>Số lệnh đã vào hôm nay của một nhóm.</summary>
     public int TradesTodayOf(TradeStyle style) =>
         TradesTodayByStyle.TryGetValue(style, out var n) ? n : 0;

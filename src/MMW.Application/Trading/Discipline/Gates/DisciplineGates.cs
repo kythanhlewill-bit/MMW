@@ -22,25 +22,34 @@ public sealed class LossStreakGate : IDisciplineGate
 
     public GateResult Evaluate(DisciplineContext context)
     {
-        var streak = context.Stats.ConsecutiveLosses;
-        var streakToday = context.Stats.ConsecutiveLossesToday;
-        var stopAt = context.RiskSettings.LossStreakThreshold;
+        // Chuỗi thua đếm RIÊNG từng nhóm, và ngưỡng cũng đọc riêng. Hai bộ luật đọc chiều từ
+        // hai nguồn khác nhau, nên chuỗi thua của bên này không mang thông tin gì về bên kia:
+        // gộp chung thì một chuỗi thua của nhóm ngắn dừng luôn nhóm swing dù cấu trúc 4h chưa
+        // hề sai — và ngược lại.
+        var style = context.Settings.StrategyVersion.StyleOf();
+        var streak = context.Stats.ConsecutiveLossesOf(style);
+        var streakToday = context.Stats.ConsecutiveLossesTodayOf(style);
+        var stopAt = context.RiskSettings.LossStreakThresholdOf(style);
         var halveAt = context.Settings.LossStreakSizeHalveAt;
+        var styleName = style == TradeStyle.HtfSwing ? "lệnh H4" : "lệnh ngắn";
 
         if (streakToday >= stopAt)
         {
             return GateResult.StopDay(VetoReason.LossStreakStop,
-                $"Hôm nay đã thua {streakToday} lệnh liên tiếp (ngưỡng dừng ngày {stopAt}) — dừng giao dịch đến hết ngày UTC.");
+                $"Hôm nay nhóm {styleName} đã thua {streakToday} lệnh liên tiếp (ngưỡng dừng ngày {stopAt}) — "
+                + "dừng nhóm này đến hết ngày UTC.");
         }
 
         if (streak >= halveAt)
         {
             var multiplier = context.Settings.LossStreakSizeMultiplier;
             return GateResult.Reduce(multiplier,
-                $"Đã thua {streak} lệnh liên tiếp (ngưỡng giảm kích thước {halveAt}) — nhân kích thước {multiplier:N2}.");
+                $"Nhóm {styleName} đã thua {streak} lệnh liên tiếp (ngưỡng giảm kích thước {halveAt}) — "
+                + $"nhân kích thước {multiplier:N2}.");
         }
 
-        return GateResult.Pass($"Chuỗi thua hiện tại {streak}, dưới ngưỡng giảm kích thước {halveAt}.");
+        return GateResult.Pass(
+            $"Chuỗi thua hiện tại của nhóm {styleName} là {streak}, dưới ngưỡng giảm kích thước {halveAt}.");
     }
 }
 
@@ -61,9 +70,7 @@ public sealed class DailyLossLimitGate : IDisciplineGate
         // gì tới nhóm kia, nên nhìn vào nhật ký sẽ không hiểu vì sao mình bị dừng.
         var style = context.Settings.StrategyVersion.StyleOf();
         var lossPercent = context.Stats.DailyLossPercentOf(style);
-        var limit = style == TradeStyle.HtfSwing
-            ? context.RiskSettings.MaxDailyLossPercentHtf
-            : context.RiskSettings.MaxDailyLossPercent;
+        var limit = context.RiskSettings.MaxDailyLossPercentOf(style);
         var styleName = style == TradeStyle.HtfSwing ? "lệnh H4" : "lệnh ngắn";
 
         if (lossPercent >= limit)
@@ -172,6 +179,7 @@ public sealed class MaxTradesGate : IDisciplineGate
         // gì về một bộ luật đọc chiều từ cấu trúc 4h của từng mã riêng.
         var isHtf = style == TradeStyle.HtfSwing;
         var max = isHtf ? context.RiskSettings.MaxTradesPerDayHtf : context.DailyPlan.MaxTradesToday;
+
         var source = isHtf ? "hạn mức lệnh H4/ngày" : "kế hoạch ngày";
         var styleName = isHtf ? "lệnh H4" : "lệnh ngắn";
 

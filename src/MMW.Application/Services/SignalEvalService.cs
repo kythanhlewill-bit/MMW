@@ -502,7 +502,8 @@ public sealed class SignalEvalService : ISignalEvalService
             : null;
         var projectedSizing = _sizer.Calculate(
             scoreForSizing, effectivePlan, GateAggregate.Neutral, aiMultiplier: 1m, setting, setupSizing);
-        var projectedRiskPercent = riskSetting.MaxRiskPerTradePercent * projectedSizing.FinalSizeR;
+        var projectedRiskPercent =
+            riskSetting.MaxRiskPerTradePercentOf(setting.StrategyVersion.StyleOf()) * projectedSizing.FinalSizeR;
 
         // Gate kỷ luật chạy TRƯỚC bước tính kích thước: kết quả của nó là một trong ba hệ số
         // nhân, và nó cũng có quyền chặn thẳng bất kể điểm số bao nhiêu.

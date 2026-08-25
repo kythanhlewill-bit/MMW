@@ -1913,6 +1913,9 @@ namespace MMW.Infrastructure.Persistence.Migrations
                     b.Property<int>("LossStreakThreshold")
                         .HasColumnType("int");
 
+                    b.Property<int>("LossStreakThresholdHtf")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("MaxDailyLossPercent")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
@@ -1922,6 +1925,10 @@ namespace MMW.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(9,4)");
 
                     b.Property<decimal>("MaxRiskPerTradePercent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("MaxRiskPerTradePercentHtf")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
 

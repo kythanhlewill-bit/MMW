@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using MMW.Domain.Enums;
 
@@ -12,7 +12,8 @@ public class MaxRiskPerTradeRule : ITradeRule
     public RuleViolation? Evaluate(RuleEvaluationContext ctx)
     {
         var risk = ctx.Trade.RiskPercent;
-        var max = ctx.Settings.MaxRiskPerTradePercent;
+        // Ngưỡng theo nhóm của chính lệnh đang chấm, không phải ngưỡng mặc định của tài khoản.
+        var max = ctx.Settings.MaxRiskPerTradePercentOf(ctx.Trade.Style);
 
         if (risk is null || max <= 0m || risk.Value <= max)
             return null;

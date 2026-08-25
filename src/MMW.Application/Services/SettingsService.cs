@@ -82,6 +82,8 @@ public class SettingsService : ISettingsService
         tracked.MaxDailyLossPercent = values.MaxDailyLossPercent;
         tracked.MaxTradesPerDayHtf = values.MaxTradesPerDayHtf;
         tracked.MaxDailyLossPercentHtf = values.MaxDailyLossPercentHtf;
+        tracked.MaxRiskPerTradePercentHtf = values.MaxRiskPerTradePercentHtf;
+        tracked.LossStreakThresholdHtf = values.LossStreakThresholdHtf;
         tracked.RequireStopLoss = values.RequireStopLoss;
         tracked.RevengeTradeWindowMinutes = values.RevengeTradeWindowMinutes;
         tracked.LossStreakThreshold = values.LossStreakThreshold;

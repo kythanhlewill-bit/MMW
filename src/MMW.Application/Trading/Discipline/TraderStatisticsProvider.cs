@@ -115,6 +115,32 @@ public sealed class TraderStatisticsProvider : ITraderStatisticsProvider
             streakToday++;
         }
 
+        // Cùng phép đếm, áp riêng từng nhóm. Phải đi từ danh sách ĐÃ SẮP của chính nhóm đó:
+        // lọc sau khi đếm sẽ cho ra chuỗi thua bị cắt ngang bởi một lệnh thắng của nhóm khác.
+        var stylesSeen = closed.Select(t => t.Style)
+            .Concat(openPositions.Select(p => p.Style))
+            .Distinct()
+            .ToList();
+
+        static int StreakOf<T>(IEnumerable<T> orderedTrades, Func<T, TradeOutcome?> outcome)
+        {
+            var n = 0;
+            foreach (var t in orderedTrades)
+            {
+                if (outcome(t) != TradeOutcome.Loss) break;
+                n++;
+            }
+            return n;
+        }
+
+        var consecutiveLossesByStyle = stylesSeen.ToDictionary(
+            st => st,
+            st => StreakOf(ordered.Where(t => t.Style == st), t => t.Outcome));
+
+        var consecutiveLossesTodayByStyle = stylesSeen.ToDictionary(
+            st => st,
+            st => StreakOf(orderedToday.Where(t => t.Style == st), t => t.Outcome));
+
         var lastLoss = ordered.FirstOrDefault(t => t.Outcome == TradeOutcome.Loss)?.ClosedAt;
 
         var recentForRisk = ordered.Take(Math.Max(1, lookback)).ToList();
@@ -209,6 +235,8 @@ public sealed class TraderStatisticsProvider : ITraderStatisticsProvider
 
             TradesTodayByStyle = tradesTodayByStyle,
             DailyLossPercentByStyle = dailyLossPercentByStyle,
+            ConsecutiveLossesByStyle = consecutiveLossesByStyle,
+            ConsecutiveLossesTodayByStyle = consecutiveLossesTodayByStyle,
         };
     }
 }

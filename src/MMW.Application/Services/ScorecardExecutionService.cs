@@ -185,13 +185,17 @@ public sealed class ScorecardExecutionService : IScorecardExecutionService
         // FinalSizeR là kích thước tính theo R, với 1R = MaxRiskPerTradePercent phần trăm vốn.
         // Quy đổi sang khối lượng chính là phép chia cho khoảng cách dừng lỗ — cùng công thức
         // mà CreateFromSignalAsync đang dùng cho đường tín hiệu AI, chỉ nhân thêm hệ số R.
-        var riskAmount = balance * riskSetting.MaxRiskPerTradePercent / 100m * card.FinalSizeR;
+        // Ngưỡng rủi ro đọc theo NHÓM của chính phiếu này. Nhóm swing có cột riêng vì nó có thể
+        // chưa từng chạy thật lần nào, trong khi nhóm ngắn đã có lịch sử để biện minh cho cỡ lệnh
+        // của mình — dùng chung nghĩa là lệnh swing đầu tiên vào bằng cỡ đó.
+        var maxRiskPercent = riskSetting.MaxRiskPerTradePercentOf(card.Style);
+        var riskAmount = balance * maxRiskPercent / 100m * card.FinalSizeR;
         var quantity = Math.Round(riskAmount / stopDistance, 8, MidpointRounding.AwayFromZero);
         if (quantity <= 0m)
         {
             _logger.LogWarning(
                 "Phiếu #{ScorecardId} {Symbol}: khối lượng tính ra 0 (ví {Asset} {Balance}, risk {Risk}%, {SizeR}R) — bỏ qua.",
-                card.Id, card.Symbol, quoteAsset, balance, riskSetting.MaxRiskPerTradePercent, card.FinalSizeR);
+                card.Id, card.Symbol, quoteAsset, balance, maxRiskPercent, card.FinalSizeR);
             return false;
         }
 

@@ -1,4 +1,4 @@
-using MMW.Application.Trading.Discipline;
+﻿using MMW.Application.Trading.Discipline;
 using MMW.Application.Trading.Discipline.Gates;
 using MMW.Application.Trading.Scoring;
 using MMW.Domain.Entities;
@@ -51,7 +51,9 @@ public class StyleScopedLimitTests
         int intradayTrades = 0,
         int htfTrades = 0,
         decimal intradayLoss = 0m,
-        decimal htfLoss = 0m) =>
+        decimal htfLoss = 0m,
+        int intradayStreak = 0,
+        int htfStreak = 0) =>
         TraderStatistics.Empty with
         {
             TradesTodayByStyle = new Dictionary<TradeStyle, int>
@@ -63,6 +65,16 @@ public class StyleScopedLimitTests
             {
                 [TradeStyle.Intraday] = intradayLoss,
                 [TradeStyle.HtfSwing] = htfLoss,
+            },
+            ConsecutiveLossesByStyle = new Dictionary<TradeStyle, int>
+            {
+                [TradeStyle.Intraday] = intradayStreak,
+                [TradeStyle.HtfSwing] = htfStreak,
+            },
+            ConsecutiveLossesTodayByStyle = new Dictionary<TradeStyle, int>
+            {
+                [TradeStyle.Intraday] = intradayStreak,
+                [TradeStyle.HtfSwing] = htfStreak,
             },
         };
 
@@ -160,6 +172,104 @@ public class StyleScopedLimitTests
         Assert.Equal(GateAction.BlockTrade, result.Action);
     }
 
+    // ── discipline.loss_streak ──────────────────────────────────────────
+
+    /// <summary>
+    /// Chuỗi thua của nhóm lệnh ngắn không dừng nhóm swing — và ngược lại.
+    /// </summary>
+    /// <remarks>
+    /// Hai bộ luật đọc chiều từ hai nguồn khác nhau, nên ba lệnh ngắn thua liên tiếp không mang
+    /// thông tin gì về việc cấu trúc 4h có còn đúng hay không.
+    /// </remarks>
+    [Fact]
+    public void Chuoi_thua_cua_nhom_lenh_ngan_khong_dung_nhom_H4()
+    {
+        var stats = Stats(intradayStreak: 9, htfStreak: 0);
+
+        var htf = new LossStreakGate().Evaluate(
+            Context(stats, TradingStrategyVersion.HtfSwingV7, risk: r => r.LossStreakThresholdHtf = 3));
+
+        Assert.NotEqual(GateAction.StopForDay, htf.Action);
+    }
+
+    [Fact]
+    public void Chuoi_thua_cua_nhom_H4_dung_dung_nhom_H4()
+    {
+        var stats = Stats(intradayStreak: 0, htfStreak: 3);
+
+        var htf = new LossStreakGate().Evaluate(
+            Context(stats, TradingStrategyVersion.HtfSwingV7, risk: r => r.LossStreakThresholdHtf = 3));
+
+        Assert.Equal(GateAction.StopForDay, htf.Action);
+        Assert.Equal(VetoReason.LossStreakStop, htf.VetoReason);
+    }
+
+    /// <summary>Ngưỡng chuỗi thua của hai nhóm đọc từ hai cột khác nhau.</summary>
+    [Fact]
+    public void Nguong_chuoi_thua_doc_theo_nhom()
+    {
+        var stats = Stats(intradayStreak: 4, htfStreak: 4);
+
+        var intraday = new LossStreakGate().Evaluate(Context(
+            stats, TradingStrategyVersion.AdaptiveSidewaysV6,
+            risk: r => { r.LossStreakThreshold = 10; r.LossStreakThresholdHtf = 3; }));
+
+        var htf = new LossStreakGate().Evaluate(Context(
+            stats, TradingStrategyVersion.HtfSwingV7,
+            risk: r => { r.LossStreakThreshold = 10; r.LossStreakThresholdHtf = 3; }));
+
+        Assert.NotEqual(GateAction.StopForDay, intraday.Action);
+        Assert.Equal(GateAction.StopForDay, htf.Action);
+    }
+
+    // ── % rủi ro mỗi lệnh ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Cỡ lệnh của nhóm swing đọc cột riêng, không thừa hưởng con số của nhóm lệnh ngắn.
+    /// </summary>
+    /// <remarks>
+    /// Đây là hạn mức mà thừa hưởng gây hại nhiều nhất: nhóm ngắn có thể đã nâng lên 10% sau
+    /// hàng chục lệnh có số liệu, còn bộ luật swing thì chưa chạy thật lần nào. Dùng chung nghĩa
+    /// là lệnh swing ĐẦU TIÊN vào bằng đúng cỡ đó.
+    /// </remarks>
+    [Fact]
+    public void Rui_ro_moi_lenh_doc_theo_nhom()
+    {
+        var risk = new RiskSetting
+        {
+            TradingAccountId = 1,
+            MaxRiskPerTradePercent = 10m,
+            MaxRiskPerTradePercentHtf = 1m,
+        };
+
+        Assert.Equal(10m, risk.MaxRiskPerTradePercentOf(TradeStyle.Intraday));
+        Assert.Equal(1m, risk.MaxRiskPerTradePercentOf(TradeStyle.HtfSwing));
+    }
+
+    /// <summary>Bốn hàm chọn ngưỡng đều rẽ theo cùng một quy tắc.</summary>
+    [Fact]
+    public void Bon_ham_chon_nguong_deu_re_theo_nhom()
+    {
+        var risk = new RiskSetting
+        {
+            TradingAccountId = 1,
+            MaxRiskPerTradePercent = 10m, MaxRiskPerTradePercentHtf = 1m,
+            LossStreakThreshold = 10, LossStreakThresholdHtf = 3,
+            MaxTradesPerDay = 20, MaxTradesPerDayHtf = 2,
+            MaxDailyLossPercent = 3m, MaxDailyLossPercentHtf = 6m,
+        };
+
+        Assert.Equal(1m, risk.MaxRiskPerTradePercentOf(TradeStyle.HtfSwing));
+        Assert.Equal(3, risk.LossStreakThresholdOf(TradeStyle.HtfSwing));
+        Assert.Equal(2, risk.MaxTradesPerDayOf(TradeStyle.HtfSwing));
+        Assert.Equal(6m, risk.MaxDailyLossPercentOf(TradeStyle.HtfSwing));
+
+        Assert.Equal(10m, risk.MaxRiskPerTradePercentOf(TradeStyle.Intraday));
+        Assert.Equal(10, risk.LossStreakThresholdOf(TradeStyle.Intraday));
+        Assert.Equal(20, risk.MaxTradesPerDayOf(TradeStyle.Intraday));
+        Assert.Equal(3m, risk.MaxDailyLossPercentOf(TradeStyle.Intraday));
+    }
+
     // ── tương thích ngược ───────────────────────────────────────────────
 
     /// <summary>
@@ -175,5 +285,9 @@ public class StyleScopedLimitTests
         Assert.Equal(4.5m, flat.DailyLossPercentOf(TradeStyle.Intraday));
         Assert.Equal(0, flat.TradesTodayOf(TradeStyle.HtfSwing));
         Assert.Equal(0m, flat.DailyLossPercentOf(TradeStyle.HtfSwing));
+
+        var withStreak = flat with { ConsecutiveLossesToday = 4 };
+        Assert.Equal(4, withStreak.ConsecutiveLossesTodayOf(TradeStyle.Intraday));
+        Assert.Equal(0, withStreak.ConsecutiveLossesTodayOf(TradeStyle.HtfSwing));
     }
 }

@@ -55,6 +55,12 @@ public class RiskSettingForm
     [Display(Name = "% lỗ tối đa / ngày (H4)")]
     public decimal MaxDailyLossPercentHtf { get; set; }
 
+    [Display(Name = "% rủi ro tối đa / lệnh (H4)")]
+    public decimal MaxRiskPerTradePercentHtf { get; set; }
+
+    [Display(Name = "Ngưỡng chuỗi thua (H4)")]
+    public int LossStreakThresholdHtf { get; set; }
+
     [Display(Name = "Bắt buộc Stop Loss")]
     public bool RequireStopLoss { get; set; }
 

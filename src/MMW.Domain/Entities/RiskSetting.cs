@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using MMW.Domain.Enums;
 
 namespace MMW.Domain.Entities;
 
@@ -55,6 +56,24 @@ public class RiskSetting : BaseEntity
     [Precision(9, 4)]
     public decimal MaxDailyLossPercentHtf { get; set; } = 3m;
 
+    /// <summary>% rủi ro tối đa mỗi lệnh SWING trên vốn.</summary>
+    /// <remarks>
+    /// Mặc định 1% và cố ý KHÔNG bám theo giá trị của nhóm lệnh ngắn. Bộ luật swing có thể chưa
+    /// từng chạy thật lần nào trong khi nhóm ngắn đã có lịch sử để biện minh cho cỡ lệnh của nó;
+    /// thừa hưởng con số đó nghĩa là lệnh swing ĐẦU TIÊN vào bằng cỡ mà nhóm ngắn phải chạy hàng
+    /// chục lệnh mới dám dùng.
+    /// </remarks>
+    [Precision(9, 4)]
+    public decimal MaxRiskPerTradePercentHtf { get; set; } = 1m;
+
+    /// <summary>Số lệnh swing thua liên tiếp thì dừng nhóm swing đến hết ngày UTC.</summary>
+    /// <remarks>
+    /// Đếm riêng là bắt buộc chứ không phải cho gọn: hai bộ luật đọc chiều từ hai nguồn khác
+    /// nhau, nên chuỗi thua của bên này không mang thông tin gì về bên kia. Gộp chung thì một
+    /// chuỗi thua của nhóm ngắn dừng luôn nhóm swing dù cấu trúc 4h chưa hề sai.
+    /// </remarks>
+    public int LossStreakThresholdHtf { get; set; } = 3;
+
     /// <summary>Bắt buộc có Stop Loss.</summary>
     public bool RequireStopLoss { get; set; } = true;
 
@@ -68,4 +87,26 @@ public class RiskSetting : BaseEntity
     /// <summary>% tăng kích thước lệnh so với trung bình → nghi tilt/oversize.</summary>
     [Precision(9, 4)]
     public decimal TiltSizeIncreasePercent { get; set; } = 50m;
+
+    // ── Chọn ngưỡng theo nhóm ───────────────────────────────────────────
+    //
+    // Mọi phép rẽ "nhóm này thì đọc cột kia" nằm ở đây và chỉ ở đây. Rải câu điều kiện đó ra
+    // từng nơi gọi là cách chắc chắn để một nơi bị bỏ sót, và một hạn mức bỏ sót không nổ ra
+    // lỗi — nó chỉ âm thầm áp ngưỡng của nhóm khác.
+
+    /// <summary>% rủi ro mỗi lệnh của nhóm tương ứng.</summary>
+    public decimal MaxRiskPerTradePercentOf(TradeStyle style) =>
+        style == TradeStyle.HtfSwing ? MaxRiskPerTradePercentHtf : MaxRiskPerTradePercent;
+
+    /// <summary>Ngưỡng dừng ngày theo chuỗi thua của nhóm tương ứng.</summary>
+    public int LossStreakThresholdOf(TradeStyle style) =>
+        style == TradeStyle.HtfSwing ? LossStreakThresholdHtf : LossStreakThreshold;
+
+    /// <summary>Số lệnh tối đa mỗi ngày của nhóm tương ứng.</summary>
+    public int MaxTradesPerDayOf(TradeStyle style) =>
+        style == TradeStyle.HtfSwing ? MaxTradesPerDayHtf : MaxTradesPerDay;
+
+    /// <summary>% lỗ tối đa mỗi ngày của nhóm tương ứng.</summary>
+    public decimal MaxDailyLossPercentOf(TradeStyle style) =>
+        style == TradeStyle.HtfSwing ? MaxDailyLossPercentHtf : MaxDailyLossPercent;
 }

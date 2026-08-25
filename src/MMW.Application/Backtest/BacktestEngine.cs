@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MMW.Application.Backtest.Models;
 using MMW.Application.MarketData.Models;
@@ -477,13 +477,17 @@ public sealed class BacktestEngine : IBacktestEngine
         var todayNetR = closed
             .Where(t => t.ClosedAtUtc >= dayStart && t.ClosedAtUtc < dayEnd)
             .Sum(t => t.RealizedR);
+        // Kiểm thử lịch sử chạy đúng MỘT phiên bản bộ luật mỗi lần, nên nhóm suy thẳng từ nó.
+        var backtestStyle = setting.StrategyVersion.StyleOf();
+        var maxRiskPercent = riskSetting.MaxRiskPerTradePercentOf(backtestStyle);
+
         var dailyLossPercent = todayNetR < 0m
-            ? Math.Abs(todayNetR) * riskSetting.MaxRiskPerTradePercent
+            ? Math.Abs(todayNetR) * maxRiskPercent
             : 0m;
 
         var averageRisk = ordered
             .Take(Math.Max(1, setting.OversizeLookbackTrades))
-            .Select(t => t.PlannedSizeRBeforeDiscipline * riskSetting.MaxRiskPerTradePercent)
+            .Select(t => t.PlannedSizeRBeforeDiscipline * maxRiskPercent)
             .DefaultIfEmpty(0m)
             .Average();
 
@@ -508,13 +512,26 @@ public sealed class BacktestEngine : IBacktestEngine
         {
             ConsecutiveLossesToday = streakToday,
 
+            // Một lần kiểm thử chạy đúng MỘT phiên bản bộ luật, nên toàn bộ lệnh mô phỏng thuộc
+            // cùng một nhóm. Không gán nhóm thì mọi bộ đếm mặc định về nhóm lệnh ngắn, và một
+            // lần kiểm thử V7 sẽ chạy với chuỗi thua 0, số lệnh trong ngày 0, lỗ ngày 0 — tức là
+            // báo cáo một chiến lược mà toàn bộ rào kỷ luật của nó chưa từng được kích hoạt.
+            TradesTodayByStyle = new Dictionary<TradeStyle, int>
+            {
+                [backtestStyle] = closed.Concat(open.Where(t => t.HasAnyFill))
+                    .Count(t => t.OpenedAtUtc >= dayStart && t.OpenedAtUtc < dayEnd),
+            },
+            DailyLossPercentByStyle = new Dictionary<TradeStyle, decimal> { [backtestStyle] = dailyLossPercent },
+            ConsecutiveLossesByStyle = new Dictionary<TradeStyle, int> { [backtestStyle] = streak },
+            ConsecutiveLossesTodayByStyle = new Dictionary<TradeStyle, int> { [backtestStyle] = streakToday },
+
             // Vị thế mô phỏng đang chạy, nhìn bằng đúng con mắt mà chạy thật nhìn bảng Trade.
             // Không có dòng này thì `discipline.open_position` luôn thấy danh sách rỗng và kiểm
             // thử lịch sử sẽ báo cáo một chiến lược mà gate của nó chưa từng được chạy.
             OpenPositions = open
                 // Lệnh chờ phải chặn setup trùng cùng mã, nhưng chưa có exposure tương quan.
                 .Select(p => new OpenPositionSnapshot(
-                    p.Symbol, p.Direction, p.HasAnyFill ? p.SizeR : 0m))
+                    p.Symbol, p.Direction, p.HasAnyFill ? p.SizeR : 0m, backtestStyle))
                 .ToList(),
         };
     }
