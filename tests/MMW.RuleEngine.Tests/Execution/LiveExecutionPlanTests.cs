@@ -88,6 +88,41 @@ public sealed class LiveExecutionPlanTests
         Assert.Equal(expectLimit, plan.LimitEntryExpiryBars is not null);
     }
 
+    /// <summary>
+    /// Mức chờ SÁT giá thị trường không phải mức chờ — nó là lệnh thị trường đội lốt.
+    /// </summary>
+    /// <remarks>
+    /// Khoá lại sự cố ngày 25–26/08/2026. Điều kiện cũ chỉ đòi "thấp hơn giá hiện tại", nên phiếu
+    /// #2826 đặt mua cách giá 1,3 phần vạn và phiếu #3084 cách 4,7 phần vạn. Cả hai bị Binance từ
+    /// chối bằng -5022: <c>SuggestedEntry</c> là giá ticker lúc CHẤM, còn lệnh ra sàn 2–4 giây sau
+    /// đó, và ETH đi qua khoảng cách đó trong chớp mắt.
+    ///
+    /// Bị từ chối vẫn còn là kết cục MAY. Kết cục xấu là mức chờ đủ mỏng để khớp thành taker mà
+    /// vẫn được khai <c>IsLimit</c> — cổng chi phí chấm phí maker cho một cú khớp taker, đúng loại
+    /// nói dối mà <c>PlanLive</c> sinh ra để chấm dứt.
+    ///
+    /// Trên 2.567 phiếu từng có mức chờ, 52% đặt dưới 10 phần vạn. Đây không phải ca hiếm.
+    /// </remarks>
+    [Theory]
+    // Khoảng cách tới dừng lỗ của phiếu mẫu là 7,114 → ngưỡng tối thiểu 15% = 1,067.
+    [InlineData(TradeDirection.Long, 1878.30, false)]    // sát giá 1 xu ⟹ chính là ca -5022
+    [InlineData(TradeDirection.Long, 1877.50, false)]    // cách 0,81 — vẫn dưới ngưỡng
+    [InlineData(TradeDirection.Long, 1877.24, true)]     // cách 1,07 — vừa đủ
+    [InlineData(TradeDirection.Short, 1878.32, false)]
+    [InlineData(TradeDirection.Short, 1879.00, false)]
+    [InlineData(TradeDirection.Short, 1879.38, true)]
+    public void Muc_cho_qua_sat_gia_thi_truong_thi_lui_ve_lenh_thi_truong(
+        TradeDirection direction, double limitEntry, bool expectLimit)
+    {
+        var card = Card(direction);
+        card.SuggestedLimitEntry = (decimal)limitEntry;
+
+        var plan = _planner.PlanLive(card)!;
+
+        Assert.Equal(expectLimit, plan.Entries[0].IsLimit);
+        Assert.Equal(expectLimit ? (decimal)limitEntry : card.SuggestedEntry, plan.Entries[0].Price);
+    }
+
     [Fact]
     public void Khong_co_muc_cho_thi_vao_bang_lenh_thi_truong()
     {

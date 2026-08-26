@@ -1,4 +1,4 @@
-using MMW.Domain.Entities;
+﻿using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 
 namespace MMW.Application.Trading.Execution;
@@ -87,6 +87,29 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
     private const decimal TrendRunnerTargetR = 3m;
     private const decimal TrendPartialFraction = 0.5m;
     private const decimal ScaleInStepR = 0.25m;
+
+    /// <summary>
+    /// Khoảng cách TỐI THIỂU giữa mức chờ và giá thị trường, tính theo khoảng cách tới dừng lỗ.
+    /// </summary>
+    /// <remarks>
+    /// Điều kiện cũ chỉ là "thấp hơn giá hiện tại" — chấp nhận cả chênh lệch bằng 0. Nhưng
+    /// <c>SuggestedEntry</c> là giá ticker tại lúc CHẤM, còn lệnh đi ra sàn vài giây sau đó, nên
+    /// một mức chờ cách giá vài phần vạn không còn thụ động khi nó tới nơi: sàn từ chối bằng
+    /// -5022 (post-only), hoặc tệ hơn — nếu không bật post-only thì nó khớp thành taker trong khi
+    /// cổng chi phí đã chấm theo phí maker.
+    ///
+    /// Đo trên 2.567 phiếu từng có mức chờ: 343 phiếu (13%) đặt dưới 2 phần vạn và 1.334 phiếu
+    /// (52%) dưới 10 phần vạn — tức là nằm gọn trong vùng mà riêng chênh lệch mua/bán đã nuốt hết.
+    /// Hai lệnh ETHUSDT #37 và #50 bị từ chối thật với khoảng cách 1,3 và 4,7 phần vạn.
+    ///
+    /// Lấy tỉ lệ theo khoảng cách dừng lỗ chứ không lấy số phần vạn cố định: nó tự co giãn theo
+    /// biến động của chính setup, và đó là đơn vị mà phần còn lại của engine đang nói.
+    ///
+    /// Không đạt ngưỡng thì trả <c>null</c> → kế hoạch lùi về lệnh thị trường. Vì cổng chi phí và
+    /// bộ đặt lệnh dùng CHUNG <see cref="PlanLive"/>, cổng sẽ tự chấm lại theo phí taker; lệnh nào
+    /// không gánh nổi phí thật thì bị loại ở đó, đúng chỗ nó phải bị loại.
+    /// </remarks>
+    private const decimal MinPassiveOffsetOfStopDistance = 0.15m;
     private const int StrongStructurePoints = 8;
 
     /// <summary>Nhãn <see cref="TradeExecutionPlan.Mode"/> của kế hoạch chạy thật.</summary>
@@ -204,11 +227,13 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
     {
         if (suggested is not { } candidate || candidate <= 0m) return null;
 
-        var floor = Math.Abs(entry - stop) * 0.25m;
+        var stopDistance = Math.Abs(entry - stop);
+        var floor = stopDistance * 0.25m;
+        var minOffset = stopDistance * MinPassiveOffsetOfStopDistance;
 
         return direction == TradeDirection.Long
-            ? candidate < entry && candidate >= stop + floor ? candidate : null
-            : candidate > entry && candidate <= stop - floor ? candidate : null;
+            ? candidate <= entry - minOffset && candidate >= stop + floor ? candidate : null
+            : candidate >= entry + minOffset && candidate <= stop - floor ? candidate : null;
     }
 
     public TradeExecutionPlan Plan(EntryScorecard card, DailyPlan dailyPlan, EngineSetting settings)
