@@ -27,11 +27,21 @@ public class LiveOrderTests
         public int CloseCalls;
         public IReadOnlyList<ExchangePosition> Positions = new List<ExchangePosition>();
 
+        /// <summary>Phần thân phản hồi mà sàn trả về thay cho lệnh đầu tiên, hoặc null nếu nhận.</summary>
+        public string? RefuseFirstPlacementWith;
+
         public Task<string> ValidateFuturesOrderAsync(FuturesOrderRequest req, CancellationToken ct = default)
             => Task.FromResult("OK");
 
         public Task<ExchangeOrderResult> PlaceFuturesOrderAsync(FuturesOrderRequest req, CancellationToken ct = default)
         {
+            if (RefuseFirstPlacementWith is { } body)
+            {
+                RefuseFirstPlacementWith = null;
+                // Đúng dạng mà BinanceFuturesOrderProvider ném: mã lỗi nằm trong Message.
+                throw new InvalidOperationException($"Binance order lỗi (400): {body}");
+            }
+
             Placed.Add(req);
             return Task.FromResult(new ExchangeOrderResult("999", req.NewClientOrderId, "NEW"));
         }
@@ -185,6 +195,64 @@ public class LiveOrderTests
         var t = await db.Trades.FindAsync(tradeId);
         Assert.True(t!.IsLive);
         Assert.Equal(LiveOrderStatus.Submitted, t.LiveStatus);
+    }
+
+    /// <summary>
+    /// Sàn từ chối lệnh chờ (post-only) là kết cục THỊ TRƯỜNG, không phải lỗi kỹ thuật.
+    /// </summary>
+    /// <remarks>
+    /// Hai lệnh ETHUSDT #37 và #50 (25–26/08/2026) bị Binance trả -5022 và bị hệ ghi thành
+    /// <c>Error</c> kèm nguyên khối JSON của sàn trong <c>LiveNote</c>. Hai cái sai trong một:
+    /// nó thổi phồng số lỗi kỹ thuật, và nó xoá mất tín hiệu duy nhất cho biết ngưỡng khoảng cách
+    /// tối thiểu của mức chờ đang đặt quá mỏng.
+    /// </remarks>
+    [Fact]
+    public async Task Post_only_bi_tu_choi_thi_khong_tinh_la_loi()
+    {
+        using var p = BuildProvider();
+        var (_, tradeId) = await SeedAsync(p);
+        var factory = new FakeOrderFactory();
+        factory.Provider.RefuseFirstPlacementWith =
+            "{\"code\":-5022,\"msg\":\"Due to the order could not be executed as maker, "
+            + "the Post Only order will be rejected.\"}";
+
+        using (var scope = p.CreateScope())
+            await BuildService(scope, factory, Opts()).PlaceForTradeAsync(tradeId);
+
+        // Entry bị từ chối ⟹ không có vị thế ⟹ tuyệt đối không được đặt SL/TP lên hư không.
+        Assert.Empty(factory.Provider.Placed);
+
+        using var verify = p.CreateScope();
+        var db = verify.ServiceProvider.GetRequiredService<MmwDbContext>();
+        var t = await db.Trades.FindAsync(tradeId);
+
+        Assert.Equal(LiveOrderStatus.PostOnlyRejected, t!.LiveStatus);
+        Assert.NotEqual(LiveOrderStatus.Error, t.LiveStatus);
+        Assert.Equal(TradeStatus.Cancelled, t.Status);
+
+        // Lý do phải đọc được, không phải JSON của sàn dán nguyên vào nhật ký.
+        Assert.DoesNotContain("-5022", t.LiveNote!);
+        Assert.Contains("không còn thụ động", t.LiveNote!);
+    }
+
+    /// <summary>Lỗi sàn THẬT vẫn phải vào cột lỗi — nhánh mới không được nuốt hết mọi thứ.</summary>
+    [Fact]
+    public async Task Loi_san_that_van_bi_ghi_la_loi()
+    {
+        using var p = BuildProvider();
+        var (_, tradeId) = await SeedAsync(p);
+        var factory = new FakeOrderFactory();
+        factory.Provider.RefuseFirstPlacementWith = "{\"code\":-2019,\"msg\":\"Margin is insufficient.\"}";
+
+        using (var scope = p.CreateScope())
+            await BuildService(scope, factory, Opts()).PlaceForTradeAsync(tradeId);
+
+        using var verify = p.CreateScope();
+        var db = verify.ServiceProvider.GetRequiredService<MmwDbContext>();
+        var t = await db.Trades.FindAsync(tradeId);
+
+        Assert.Equal(LiveOrderStatus.Error, t!.LiveStatus);
+        Assert.Equal(TradeStatus.Cancelled, t.Status);
     }
 
     [Fact]

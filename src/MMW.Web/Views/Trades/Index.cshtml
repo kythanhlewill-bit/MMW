@@ -347,6 +347,7 @@
                                         MMW.Domain.Enums.LiveOrderStatus.Blocked => ("bg-yellow text-yellow-fg", "BLOCKED"),
                                         MMW.Domain.Enums.LiveOrderStatus.Error => ("bg-red text-red-fg", "LỖI SÀN"),
                                         MMW.Domain.Enums.LiveOrderStatus.Canceled => ("bg-secondary", "HUỶ"),
+                                        MMW.Domain.Enums.LiveOrderStatus.PostOnlyRejected => ("bg-secondary", "QUA MỨC CHỜ"),
                                         MMW.Domain.Enums.LiveOrderStatus.EntryPending => ("bg-purple text-purple-fg", "CHỜ KHỚP"),
                                         MMW.Domain.Enums.LiveOrderStatus.SltpPending => ("bg-orange text-orange-fg", "THIẾU SL/TP"),
                                         _ => ("bg-secondary", t.LiveStatus.ToString())
@@ -564,7 +565,9 @@
                         @if (showNote)
                         {
                             var noteIcon = t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.Error
-                                ? "ti-alert-triangle" : "ti-ban";
+                                ? "ti-alert-triangle"
+                                : t.LiveStatus == MMW.Domain.Enums.LiveOrderStatus.PostOnlyRejected
+                                    ? "ti-clock-off" : "ti-ban";
                             <tr class="trade-note-row">
                                 <td colspan="14" class="py-2 px-3">
                                     <div class="trade-note-card">

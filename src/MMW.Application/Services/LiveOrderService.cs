@@ -285,6 +285,29 @@ public class LiveOrderService : ILiveOrderService
                 TimeInForce = trade.OrderType == OrderType.Market ? "GTC" : "GTX",
             }, cancellationToken);
         }
+        catch (Exception ex) when (IsPostOnlyRejection(ex))
+        {
+            // KHÔNG phải lỗi. Mức chờ được chọn theo giá lúc chấm phiếu, giá đi qua nó trước khi
+            // lệnh ra tới sàn, và cờ post-only từ chối đúng như nó được bật để làm. Ghi bằng
+            // tiếng người, xếp riêng khỏi lỗi kỹ thuật, và báo ở mức Info — không có gì để sửa.
+            _logger.LogInformation(
+                "Trade {TradeId} {Symbol}: sàn từ chối lệnh chờ vì đã không còn thụ động (post-only) — bỏ qua.",
+                tradeId, trade.Symbol);
+
+            trade.LiveStatus = LiveOrderStatus.PostOnlyRejected;
+            trade.Status = TradeStatus.Cancelled;
+            trade.LiveNote =
+                $"Mức chờ {trade.EntryPrice} không còn thụ động khi lệnh tới sàn — giá đã đi qua nó "
+                + "trong lúc chờ gửi. Sàn từ chối để lệnh không khớp thành taker (post-only). Bỏ qua setup này.";
+            _trades.Update(trade);
+            await _unitOfWork.CommitAsync(cancellationToken);
+
+            await NotifyAsync(account, NotificationSeverity.Info,
+                $"Bỏ qua lệnh chờ #{tradeId} · {trade.Symbol} {trade.Direction}",
+                $"Giá đã qua mức chờ {trade.EntryPrice} trước khi lệnh ra sàn.",
+                trade.Symbol, cancellationToken);
+            return;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Đặt entry lỗi cho trade {TradeId} {Symbol} — huỷ lệnh hệ thống.", tradeId, trade.Symbol);
@@ -522,6 +545,16 @@ public class LiveOrderService : ILiveOrderService
             _logger.LogWarning("Trade {TradeId}: BỎ QUA đặt TP — TakeProfit={Tp} (null hoặc <= 0).", trade.Id, trade.TakeProfit);
         }
     }
+
+    /// <summary>Sàn từ chối lệnh chờ vì nó sẽ khớp thành taker (Binance -5022, post-only).</summary>
+    /// <remarks>
+    /// Khớp trên chuỗi mã lỗi chứ không trên câu chữ: <c>msg</c> của Binance là tiếng Anh và có
+    /// thể đổi, còn <c>code</c> thì thuộc hợp đồng API. Trình gửi lệnh ném nguyên phần thân phản
+    /// hồi vào <c>Message</c> nên đây là chỗ duy nhất đọc được mã, và gói nó lại trong một hàm
+    /// có tên tử tế để chỗ gọi không phải mang theo một chuỗi ma thuật.
+    /// </remarks>
+    internal static bool IsPostOnlyRejection(Exception ex) =>
+        ex.Message.Contains("\"code\":-5022", StringComparison.Ordinal);
 
     private async Task BlockAsync(Trade trade, TradingAccount? account, string reason, CancellationToken ct)
     {

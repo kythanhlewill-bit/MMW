@@ -69,6 +69,21 @@ public enum LiveOrderStatus
     /// trong khi ta còn chưa vào, để rồi lúc lệnh chờ khớp thật thì vị thế trần trụi.
     /// </remarks>
     EntryPending = 7,
+
+    /// <summary>
+    /// Sàn TỪ CHỐI lệnh chờ vì nó đã không còn thụ động lúc tới nơi (Binance -5022, post-only).
+    /// </summary>
+    /// <remarks>
+    /// Phải tách khỏi <see cref="Error"/>. Đây không phải hỏng hóc kỹ thuật mà là một kết cục
+    /// THỊ TRƯỜNG bình thường: mức chờ được chọn theo giá lúc chấm, giá đi qua nó trước khi lệnh
+    /// ra tới sàn, và cờ post-only làm đúng việc của nó là không cho cú khớp taker âm thầm xảy ra.
+    ///
+    /// Gộp vào <see cref="Error"/> gây hai cái hại. Một, nó thổi phồng số lỗi kỹ thuật bằng những
+    /// sự kiện không có gì để sửa. Hai — và đây mới là cái đắt — nó xoá mất tín hiệu duy nhất cho
+    /// biết ngưỡng khoảng cách tối thiểu của mức chờ đang đặt quá mỏng. Còn đếm riêng được thì còn
+    /// chỉnh được <c>MinPassiveOffsetOfStopDistance</c> theo số liệu thay vì theo cảm giác.
+    /// </remarks>
+    PostOnlyRejected = 8,
 }
 
 public enum TradeOutcome
