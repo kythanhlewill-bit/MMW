@@ -157,10 +157,14 @@ internal sealed class FakeLiveOrders : ILiveOrderService
         return Task.CompletedTask;
     }
 
-    public Task CloseOnExchangeAsync(long tradeId, CancellationToken cancellationToken = default)
+    /// <summary>Bật để mô phỏng sàn không với tới được — đóng lệnh trả về "chưa đóng".</summary>
+    public bool FailToClose { get; set; }
+
+    public Task<bool> CloseOnExchangeAsync(long tradeId, CancellationToken cancellationToken = default)
     {
+        if (FailToClose) return Task.FromResult(false);
         ClosedTradeIds.Add(tradeId);
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public Task RetryPendingSltpAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

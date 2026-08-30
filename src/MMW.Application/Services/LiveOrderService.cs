@@ -425,14 +425,14 @@ public class LiveOrderService : ILiveOrderService
         }
     }
 
-    public async Task CloseOnExchangeAsync(long tradeId, CancellationToken cancellationToken = default)
+    public async Task<bool> CloseOnExchangeAsync(long tradeId, CancellationToken cancellationToken = default)
     {
-        if (!_options.Enabled) return;
+        if (!_options.Enabled) return false;
         var trade = await _trades.FindAsync(tradeId);
-        if (trade is null || !trade.IsLive) return;
+        if (trade is null || !trade.IsLive) return false;
 
         var account = await _accounts.FindAsync(trade.TradingAccountId);
-        if (account is null || string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret)) return;
+        if (account is null || string.IsNullOrWhiteSpace(account.ApiKey) || string.IsNullOrWhiteSpace(account.ApiSecret)) return false;
 
         try
         {
@@ -440,12 +440,14 @@ public class LiveOrderService : ILiveOrderService
             await provider.CancelAllOpenOrdersAsync(trade.Symbol, cancellationToken); // huỷ SL/TP chờ
             await provider.ClosePositionAsync(trade.Symbol, cancellationToken);        // đóng vị thế MARKET reduceOnly
             _logger.LogInformation("Đã đóng vị thế #{TradeId} {Symbol} trên sàn.", tradeId, trade.Symbol);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Đóng vị thế trên sàn lỗi cho trade {TradeId}.", tradeId);
             await NotifyAsync(account, NotificationSeverity.Warning,
                 $"Lỗi đóng vị thế #{tradeId} trên sàn", Truncate(ex.Message, 200), trade.Symbol, cancellationToken);
+            return false;
         }
     }
 

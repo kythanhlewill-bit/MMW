@@ -78,6 +78,27 @@ public class TradeTimeStopTests
     }
 
     /// <summary>
+    /// Sàn không với tới được thì KHÔNG được đếm là đã đóng.
+    /// </summary>
+    /// <remarks>
+    /// <c>CloseOnExchangeAsync</c> nuốt lỗi sàn để một vị thế hỏng không giết cả vòng job, nên
+    /// nó trả về kết quả và người gọi phải đọc. Không đọc thì ta ghi nhật ký và bắn thông báo
+    /// nói vị thế đã đóng trong khi nó vẫn đang mở — đúng chuyện đã xảy ra ngày 30/08/2026 lúc
+    /// 18:30, khi Binance đang cấm IP và lệnh đóng lệnh #72 chưa bao giờ rời máy.
+    ///
+    /// Không cần trạng thái riêng để nhớ việc dở dang: điều kiện quá hạn vẫn đúng ở vòng sau.
+    /// </remarks>
+    [Fact]
+    public async Task San_khong_voi_toi_duoc_thi_khong_dem_la_da_dong()
+    {
+        using var harness = await HarnessAsync(ageHours: 25);
+        harness.LiveOrders.FailToClose = true;
+
+        Assert.Equal(0, await RunAsync(harness));
+        Assert.Empty(harness.LiveOrders.ClosedTradeIds);
+    }
+
+    /// <summary>
     /// Bộ khung dựng vị thế với TUỔI cho trước, tính ngược từ hiện tại.
     /// </summary>
     /// <remarks>

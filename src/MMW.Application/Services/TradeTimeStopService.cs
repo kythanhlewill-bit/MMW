@@ -102,7 +102,21 @@ public sealed class TradeTimeStopService : ITradeTimeStopService
 
             try
             {
-                await _liveOrders.CloseOnExchangeAsync(trade.Id, cancellationToken);
+                // CloseOnExchangeAsync nuốt lỗi sàn để một vị thế hỏng không giết cả vòng job,
+                // nên nó phải TRẢ VỀ kết quả — bằng không ta ghi nhật ký và bắn thông báo nói vị
+                // thế đã đóng trong khi nó vẫn đang mở. Đã xảy ra thật ngày 30/08 lúc 18:30:
+                // Binance đang cấm IP, lệnh đóng chưa bao giờ rời máy, log vẫn báo đã đóng.
+                //
+                // Không đóng được thì cứ để đó: điều kiện quá hạn vẫn đúng nên vòng job sau thử
+                // lại, và đó là toàn bộ cơ chế hồi phục cần có.
+                if (!await _liveOrders.CloseOnExchangeAsync(trade.Id, cancellationToken))
+                {
+                    _logger.LogWarning(
+                        "Dừng thời gian: lệnh #{TradeId} {Symbol} quá hạn nhưng CHƯA đóng được trên sàn — sẽ thử lại.",
+                        trade.Id, trade.Symbol);
+                    continue;
+                }
+
                 closed++;
 
                 _logger.LogInformation("Dừng thời gian: lệnh #{TradeId} {Symbol} — {Reason}",
