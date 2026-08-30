@@ -80,8 +80,17 @@ public class PositionManageTests
         Assert.Equal(0.8m, action.RMultiple);
     }
 
+    /// <summary>
+    /// Hoà vốn phải nằm QUA BÊN KIA của phí, không nằm đúng giá vào.
+    /// </summary>
+    /// <remarks>
+    /// Dừng lỗ đúng bằng giá vào hỏng theo hai đường độc lập. Nó không phải hoà vốn — phí vào
+    /// cộng phí ra vẫn phải trả, nên chạm mức đó là lỗ đúng bằng phí. Và nó làm rủi ro còn lại
+    /// bằng 0, nên <c>RMultiple = pnl / 0</c> không xác định: lệnh #56 trên sàn thật đóng sổ với
+    /// <c>RMultiple</c> NULL và rơi khỏi mọi thống kê theo R.
+    /// </remarks>
     [Fact]
-    public async Task Keo_ve_hoa_von_ghi_that_vao_lenh()
+    public async Task Keo_ve_hoa_von_dat_qua_ben_kia_phi_chu_khong_dat_dung_gia_vao()
     {
         // Quyết định mà không ghi lại thì lần chạy sau lại quyết định y hệt, và dừng lỗ thật
         // vẫn nằm nguyên chỗ cũ.
@@ -94,7 +103,68 @@ public class PositionManageTests
         var db = scope.ServiceProvider.GetRequiredService<MmwDbContext>();
         var trade = await db.Trades.SingleAsync();
 
-        Assert.Equal(Entry, trade.StopLoss);
+        // Lệnh mua ⟹ dừng lỗ nhích LÊN trên giá vào một khoảng đệm bằng phí.
+        Assert.True(trade.StopLoss > Entry,
+            $"Dừng lỗ {trade.StopLoss} phải nằm trên giá vào {Entry}, nếu không thì rủi ro còn lại bằng 0.");
+        Assert.Equal(Entry * 1.0012m, trade.StopLoss);
+    }
+
+    /// <summary>
+    /// Mức dừng lỗ mới phải được ĐẨY LÊN SÀN, không chỉ ghi vào sổ.
+    /// </summary>
+    /// <remarks>
+    /// Đây là hồi quy cho một lỗi đã chạy thật nhiều tháng. Lớp này được viết khi
+    /// <c>LiveTrading.Enabled</c> còn TẮT, nên nó chỉ ghi DB là đủ. Cờ ấy bật lên trong đợt chạy
+    /// thử mà đoạn mã không đổi, và từ đó nhật ký ghi dừng lỗ ở hoà vốn trong khi sàn vẫn giữ
+    /// mức gốc — mọi con số rủi ro tính sau đó đọc theo DB nên không ai thấy sai lệch.
+    /// </remarks>
+    [Fact]
+    public async Task Keo_ve_hoa_von_phai_dong_bo_len_san()
+    {
+        using var harness = await HarnessAsync(price: 108m);
+        var trade = OpenTrade(harness.AccountId);
+        trade.IsLive = true;
+        await harness.AddClosedTradesAsync(new[] { trade });
+
+        await RunAsync(harness);
+
+        var syncedId = Assert.Single(harness.LiveOrders.SyncedTradeIds);
+        Assert.Equal(trade.Id, syncedId);
+    }
+
+    /// <summary>Lệnh chỉ ghi nhật ký (không live) thì không có gì để đồng bộ lên sàn.</summary>
+    [Fact]
+    public async Task Lenh_khong_live_thi_khong_goi_san()
+    {
+        using var harness = await HarnessAsync(price: 108m);
+        await harness.AddClosedTradesAsync(new[] { OpenTrade(harness.AccountId) });
+
+        await RunAsync(harness);
+
+        Assert.Empty(harness.LiveOrders.SyncedTradeIds);
+    }
+
+    /// <summary>
+    /// Sàn lỗi lúc đồng bộ KHÔNG được làm hỏng cả vòng chạy.
+    /// </summary>
+    /// <remarks>
+    /// Mỗi vị thế là một rủi ro riêng; một lệnh đồng bộ hỏng mà ném ra ngoài sẽ bỏ mặc các vị
+    /// thế còn lại không ai xử lý trước cửa sổ chặn — đúng kịch bản mà cả tầng này sinh ra để
+    /// tránh. Quyết định vẫn phải trả về đủ.
+    /// </remarks>
+    [Fact]
+    public async Task San_loi_luc_dong_bo_khong_lam_hong_ca_vong_chay()
+    {
+        using var harness = await HarnessAsync(price: 108m);
+        harness.LiveOrders.ThrowOnSync = true;
+
+        var trade = OpenTrade(harness.AccountId);
+        trade.IsLive = true;
+        await harness.AddClosedTradesAsync(new[] { trade });
+
+        var action = Assert.Single(await RunAsync(harness));
+
+        Assert.Equal(PositionActionKind.MoveStopToBreakeven, action.Kind);
     }
 
     [Fact]

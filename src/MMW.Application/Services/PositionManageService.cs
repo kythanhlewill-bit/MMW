@@ -48,9 +48,15 @@ public interface IPositionManageService
 /// Thiếu dữ liệu cũng phải hành động, và hành động an toàn hơn: không lấy được giá hay không có
 /// dừng lỗ thì đóng bớt, chứ không phải bỏ qua.
 ///
-/// Phạm vi hiện tại: cập nhật nhật ký và phát thông báo cho trader. Gửi lệnh thật lên sàn đi qua
-/// <c>ILiveOrderService</c> và vẫn nằm sau cổng <c>LiveTrading.Enabled</c> đang TẮT — lớp này
-/// không mở cổng đó.
+/// <b>Mức dừng lỗ mới PHẢI được đẩy lên sàn.</b> Từ 2026-05 tới 2026-08-30 lớp này chỉ ghi
+/// <c>trade.StopLoss</c> vào DB rồi dừng, vì khi viết nó thì <c>LiveTrading.Enabled</c> còn TẮT
+/// và không có lệnh thật nào để đồng bộ. Cờ đó đã bật từ đợt chạy thử, nên đoạn mã ấy trở thành
+/// một nguồn nói dối: nhật ký ghi dừng lỗ ở hoà vốn trong khi sàn vẫn giữ dừng lỗ gốc, và mọi
+/// con số rủi ro tính sau đó (<c>RiskAmount</c>, <c>RMultiple</c>, gate oversize) đọc theo DB.
+///
+/// Hai vị thế đã sống với sai lệch đó — #56 BTCUSDT và #57 BTCUSDC, cùng ngày 26/08. Cả hai đều
+/// mang <c>StopLoss</c> bằng đúng <c>EntryPrice</c> trong DB, <c>TrailUpdateCount = 0</c>, và
+/// <c>RMultiple</c> của #56 là NULL vì rủi ro bằng 0 thì không chia được.
 /// </remarks>
 public sealed class PositionManageService : IPositionManageService
 {
@@ -59,8 +65,24 @@ public sealed class PositionManageService : IPositionManageService
     private readonly IBaseRepository<Trade> _trades;
     private readonly IMarketDataProvider _marketData;
     private readonly INotificationService _notifications;
+    private readonly ILiveOrderService _liveOrders;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<PositionManageService> _logger;
+
+    /// <summary>
+    /// Đệm hoà vốn, tính theo phần trăm giá vào lệnh.
+    /// </summary>
+    /// <remarks>
+    /// Dừng lỗ đặt ĐÚNG BẰNG giá vào lệnh là một mức không dùng được, vì hai lý do độc lập.
+    /// Thứ nhất, rủi ro còn lại bằng 0 nên <c>RMultiple = pnl / 0</c> không xác định — lệnh #56
+    /// đóng sổ với <c>RMultiple</c> NULL và biến mất khỏi mọi thống kê theo R. Thứ hai, nó không
+    /// phải hoà vốn thật: phí vào cộng phí ra vẫn phải trả, nên chạm mức đó là lỗ đúng bằng phí.
+    ///
+    /// Đệm này khớp với <c>TradeTrailingService.BreakevenBufferPercent</c>, nơi cùng một phép
+    /// kéo về hoà vốn đã làm đúng từ đầu. Hai đường phải cho ra cùng một mức, nếu không thì lệnh
+    /// được bảo vệ khác nhau tuỳ vào việc ai chạm vào nó trước.
+    /// </remarks>
+    private const decimal BreakevenBufferPercent = 0.12m;
 
     public PositionManageService(
         ITimeGuardService timeGuard,
@@ -68,6 +90,7 @@ public sealed class PositionManageService : IPositionManageService
         IBaseRepository<Trade> trades,
         IMarketDataProvider marketData,
         INotificationService notifications,
+        ILiveOrderService liveOrders,
         IUnitOfWork unitOfWork,
         ILogger<PositionManageService> logger)
     {
@@ -76,6 +99,7 @@ public sealed class PositionManageService : IPositionManageService
         _trades = trades;
         _marketData = marketData;
         _notifications = notifications;
+        _liveOrders = liveOrders;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -103,6 +127,7 @@ public sealed class PositionManageService : IPositionManageService
         if (open.Count == 0) return Array.Empty<PositionAction>();
 
         var actions = new List<PositionAction>(open.Count);
+        var movedToBreakeven = new List<Trade>();
         foreach (var trade in open)
         {
             var action = await DecideAsync(trade, setting, upcoming, ct);
@@ -110,8 +135,14 @@ public sealed class PositionManageService : IPositionManageService
 
             if (action.Kind == PositionActionKind.MoveStopToBreakeven)
             {
-                trade.StopLoss = trade.EntryPrice;
+                // Đệm qua bên kia của phí, không đặt đúng giá vào — xem BreakevenBufferPercent.
+                var buffer = trade.EntryPrice * BreakevenBufferPercent / 100m;
+                trade.StopLoss = trade.Direction == TradeDirection.Long
+                    ? trade.EntryPrice + buffer
+                    : trade.EntryPrice - buffer;
                 _trades.Update(trade);
+
+                if (trade.IsLive) movedToBreakeven.Add(trade);
             }
 
             _logger.LogInformation(
@@ -122,6 +153,28 @@ public sealed class PositionManageService : IPositionManageService
         }
 
         await _unitOfWork.CommitAsync(ct);
+
+        // Commit XONG mới đẩy lên sàn: SyncLevelsAsync đọc lại lệnh từ DB, nên gọi trước khi
+        // commit sẽ đồng bộ đúng cái mức cũ mà ta vừa định thay.
+        //
+        // Một lệnh đồng bộ hỏng không được chặn các lệnh còn lại — mỗi vị thế là một rủi ro
+        // riêng. Nhưng nó PHẢI hiện ra: dừng lỗ trên sàn khác dừng lỗ trong sổ là đúng cái sai
+        // lệch mà cả khối này sinh ra để chấm dứt, nên lỗi ghi ở mức Error kèm cả hai mức giá.
+        foreach (var trade in movedToBreakeven)
+        {
+            try
+            {
+                await _liveOrders.SyncLevelsAsync(trade.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Không đẩy được dừng lỗ hoà vốn lên sàn cho lệnh #{TradeId} {Symbol}. "
+                    + "Sổ ghi {NewStop} nhưng sàn có thể vẫn giữ mức cũ — cần kiểm tra tay.",
+                    trade.Id, trade.Symbol, trade.StopLoss);
+            }
+        }
+
         await NotifyAsync(tradingAccountId, upcoming, actions, ct);
         await WarnOnClockDriftAsync(open[0].Symbol, setting, utcNow, ct);
 

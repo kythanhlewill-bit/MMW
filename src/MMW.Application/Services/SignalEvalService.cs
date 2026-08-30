@@ -501,7 +501,8 @@ public sealed class SignalEvalService : ISignalEvalService
             ? new SetupSizingProfile(trigger.SetupType, trigger.SetupQualityScore)
             : null;
         var projectedSizing = _sizer.Calculate(
-            scoreForSizing, effectivePlan, GateAggregate.Neutral, aiMultiplier: 1m, setting, setupSizing);
+            scoreForSizing, effectivePlan, GateAggregate.Neutral, aiMultiplier: 1m, setting, setupSizing,
+            choice.Direction);
         var projectedRiskPercent =
             riskSetting.MaxRiskPerTradePercentOf(setting.StrategyVersion.StyleOf()) * projectedSizing.FinalSizeR;
 
@@ -526,7 +527,8 @@ public sealed class SignalEvalService : ISignalEvalService
         var aiMultiplier = _contextApplier.GetSizeMultiplier(
             context.ActiveAiContext, symbol, context.Direction);
         var sizing = _sizer.Calculate(
-            scoreForSizing, effectivePlan, discipline.Aggregate, aiMultiplier, setting, setupSizing);
+            scoreForSizing, effectivePlan, discipline.Aggregate, aiMultiplier, setting, setupSizing,
+            choice.Direction);
 
         var blocked = discipline.Aggregate.IsBlocked;
 
@@ -543,7 +545,7 @@ public sealed class SignalEvalService : ISignalEvalService
                              && provisionalOutcome == ScorecardOutcome.Entered
                              && !trigger.Passed;
         var admission = _strategyAdmission.Evaluate(
-            setting.StrategyVersion, trigger, score, candleClose);
+            setting.StrategyVersion, trigger, score, candleClose, setting);
         var admissionBlocked = provisionalOutcome == ScorecardOutcome.Entered
                                && trigger.Passed
                                && !admission.Passed;
@@ -677,11 +679,16 @@ public sealed class SignalEvalService : ISignalEvalService
         // Trước 2026-08-14 cả hai cùng dùng `Plan`, nên cổng chi phí của đường thật chấm một kế
         // hoạch 2 chân trong khi sàn chỉ nhận một lệnh thị trường: netRR bị đo cao hơn thực tế
         // 26% trên phiếu 13:31 ngày 14/08. Xem chú thích `ITradeExecutionPlanner.PlanLive`.
+        //
+        // `setting` PHẢI được truyền vào. Thiếu nó, cùng một lỗi lệch quay lại theo đường khác:
+        // ScorecardExecutionService gọi `PlanLive(card, engineSetting)` khi đặt lệnh thật, nên
+        // cổng chi phí ở đây sẽ chấm một kế hoạch KHÁC với kế hoạch được đặt — mất mục tiêu
+        // runner của V7, mất luôn sàn khoảng cách dừng lỗ mà mức chờ thụ động phải tôn trọng.
         if (card.Outcome == ScorecardOutcome.Entered && card.Direction is { } plannedDirection)
         {
             var execution = card.IsBacktest
                 ? _executionPlanner.Plan(card, effectivePlan, setting)
-                : _executionPlanner.PlanLive(card);
+                : _executionPlanner.PlanLive(card, setting);
 
             if (execution is null)
             {

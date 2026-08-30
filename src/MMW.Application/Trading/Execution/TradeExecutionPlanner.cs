@@ -139,7 +139,7 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
         // nếu không chặn ở đây, nhánh mua-sự-có-mặt lại thành nhánh chờ giá quay đầu.
         var passive = card.SetupType == SetupType.MaCrossFast
             ? null
-            : PassiveLimitEntry(card.SuggestedLimitEntry, entry, stop, direction);
+            : PassiveLimitEntry(card.SuggestedLimitEntry, entry, stop, direction, settings);
 
         // Chốt hai phần khi phiếu mang đủ HAI mức khác nhau và chúng xếp đúng thứ tự. Thiếu một
         // trong hai thì quay về một mục tiêu — chứ không bịa ra mức thứ hai bằng một bội R nào
@@ -223,13 +223,34 @@ public sealed class TradeExecutionPlanner : ITradeExecutionPlanner
     /// về sẽ đẻ ra một mức chờ mà chính bộ chấm điểm chưa từng nhìn thấy.
     /// </remarks>
     private static decimal? PassiveLimitEntry(
-        decimal? suggested, decimal entry, decimal stop, TradeDirection direction)
+        decimal? suggested, decimal entry, decimal stop, TradeDirection direction,
+        EngineSetting? settings)
     {
         if (suggested is not { } candidate || candidate <= 0m) return null;
 
         var stopDistance = Math.Abs(entry - stop);
-        var floor = stopDistance * 0.25m;
         var minOffset = stopDistance * MinPassiveOffsetOfStopDistance;
+
+        // Sàn TƯƠNG ĐỐI: mức chờ không được nằm trong 25% cuối của khoảng dừng lỗ.
+        //
+        // Nhưng một sàn tương đối không bảo vệ được cái nó định bảo vệ. Nó cho phép khoảng dừng
+        // lỗ HIỆU DỤNG — đo từ mức chờ chứ không từ giá lúc chấm — co xuống còn 25% khoảng gốc,
+        // tức khối lượng gấp 4 và phí theo R cũng gấp 4. Sàn tuyệt đối MinStopDistancePercent
+        // được áp trước đó trong bộ kích hoạt sẽ bị gặm mất đúng bằng lượng ấy:
+        //
+        // <code>
+        // Lệnh #52 (BTCUSDT, MaPullback): chấm 40,0 bps → mức chờ kéo còn 29,4 bps
+        // Lệnh #65 (ETHUSDT, MaPullback): chấm 40,0 bps → mức chờ kéo còn 25,1 bps
+        // </code>
+        //
+        // Cả hai đều lỗ. Nên sàn ở đây phải là MAX của hai loại: giữ nguyên ràng buộc hình học
+        // 25%, đồng thời không cho khoảng hiệu dụng rơi xuống dưới sàn kinh tế tuyệt đối. Không
+        // đạt thì trả null → lùi về lệnh thị trường, nơi khoảng dừng lỗ đúng bằng con số đã chấm.
+        var relativeFloor = stopDistance * 0.25m;
+        var absoluteFloor = settings is null
+            ? 0m
+            : entry * settings.MinStopDistancePercent / 100m;
+        var floor = Math.Max(relativeFloor, absoluteFloor);
 
         return direction == TradeDirection.Long
             ? candidate <= entry - minOffset && candidate >= stop + floor ? candidate : null

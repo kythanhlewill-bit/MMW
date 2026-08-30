@@ -29,7 +29,8 @@ public interface IPositionSizer
         GateAggregate gates,
         decimal aiMultiplier,
         EngineSetting settings,
-        SetupSizingProfile? setup = null);
+        SetupSizingProfile? setup = null,
+        TradeDirection? direction = null);
 }
 
 /// <summary>
@@ -52,7 +53,8 @@ public sealed class ScoreBasedPositionSizer : IPositionSizer
         GateAggregate gates,
         decimal aiMultiplier,
         EngineSetting settings,
-        SetupSizingProfile? setup = null)
+        SetupSizingProfile? setup = null,
+        TradeDirection? direction = null)
     {
         ArgumentNullException.ThrowIfNull(score);
         ArgumentNullException.ThrowIfNull(plan);
@@ -73,14 +75,26 @@ public sealed class ScoreBasedPositionSizer : IPositionSizer
         // Ngưỡng so theo TỈ LỆ trên phần điểm đo được, không so tuyệt đối. Xem chú thích của
         // ScoringOutcome: so tuyệt đối làm kiểm thử lịch sử lọc gắt hơn chạy thật gần 9 điểm
         // phần trăm, và lệch đó chỉ có một chiều — làm báo cáo đẹp hơn thực tế.
-        if (!score.Reaches(settings.MinScoreToEnter))
+        // Setup bán khống phải trả thêm ShortEntryScorePenalty điểm. Áp ở ĐÂY chứ không ở bộ
+        // kích hoạt là có chủ ý: với các bộ luật trigger-first, SignalEvalService nâng điểm lên
+        // đúng MinScoreToEnter khi trigger xác nhận, nên một cổng đặt trước đó sẽ bị chính phép
+        // nâng ấy vô hiệu hoá. Đặt sau, khoản thuế đòi điểm THẬT vượt sàn chứ không nhận điểm
+        // được nâng — đúng ý định: chiều đang lỗ phải chứng minh nhiều hơn, không phải chỉ có
+        // một bộ kích hoạt hợp lệ. Xem EngineSetting.ShortEntryScorePenalty cho số đo.
+        var shortPenalty = direction == TradeDirection.Short ? Math.Max(0, settings.ShortEntryScorePenalty) : 0;
+        var entryThreshold = settings.MinScoreToEnter + shortPenalty;
+
+        if (!score.Reaches(entryThreshold))
         {
             var scale = score.AvailableMaxPoints == score.TotalMaxPoints
                 ? string.Empty
-                : $" (đo được {score.AvailableMaxPoints}/{score.TotalMaxPoints} điểm ⟹ cần {Required(score, settings.MinScoreToEnter)})";
+                : $" (đo được {score.AvailableMaxPoints}/{score.TotalMaxPoints} điểm ⟹ cần {Required(score, entryThreshold)})";
+            var penaltyNote = shortPenalty > 0
+                ? $" (đã gồm {shortPenalty} điểm phụ thu chiều bán khống)"
+                : string.Empty;
 
             return Zero(day, gate, ai, data,
-                $"Điểm {score.TotalScore} dưới ngưỡng vào lệnh {settings.MinScoreToEnter}{scale} — không vào lệnh. " +
+                $"Điểm {score.TotalScore} dưới ngưỡng vào lệnh {entryThreshold}{penaltyNote}{scale} — không vào lệnh. " +
                 "Zero lệnh là kết quả đúng, không phải lỗi.");
         }
 
@@ -104,12 +118,27 @@ public sealed class ScoreBasedPositionSizer : IPositionSizer
             setupMultiplier = QualityMultiplier(setup.QualityScore, settings);
         }
 
-        var final = baseSize * setupMultiplier * day * gate * ai * data;
+        // Bốn hệ số điều chỉnh NHÂN nhau nên chúng teo theo cấp số nhân. Kẹp TÍCH của chúng về
+        // sàn cấu hình để biên độ ngân sách rủi ro giữa các lệnh không mở ra cả chục lần — xem
+        // EngineSetting.MinSizeMultiplierProduct cho số đo và cái giá đã trả.
+        //
+        // Chỉ kẹp khi tích đang DƯƠNG. Một hệ số bằng 0 là một câu trả lời "không", không phải
+        // một sự thận trọng quá đà: kế hoạch ngày cấm rủi ro, gate kỷ luật chặn, AI veto, hay
+        // không có dữ liệu nào đo được — kẹp nó lên sẽ biến bốn cái veto thành lệnh nửa cỡ.
+        var rawProduct = day * gate * ai * data;
+        var product = rawProduct > 0m
+            ? Math.Max(rawProduct, Math.Min(settings.MinSizeMultiplierProduct, 1m))
+            : rawProduct;
+
+        var final = baseSize * setupMultiplier * product;
+        var clampNote = product > rawProduct
+            ? $" (tích {rawProduct:N3} bị kẹp lên sàn {product:N2})"
+            : string.Empty;
 
         return new SizingResult(baseSize, day, gate, ai, final,
             $"Điểm {score.TotalScore}/{score.AvailableMaxPoints} ⟹ cap setup {baseSize:N2}R, " +
             $"quality {setupMultiplier:N2} × ngày {day:N2} × " +
-            $"kỷ luật {gate:N2} × AI {ai:N2} × dữ liệu {data:N2} = {final:N4}R.",
+            $"kỷ luật {gate:N2} × AI {ai:N2} × dữ liệu {data:N2} = {final:N4}R{clampNote}.",
             data,
             setupMultiplier);
     }

@@ -60,6 +60,11 @@ internal sealed class AiHarness : IDisposable
         services.AddSingleton<ILlmService>(llm);
         services.AddSingleton<IMacroEventProvider>(headlines);
 
+        // PositionManageService giờ đẩy dừng lỗ hoà vốn lên sàn, nên nó kéo theo ILiveOrderService.
+        // Bản thật cần cả nhà máy provider sàn — thứ mà bộ khung đo ngân sách gọi AI không có và
+        // không cần. Xem FakeLiveOrders.
+        services.AddSingleton<ILiveOrderService>(new FakeLiveOrders());
+
         var provider = services.BuildServiceProvider();
 
         using var scope = provider.CreateScope();

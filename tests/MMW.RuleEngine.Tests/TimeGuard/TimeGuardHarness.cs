@@ -24,15 +24,21 @@ internal sealed class TimeGuardHarness : IDisposable
 {
     private readonly ServiceProvider _provider;
 
-    private TimeGuardHarness(ServiceProvider provider, long accountId, FakeMarketData marketData, TestClock clock)
+    private TimeGuardHarness(
+        ServiceProvider provider, long accountId, FakeMarketData marketData, TestClock clock,
+        FakeLiveOrders liveOrders)
     {
         _provider = provider;
         AccountId = accountId;
         MarketData = marketData;
         Clock = clock;
+        LiveOrders = liveOrders;
     }
 
     public long AccountId { get; }
+
+    /// <summary>Bộ đặt lệnh giả — ghi lại lệnh nào đã được đồng bộ mức giá lên sàn.</summary>
+    public FakeLiveOrders LiveOrders { get; }
 
     /// <summary>Giá và dấu thời gian sàn do test điều khiển.</summary>
     public FakeMarketData MarketData { get; }
@@ -44,6 +50,7 @@ internal sealed class TimeGuardHarness : IDisposable
     {
         var marketData = new FakeMarketData();
         var clock = new TestClock(TestClock.Default);
+        var liveOrders = new FakeLiveOrders();
 
         // Tên phải tính TRƯỚC lambda: cấu hình DbContextOptions chạy lại mỗi scope, nên đặt
         // Guid.NewGuid() bên trong sẽ cho mỗi scope một cơ sở dữ liệu riêng và dữ liệu seed biến mất.
@@ -58,6 +65,11 @@ internal sealed class TimeGuardHarness : IDisposable
         services.AddSingleton<IMarketDataProvider>(marketData);
         services.AddSingleton<IMarketSentimentProvider>(marketData);
         services.AddSingleton<Application.Abstractions.IClock>(clock);
+
+        // Đăng ký SAU AddApplication để thay bản thật: LiveOrderService kéo theo cả nhà máy
+        // provider sàn lẫn lớp AI, mà test tầng chặn giờ không có và không cần cái nào. Cái nó
+        // CẦN là thấy được lớp quản lý vị thế có đẩy mức dừng lỗ mới lên sàn hay không.
+        services.AddSingleton<ILiveOrderService>(liveOrders);
 
         var provider = services.BuildServiceProvider();
 
@@ -83,7 +95,7 @@ internal sealed class TimeGuardHarness : IDisposable
         db.EngineSettings.Add(setting);
         await db.SaveChangesAsync();
 
-        return new TimeGuardHarness(provider, account.Id, marketData, clock);
+        return new TimeGuardHarness(provider, account.Id, marketData, clock, liveOrders);
     }
 
     /// <summary>Một scope mới = một "request", đúng như khi chạy thật.</summary>
@@ -110,6 +122,48 @@ internal sealed class TimeGuardHarness : IDisposable
     }
 
     public void Dispose() => _provider.Dispose();
+}
+
+/// <summary>
+/// Bộ đặt lệnh giả: không gọi sàn, chỉ ghi lại lệnh nào đã được yêu cầu đồng bộ hoặc đóng.
+/// </summary>
+/// <remarks>
+/// Tồn tại vì một lý do cụ thể. Từ 2026-05 tới 2026-08-30, <c>PositionManageService</c> kéo dừng
+/// lỗ về hoà vốn bằng cách ghi thẳng vào DB và không đẩy gì lên sàn — nhật ký nói một đằng, sàn
+/// giữ một nẻo. Không test nào bắt được, vì test cũng chỉ đọc DB.
+///
+/// <see cref="SyncedTradeIds"/> là chỗ để khẳng định điều đó không lặp lại: kéo dừng lỗ mà không
+/// đồng bộ thì danh sách rỗng, và test đỏ.
+/// </remarks>
+internal sealed class FakeLiveOrders : ILiveOrderService
+{
+    public List<long> PlacedTradeIds { get; } = new();
+    public List<long> SyncedTradeIds { get; } = new();
+    public List<long> ClosedTradeIds { get; } = new();
+
+    /// <summary>Bật để mô phỏng sàn lỗi — đồng bộ ném thay vì thành công.</summary>
+    public bool ThrowOnSync { get; set; }
+
+    public Task PlaceForTradeAsync(long tradeId, CancellationToken cancellationToken = default)
+    {
+        PlacedTradeIds.Add(tradeId);
+        return Task.CompletedTask;
+    }
+
+    public Task SyncLevelsAsync(long tradeId, CancellationToken cancellationToken = default)
+    {
+        if (ThrowOnSync) throw new InvalidOperationException($"Giả lập sàn lỗi khi đồng bộ lệnh #{tradeId}.");
+        SyncedTradeIds.Add(tradeId);
+        return Task.CompletedTask;
+    }
+
+    public Task CloseOnExchangeAsync(long tradeId, CancellationToken cancellationToken = default)
+    {
+        ClosedTradeIds.Add(tradeId);
+        return Task.CompletedTask;
+    }
+
+    public Task RetryPendingSltpAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 /// <summary>

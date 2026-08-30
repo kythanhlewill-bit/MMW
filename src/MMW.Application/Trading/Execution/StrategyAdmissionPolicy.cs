@@ -1,4 +1,5 @@
 using MMW.Application.Trading.Scoring;
+using MMW.Domain.Entities;
 using MMW.Domain.Enums;
 
 namespace MMW.Application.Trading.Execution;
@@ -15,7 +16,8 @@ public interface IStrategyAdmissionPolicy
         TradingStrategyVersion version,
         SetupTriggerDecision trigger,
         ScoringOutcome score,
-        DateTime entryUtc);
+        DateTime entryUtc,
+        EngineSetting? settings = null);
 }
 
 /// <summary>Admission V5 đã đóng băng; V6 giữ nó cho trend và bổ sung playbook sideway riêng.</summary>
@@ -32,10 +34,25 @@ public sealed class StrategyAdmissionPolicy : IStrategyAdmissionPolicy
         TradingStrategyVersion version,
         SetupTriggerDecision trigger,
         ScoringOutcome score,
-        DateTime entryUtc)
+        DateTime entryUtc,
+        EngineSetting? settings = null)
     {
         ArgumentNullException.ThrowIfNull(trigger);
         ArgumentNullException.ThrowIfNull(score);
+
+        // Danh sách setup bị cấm đứng TRƯỚC cổng phiên bản. Nó là quyết định của người vận hành
+        // dựa trên kết cục đã đo, nên nó phải áp cho mọi bộ luật — kể cả bộ luật không dùng
+        // admission V5, vốn sẽ thoát ngay ở dòng dưới và mang setup đã bị cấm đi thẳng vào lệnh.
+        if (settings is not null && trigger.SetupType != SetupType.None)
+        {
+            var disabled = EngineSetting.ParseDisabledSetups(settings.DisabledSetupTypes, out _);
+            if (disabled.Contains(trigger.SetupType))
+            {
+                return new StrategyAdmissionDecision(false, 0,
+                    $"Setup {trigger.SetupType} nằm trong DisabledSetupTypes — cấu hình đã tắt " +
+                    "theo kết cục đo được, không phải theo phán đoán.");
+            }
+        }
 
         if (!version.UsesV5Admission()) return StrategyAdmissionDecision.Allow();
 

@@ -26,14 +26,40 @@ public static class EngineSettingDefaults
     }
 
     /// <summary>Bảng chất lượng phiên cold-start, dùng khi chưa đủ số lệnh để thống kê giờ cá nhân.</summary>
+    /// <remarks>
+    /// Bảng cũ chấm theo GIỜ VÀNG của thị trường: London và chồng lấn New York cao nhất, đêm mỏng
+    /// thấp nhất. Đó là hiểu biết chung đúng cho thanh khoản, nhưng thanh khoản không phải thứ
+    /// bảng này dùng để làm. Nó nhân vào cỡ lệnh, nên thứ nó phải đo là KẾT CỤC.
+    ///
+    /// Đo trên 2.900 phiếu có kết cục mô phỏng (net R sau phí và trượt giá), đúng theo sáu khung
+    /// giờ của chính bảng này:
+    /// <code>
+    /// khung                điểm cũ   net R đo được   điểm mới
+    /// 21–24 Đêm mỏng          1         −0,162          5      ⟵ tốt nhất, từng bị chấm thấp nhất
+    /// 07–09 Mở cửa London     5         −0,185          5
+    /// 16–21 New York chiều    4         −0,210          4
+    /// 00–07 Phiên Á           2         −0,236          4
+    /// 13–16 Chồng lấn NY      6         −0,444          2
+    /// 09–13 London            5         −0,492          1      ⟵ tệ nhất, từng được chấm 5
+    /// </code>
+    ///
+    /// Thứ tự gần như đảo ngược, và nó nhất quán với hai nguồn khác: giờ tin vĩ mô Mỹ rơi vào
+    /// 12:30–14:00 UTC, còn engine này giao dịch mean-reversion trên khung 15 phút — loại setup
+    /// mà biến động do tin là kẻ thù chứ không phải cơ hội.
+    ///
+    /// Đây là số của MỘT tài khoản trên BTC/ETH, không phải một chân lý thị trường. Nó nằm ở đây
+    /// vì đây là điểm xuất phát cho chính hệ thống ấy, và vì <c>SessionQualityProvider</c> sẽ kéo
+    /// nó về số liệu cá nhân khi đủ mẫu. Có mẫu lớn hơn nói ngược lại thì sửa bảng, đừng sửa
+    /// provider.
+    /// </remarks>
     public static IEnumerable<SessionQualityRow> SessionQualityRows() => new[]
     {
-        new SessionQualityRow { FromHourUtc = 0,  ToHourUtc = 7,  Score = 2, Label = "Phiên Á" },
+        new SessionQualityRow { FromHourUtc = 0,  ToHourUtc = 7,  Score = 4, Label = "Phiên Á" },
         new SessionQualityRow { FromHourUtc = 7,  ToHourUtc = 9,  Score = 5, Label = "Mở cửa London" },
-        new SessionQualityRow { FromHourUtc = 9,  ToHourUtc = 13, Score = 5, Label = "London" },
-        new SessionQualityRow { FromHourUtc = 13, ToHourUtc = 16, Score = 6, Label = "Chồng lấn New York" },
+        new SessionQualityRow { FromHourUtc = 9,  ToHourUtc = 13, Score = 1, Label = "London" },
+        new SessionQualityRow { FromHourUtc = 13, ToHourUtc = 16, Score = 2, Label = "Chồng lấn New York" },
         new SessionQualityRow { FromHourUtc = 16, ToHourUtc = 21, Score = 4, Label = "New York chiều" },
-        new SessionQualityRow { FromHourUtc = 21, ToHourUtc = 24, Score = 1, Label = "Đêm mỏng" },
+        new SessionQualityRow { FromHourUtc = 21, ToHourUtc = 24, Score = 5, Label = "Đêm mỏng" },
     };
 
     /// <summary>

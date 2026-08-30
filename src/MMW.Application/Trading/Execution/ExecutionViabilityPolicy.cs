@@ -112,15 +112,41 @@ public sealed class ExecutionViabilityPolicy : IExecutionViabilityPolicy
                 ? settings.V6BreakoutMaxCostToTargetPercent
                 : settings.V3MaxCostToTargetPercent;
 
+        // ── Hai cổng TUYỆT ĐỐI, đứng cạnh hai cổng tương đối ở trên ─────────
+        //
+        // netRR và cost/target đều là tỉ lệ, nên cả hai đều có thể thoả bằng cách kéo mục tiêu ra
+        // xa thay vì bằng việc lệnh thật sự rẻ. Phiếu #3496 làm đúng như thế: phí 1,573R mà
+        // cost/target vẫn chỉ 15% vì gross target lên tới 10R. Lệnh #63 sinh ra từ nó mất 1,77R.
+        //
+        // Hai ngưỡng dưới đây không đo hình học của setup mà đo cái giá bước vào, nên chúng bịt
+        // đúng chỗ mà tỉ lệ không nhìn thấy. Chúng cũng là lớp chặn CUỐI cho khoảng cách dừng lỗ:
+        // MinStopDistancePercent được áp trong từng nhánh trigger, nhưng chỉ 4/8 nhánh áp nó, và
+        // ngay cả nhánh có áp cũng bị mức chờ thụ động gặm lại — xem PassiveLimitEntry. Ở đây là
+        // nơi duy nhất mọi kế hoạch đều đi qua, nên là nơi duy nhất chặn được cả hai lỗ hổng.
+        var minStopBps = settings.MinStopDistancePercent * 100m;
+        var stopTooTight = stopDistanceBps < minStopBps;
+        var costTooHigh = expectedCost > settings.MaxExpectedCostR;
+
         var passed = !enforceV3Gates
             || (netRiskReward >= minNetRr
-                && costToTarget <= maxCostToTarget);
+                && costToTarget <= maxCostToTarget
+                && !stopTooTight
+                && !costTooHigh);
         var detail =
             $"grossTP={grossTargetR:N3}R, targetCost={targetCost:N3}R, stopCost={stopCost:N3}R, " +
             $"netRR={netRiskReward:N3}, cost/target={costToTarget:N1}%, stop={stopDistanceBps:N1}bps";
 
         if (enforceV3Gates && !passed)
+        {
             detail += $"; setup {setupType} cần netRR≥{minNetRr:N2} và cost/target≤{maxCostToTarget:N1}%.";
+
+            if (stopTooTight)
+                detail += $" Dừng lỗ {stopDistanceBps:N1}bps dưới sàn {minStopBps:N0}bps — " +
+                          "khối lượng = rủi ro/khoảng dừng lỗ, nên dừng lỗ hẹp là phí cao.";
+
+            if (costTooHigh)
+                detail += $" Chi phí dự kiến {expectedCost:N3}R vượt trần {settings.MaxExpectedCostR:N2}R.";
+        }
 
         return new ExecutionViability(
             passed, grossTargetR, targetCost, stopCost, expectedCost,

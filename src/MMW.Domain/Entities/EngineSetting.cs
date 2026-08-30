@@ -195,8 +195,147 @@ public class EngineSetting : BaseEntity
     /// <summary>Expected cost không được vượt phần trăm này của gross first-target R.</summary>
     [Precision(9, 4)] public decimal V3MaxCostToTargetPercent { get; set; } = 10m;
 
+    /// <summary>
+    /// Trần TUYỆT ĐỐI cho expected execution cost, tính bằng R. Vượt mức này thì không vào lệnh,
+    /// bất kể mục tiêu xa tới đâu.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="V3MaxCostToTargetPercent"/> là ngưỡng TƯƠNG ĐỐI: nó hỏi "phí chiếm bao nhiêu
+    /// phần của mục tiêu". Một setup có mục tiêu đủ xa luôn trả lời được câu đó, kể cả khi phí đã
+    /// vượt quá toàn bộ ngân sách rủi ro của lệnh — và đó không phải giả thuyết:
+    ///
+    /// <code>
+    /// Phiếu #3496 (ETHUSDT, 27/08, TriangleBreakout, dừng lỗ 6,35 bps):
+    ///   ExpectedCostR = 1,573   ⟵ phí một vòng ăn hết 1,57 lần ngân sách rủi ro
+    ///   NetRiskReward = 8,472   ⟹ cost/target chỉ 15% ⟹ CỔNG TƯƠNG ĐỐI CHO QUA
+    ///   Lệnh #63 kết cục: −1,77R (−26,32 USDT), lệnh lỗ đậm nhất của cả đợt.
+    /// </code>
+    ///
+    /// Ngưỡng tương đối không sai, nó chỉ không đủ. Nó đo hình học của setup; cái này đo cái giá
+    /// phải trả để bước vào. Một lệnh mà phí bằng 1,5R thì tỉ lệ thắng hoà vốn vọt lên trên 70%
+    /// — không setup nào trong sổ này đạt được, nên câu trả lời đúng là không vào.
+    ///
+    /// 0,25R lấy từ chính bảng đo 2.900 phiếu: nhóm dừng lỗ ≥0,7% có phí trung bình 0,126R và là
+    /// nhóm DUY NHẤT có NetR dương (+0,224); nhóm 0,4–0,7% phí 0,253R và hoà vốn (−0,046). Đặt
+    /// trần ngay trên vai nhóm hoà vốn.
+    /// </remarks>
+    [Precision(9, 4)] public decimal MaxExpectedCostR { get; set; } = 0.25m;
+
     /// <summary>Lợi nhuận ròng tối thiểu cần khóa sau TP1 khi vẫn giữ runner.</summary>
     [Precision(9, 4)] public decimal V3LockedNetRMin { get; set; } = 0.25m;
+
+    /// <summary>
+    /// Sàn cho TÍCH của bốn hệ số điều chỉnh cỡ lệnh. Tích rơi xuống dưới mức này thì bị kẹp lên.
+    /// </summary>
+    /// <remarks>
+    /// Bốn hệ số (ngày × kỷ luật × AI × dữ liệu) đều nằm trong [0, 1] và NHÂN nhau, nên chúng
+    /// giảm theo cấp số nhân chứ không cộng dồn: bốn hệ số "hơi thận trọng" 0,8 cho ra 0,41, còn
+    /// thêm một hệ số chất lượng setup nữa thì xuống 0,25. Không hệ số nào sai, nhưng kết quả là
+    /// hai lệnh cùng một bộ luật lại mang ngân sách rủi ro lệch nhau cả chục lần.
+    ///
+    /// Đợt 18–28/08 đo được đúng điều đó, và cái giá của nó:
+    /// <code>
+    /// RiskAmount trải 2,38 → 24,99 USDT (gấp 10,5 lần) trên 35 lệnh đã đóng
+    ///   #68  +9,63R  nhưng risk 2,38 ⟹ chỉ +22,90 USDT
+    ///   #63  −1,77R  mà   risk 14,83 ⟹      −26,32 USDT
+    /// Tổng: +2,59R  ⟹  −51,05 USDT
+    /// </code>
+    ///
+    /// R dương mà tiền âm không phải nghịch lý — nó là hệ quả số học của việc đặt cược to vào
+    /// lệnh thua và bé vào lệnh thắng. Cỡ lệnh theo mức độ tin cậy vẫn giữ (đó là thiết kế), chỉ
+    /// giới hạn BIÊN ĐỘ của nó lại: 0,5 nghĩa là lệnh nhỏ nhất vẫn bằng nửa lệnh lớn nhất cùng
+    /// bậc điểm, nên thắng-thua quy ra tiền còn so sánh được với nhau.
+    ///
+    /// Đặt 0 để tắt hẳn phép kẹp và quay về hành vi cũ.
+    /// </remarks>
+    [Precision(9, 4)] public decimal MinSizeMultiplierProduct { get; set; } = 0.5m;
+
+    /// <summary>
+    /// Danh sách <see cref="SetupType"/> bị cấm vào lệnh, ngăn cách bằng dấu phẩy (tên hoặc số).
+    /// Rỗng nghĩa là không cấm setup nào.
+    /// </summary>
+    /// <remarks>
+    /// Cấm ở tầng admission chứ không xoá nhánh kích hoạt: phiếu vẫn được chấm và vẫn ghi vào
+    /// <c>EntryScorecards</c> với <c>VetoReason.StrategyAdmissionRejected</c>, nên cái giá của
+    /// lệnh cấm vẫn đo được. Xoá nhánh đi thì không bao giờ biết được cấm như vậy là đúng hay sai.
+    ///
+    /// Ba setup mặc định bị cấm, theo số đo 2.900 phiếu có kết cục mô phỏng (net R sau phí) đối
+    /// chiếu với 35 lệnh thật đã đóng — hai nguồn độc lập nói cùng một chiều:
+    /// <code>
+    /// SetupType              sim NetR TB   lệnh thật
+    /// 5  RectangleRangeFade      −0,317     0 thắng / 2   (ΣR −2,61)
+    /// 6  RectangleBreakout       −0,346     0 thắng / 2   (ΣR −2,61)
+    /// 7  TriangleBreakout        −0,266     0 thắng / 1   (ΣR −1,77)
+    /// ── giữ lại ──
+    /// 8  MaPullback              −0,061     5 thắng / 15  (ΣR −2,78)
+    /// 10 MaDeepPullback          +0,297     4 thắng / 10  (ΣR +14,25)  ⟵ nguồn R dương duy nhất
+    /// </code>
+    /// </remarks>
+    public string DisabledSetupTypes { get; set; } = "RectangleRangeFade,RectangleBreakout,TriangleBreakout";
+
+    /// <summary>
+    /// Số điểm CỘNG THÊM mà một setup bán khống phải đạt so với ngưỡng vào lệnh thường.
+    /// MẶC ĐỊNH 0 — cơ chế có sẵn nhưng đang TẮT, vì số liệu không ủng hộ nó.
+    /// </summary>
+    /// <remarks>
+    /// Ghi lại cả phép đo sai lẫn phép đo đúng, vì phép đo sai rất thuyết phục.
+    ///
+    /// Nhìn vào lãi/lỗ của lệnh thật đã đóng thì chiều bán khống trông như một lỗ thủng:
+    /// <code>
+    /// Long  23 lệnh, 8 thắng, +13,53 USDT
+    /// Short 12 lệnh, 3 thắng, −64,58 USDT
+    /// </code>
+    /// Nhưng 12 lệnh là quá ít, và quan trọng hơn: lãi/lỗ bằng tiền của đợt đó bị méo bởi chính
+    /// lỗi cỡ lệnh mà <see cref="MinSizeMultiplierProduct"/> sinh ra để sửa — ngân sách rủi ro
+    /// lệch nhau 10 lần nên tiền không đo được chất lượng.
+    ///
+    /// Đo trên mẫu lớn hơn và bằng đơn vị không méo (net R sau phí, 64 phiếu vào lệnh có kết cục
+    /// mô phỏng) thì kết luận LẬT NGƯỢC:
+    /// <code>
+    /// Long  39 phiếu, net R trung bình −0,108
+    /// Short 25 phiếu, net R trung bình +0,498   ⟵ chiều tốt hơn, không phải chiều tệ hơn
+    /// </code>
+    /// Sau khi đã bỏ ba setup thua và áp sàn dừng lỗ, hai chiều gần như bằng nhau và cùng dương
+    /// (Long +0,449 trên 13 phiếu, Short +0,403 trên 9).
+    ///
+    /// Còn một lý do kỹ thuật khiến khoản thuế này đặc biệt nguy hiểm ở mức khác 0: với các bộ
+    /// luật trigger-first, điểm được NÂNG lên đúng <see cref="MinScoreToEnter"/> khi trigger xác
+    /// nhận, nên phần lớn phiếu nằm sát ngưỡng. Cộng thêm 5 điểm không lọc ra setup yếu — nó cắt
+    /// gần như TOÀN BỘ một chiều. Đo trên 68 phiếu: thuế 5 điểm loại 27 phiếu và kéo net R trung
+    /// bình từ +0,254 xuống +0,025.
+    ///
+    /// Giữ lại cơ chế vì nó rẻ và đã có kiểm thử; chỉ bật khi có mẫu đủ lớn nói ngược lại, và
+    /// bật thì phải xem lại cả tương tác với phép nâng điểm ở trên.
+    /// </remarks>
+    public int ShortEntryScorePenalty { get; set; }
+
+    /// <summary>Số giờ tối đa một vị thế trong phiên được giữ. 0 = không giới hạn.</summary>
+    /// <remarks>
+    /// Engine đã có dừng lỗ, chốt lời và hạn cho lệnh CHỜ, nhưng không có gì giới hạn thời gian
+    /// một vị thế ĐÃ KHỚP được nằm đó. Thiếu sót ấy đắt hơn vẻ ngoài của nó, vì hai lẽ.
+    ///
+    /// Một, phiếu được chấm trên một cây nến 15 phút cụ thể. Sau một ngày, không còn tiêu chí
+    /// nào trên phiếu ấy còn đúng — chính lập luận đã dùng để đặt hạn 60 phút cho lệnh chờ
+    /// (<c>LiveOrderService.LimitEntryLifetime</c>), chỉ là chưa ai áp nó cho vị thế đã vào.
+    ///
+    /// Hai, vị thế mở CHIẾM CHỖ. <c>MaxConcurrentPositions</c> là 2, và cổng chống trùng vị thế
+    /// chặn cả các mã cùng tài sản gốc. Ngày 29–30/08 hai vị thế nằm im (#57 mở 4 ngày, #72 mở
+    /// 2 ngày) đã veto 323/476 phiếu bằng lý do <c>PositionAlreadyOpen</c> — engine chấm 476
+    /// phiếu và vào 0 lệnh. Đó không phải kỷ luật, đó là tắc nghẽn.
+    ///
+    /// 24 giờ cho lệnh trong phiên: đủ rộng để một setup 15m đi hết đường của nó, đủ chặt để
+    /// không có lệnh nào sống qua hai phiên Mỹ. Đóng bằng lệnh thị trường qua
+    /// <c>ILiveOrderService.CloseOnExchangeAsync</c>, và để <c>TradeResultSyncService</c> ghi
+    /// kết quả như mọi lệnh khác — không có đường ghi sổ thứ hai.
+    /// </remarks>
+    public int MaxHoldingHoursIntraday { get; set; } = 24;
+
+    /// <summary>Số giờ tối đa một vị thế swing khung lớn được giữ. 0 = không giới hạn.</summary>
+    /// <remarks>
+    /// Rộng hơn hẳn lệnh trong phiên vì đó là lý do bộ luật swing tồn tại: mục tiêu đo bằng cấu
+    /// trúc khung 4 giờ cần nhiều ngày để đi hết. 120 giờ = 5 ngày, đủ một tuần giao dịch.
+    /// </remarks>
+    public int MaxHoldingHoursSwing { get; set; } = 120;
 
     // ── Setup-specific sideways V6 ─────────────────────────────────────
 
@@ -550,6 +689,30 @@ public class EngineSetting : BaseEntity
         if (V3MaxCostToTargetPercent is <= 0m or > 100m)
             errors.Add($"V3MaxCostToTargetPercent ({V3MaxCostToTargetPercent}) phải nằm trong (0, 100].");
 
+        // Trần trên là 1R chứ không phải một số lớn tuỳ ý: phí bằng đúng ngân sách rủi ro nghĩa
+        // là lệnh phải đi hết 1R chỉ để về mo. Cho phép cấu hình cao hơn thế là cho phép tắt
+        // cổng bằng cách gõ một con số to.
+        if (MaxExpectedCostR is <= 0m or > 1m)
+            errors.Add($"MaxExpectedCostR ({MaxExpectedCostR}) phải nằm trong (0, 1].");
+
+        if (MinSizeMultiplierProduct is < 0m or > 1m)
+            errors.Add($"MinSizeMultiplierProduct ({MinSizeMultiplierProduct}) phải nằm trong [0, 1].");
+
+        if (ShortEntryScorePenalty is < 0 or > 50)
+            errors.Add($"ShortEntryScorePenalty ({ShortEntryScorePenalty}) phải nằm trong [0, 50].");
+
+        if (MaxHoldingHoursIntraday is < 0 or > 720)
+            errors.Add($"MaxHoldingHoursIntraday ({MaxHoldingHoursIntraday}) phải nằm trong [0, 720].");
+
+        if (MaxHoldingHoursSwing is < 0 or > 720)
+            errors.Add($"MaxHoldingHoursSwing ({MaxHoldingHoursSwing}) phải nằm trong [0, 720].");
+
+        // Một tên gõ sai phải nổ ra ở đây. Bỏ qua âm thầm nghĩa là setup vẫn chạy trong khi cấu
+        // hình nói đã cấm — và không ai phát hiện cho tới lúc đọc lại sổ lệnh.
+        ParseDisabledSetups(DisabledSetupTypes, out var invalidSetupTokens);
+        foreach (var token in invalidSetupTokens)
+            errors.Add($"DisabledSetupTypes chứa giá trị không hợp lệ: \"{token}\".");
+
         if (V3LockedNetRMin < 0m)
             errors.Add($"V3LockedNetRMin ({V3LockedNetRMin}) không được âm.");
 
@@ -593,6 +756,37 @@ public class EngineSetting : BaseEntity
         errors.AddRange(ValidateSessionTable());
         errors.AddRange(ValidateBlackoutRules());
         return errors;
+    }
+
+    /// <summary>
+    /// Tập <see cref="SetupType"/> bị cấm, đọc từ <see cref="DisabledSetupTypes"/>.
+    /// </summary>
+    /// <remarks>
+    /// Nhận cả tên (<c>RectangleBreakout</c>) lẫn số (<c>6</c>) để cấu hình sửa được bằng tay
+    /// trong DB mà không cần tra bảng enum. Token nào không phân giải được thì đi ra qua
+    /// <paramref name="invalid"/> — người gọi quyết định báo lỗi hay bỏ qua; ở đây KHÔNG nuốt
+    /// lỗi, vì một token gõ sai bị bỏ qua chính là một setup tưởng đã cấm mà vẫn chạy.
+    /// </remarks>
+    public static IReadOnlySet<SetupType> ParseDisabledSetups(string? raw, out IReadOnlyList<string> invalid)
+    {
+        var disabled = new HashSet<SetupType>();
+        var bad = new List<string>();
+
+        foreach (var token in (raw ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (Enum.TryParse<SetupType>(token, ignoreCase: true, out var parsed)
+                && Enum.IsDefined(parsed))
+            {
+                disabled.Add(parsed);
+            }
+            else
+            {
+                bad.Add(token);
+            }
+        }
+
+        invalid = bad;
+        return disabled;
     }
 
     private IEnumerable<string> ValidateSessionTable()

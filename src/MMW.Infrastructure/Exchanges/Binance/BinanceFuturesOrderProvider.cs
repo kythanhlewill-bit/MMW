@@ -30,6 +30,11 @@ public class BinanceFuturesOrderProvider : IExchangeOrderProvider
     // Precision theo symbol ít đổi → cache tĩnh dùng chung mọi instance.
     private static readonly ConcurrentDictionary<string, SymbolFilter> FilterCache = new();
 
+    /// <summary>
+    /// Bộ theo dõi lệnh cấm IP dùng chung. Xem <see cref="BinanceIpBanTracker"/> cho lý do.
+    /// </summary>
+    private static readonly BinanceIpBanTracker BanTracker = BinanceIpBanTracker.Shared;
+
     // Position Mode (Hedge vs One-way) gắn theo TÀI KHOẢN → cache theo instance (mỗi instance 1 API key).
     private bool? _isHedgeMode;
     private readonly SemaphoreSlim _hedgeGate = new(1, 1);
@@ -557,6 +562,17 @@ public class BinanceFuturesOrderProvider : IExchangeOrderProvider
         using var request = new HttpRequestMessage(method, url);
         request.Headers.Add("X-MBX-APIKEY", _apiKey);
 
+        // Đang trong lệnh cấm thì KHÔNG gửi. Gửi lúc này chỉ có hai kết cục, cả hai đều xấu: bị
+        // từ chối, và lệnh cấm bị nới dài thêm. Ném ra để người gọi thấy — nuốt lặng sẽ biến một
+        // lệnh cấm thành "không có gì xảy ra", mà ở đây "không có gì xảy ra" nghĩa là dừng lỗ
+        // không được cập nhật.
+        if (BanTracker.IsBanned(DateTimeOffset.UtcNow, out var remaining))
+        {
+            throw new InvalidOperationException(
+                $"Binance đang cấm IP tới {BanTracker.BannedUntil!.Value.UtcDateTime:HH:mm:ss} UTC "
+                + $"(còn {remaining.TotalMinutes:N1} phút) — bỏ qua {method} {path} thay vì gọi để khỏi nới dài lệnh cấm.");
+        }
+
         var requestedAt = DateTime.UtcNow;
         try
         {
@@ -567,7 +583,10 @@ public class BinanceFuturesOrderProvider : IExchangeOrderProvider
             await AuditAsync(method, path, p, response, body, requestedAt, respondedAt, ct);
 
             if (!response.IsSuccessStatusCode)
+            {
+                BanTracker.Note((int)response.StatusCode, body, DateTimeOffset.UtcNow);
                 throw new InvalidOperationException($"Binance order lỗi ({(int)response.StatusCode}): {body}");
+            }
 
             return JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
         }

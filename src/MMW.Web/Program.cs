@@ -203,6 +203,16 @@ try
         job => job.RunAsync(CancellationToken.None),
         "*/3 * * * *");
 
+    // Job dừng theo thời gian: mỗi 10 phút.
+    //
+    // Nhịp thưa là đúng chứ không phải tiết kiệm: hạn tính bằng GIỜ, nên sai số 10 phút không
+    // đổi được kết cục nào, trong khi mỗi lượt quét đều đụng vào hạn mức gọi API vốn đã có lúc
+    // bị Binance cấm IP. Xem TradeTimeStopService cho lý do lớp này tồn tại.
+    RecurringJob.AddOrUpdate<MMW.Application.Services.ITradeTimeStopService>(
+        "trade-time-stop",
+        job => job.RunAsync(CancellationToken.None),
+        "*/10 * * * *");
+
     // Job làm phẳng vị thế trước cửa sổ chặn: mỗi phút, 0 lời gọi AI (FR-013, T063).
     RecurringJob.AddOrUpdate<IEngineJobs>(
         "position-manage",

@@ -71,13 +71,58 @@ public class PositionSizerTests
 
     // ── Ca kiểm chứng của đặc tả ────────────────────────────────────────
 
+    /// <summary>
+    /// Bốn hệ số vẫn nhân bình thường khi tích của chúng còn trên sàn.
+    /// </summary>
+    /// <remarks>
+    /// Ca kiểm chứng gốc của đặc tả là 88 điểm × hệ số ngày 0,3 = 0,45R. Con số ấy không còn
+    /// đúng vì phép kẹp <c>MinSizeMultiplierProduct</c> nâng tích 0,30 lên 0,50 — xem
+    /// <c>EngineSetting.MinSizeMultiplierProduct</c>. Nên ca kiểm chứng được dựng lại ở một hệ
+    /// số nằm TRÊN sàn, để nó vẫn khoá đúng thứ nó sinh ra để khoá: phép nhân, chứ không phải
+    /// phép kẹp.
+    /// </remarks>
     [Fact]
-    public void Tam_muoi_tam_diem_nhan_he_so_ngay_0_3_cho_0_45R()
+    public void Tam_muoi_tam_diem_nhan_he_so_ngay_0_8_cho_1_2R()
+    {
+        var result = Calculate(88, dayMultiplier: 0.8m);
+
+        Assert.Equal(1.5m, result.BaseSizeR);
+        Assert.Equal(1.2m, result.FinalSizeR);
+    }
+
+    /// <summary>
+    /// Tích bốn hệ số rơi dưới sàn thì bị kẹp lên, không được teo tự do.
+    /// </summary>
+    /// <remarks>
+    /// Bốn hệ số đều trong [0, 1] và NHÂN nhau nên chúng giảm theo cấp số nhân. Đợt chạy thử
+    /// 18–28/08 cho ra <c>RiskAmount</c> trải 2,38 → 24,99 USDT (gấp 10,5 lần) vì đúng cơ chế
+    /// này, và hệ quả là tổng +2,59R nhưng −51,05 USDT: cược to vào lệnh thua, cược bé vào lệnh
+    /// thắng. Kẹp tích lại thì thắng-thua quy ra tiền mới so sánh được với nhau.
+    /// </remarks>
+    [Fact]
+    public void Tich_he_so_duoi_san_thi_bi_kep_len()
     {
         var result = Calculate(88, dayMultiplier: 0.3m);
 
-        Assert.Equal(1.5m, result.BaseSizeR);
-        Assert.Equal(0.45m, result.FinalSizeR);
+        // 0,30 < sàn 0,50 ⟹ dùng 0,50 ⟹ 1,5 × 0,50 = 0,75R (không phải 0,45R).
+        Assert.Equal(0.75m, result.FinalSizeR);
+        Assert.Contains("kẹp", result.ReasonVi);
+    }
+
+    /// <summary>
+    /// Hệ số bằng 0 là một câu trả lời "không" — phép kẹp không được biến nó thành nửa cỡ lệnh.
+    /// </summary>
+    /// <remarks>
+    /// Đây là ranh giới quan trọng nhất của phép kẹp. Kế hoạch ngày cấm rủi ro, gate kỷ luật
+    /// chặn, AI veto, hay không đo được dữ liệu nào — cả bốn đều cho hệ số 0, và cả bốn đều phải
+    /// ra 0 lệnh. Kẹp lên sàn ở đây sẽ biến bốn cái veto thành bốn lệnh.
+    /// </remarks>
+    [Fact]
+    public void He_so_bang_khong_van_ra_khong_chu_khong_bi_kep_len_san()
+    {
+        Assert.Equal(0m, Calculate(88, dayMultiplier: 0m).FinalSizeR);
+        Assert.Equal(0m, Calculate(88, gateMultiplier: 0m).FinalSizeR);
+        Assert.Equal(0m, Calculate(88, ai: 0m).FinalSizeR);
     }
 
     // ── Bất biến số học ─────────────────────────────────────────────────

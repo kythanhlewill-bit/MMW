@@ -20,8 +20,9 @@ namespace MMW.RuleEngine.Tests.TimeGuard;
 /// </remarks>
 public class SessionQualityTests
 {
-    private const int AsianHour = 3;        // khoảng 0–7, điểm chuẩn 2, nhãn "Phiên Á"
-    private const int OverlapHour = 14;     // khoảng 13–16, điểm chuẩn 6, nhãn "Chồng lấn New York"
+    private const int AsianHour = 3;        // khoảng 0–7,  điểm chuẩn 4, nhãn "Phiên Á"
+    private const int OverlapHour = 14;     // khoảng 13–16, điểm chuẩn 2, nhãn "Chồng lấn New York"
+    private const int NightHour = 22;       // khoảng 21–24, điểm chuẩn 5, nhãn "Đêm mỏng"
 
     private static DateTime AtHour(int hour) => new(2026, 8, 5, hour, 30, 0, DateTimeKind.Utc);
 
@@ -61,18 +62,24 @@ public class SessionQualityTests
 
         var quality = await GetAsync(harness, OverlapHour);
 
-        Assert.Equal(6, quality.Score);
+        Assert.Equal(2, quality.Score);
         Assert.Equal("Chồng lấn New York", quality.Label);
         Assert.False(quality.IsPersonalised);
     }
 
+    /// <remarks>
+    /// Điểm ở đây KHÔNG theo giờ vàng của thị trường mà theo net R đo được trên 2.900 phiếu của
+    /// chính tài khoản này — xem <c>EngineSettingDefaults.SessionQualityRows</c>. Hai khung từng
+    /// được chấm cao nhất (London 5, chồng lấn NY 6) hoá ra là hai khung lỗ nặng nhất, còn "đêm
+    /// mỏng" từng bị chấm 1 lại là khung tốt nhất. Test này khoá đúng chiều đã đảo.
+    /// </remarks>
     [Theory]
-    [InlineData(3, 2, "Phiên Á")]
+    [InlineData(3, 4, "Phiên Á")]
     [InlineData(8, 5, "Mở cửa London")]
-    [InlineData(10, 5, "London")]
-    [InlineData(14, 6, "Chồng lấn New York")]
+    [InlineData(10, 1, "London")]
+    [InlineData(14, 2, "Chồng lấn New York")]
     [InlineData(18, 4, "New York chiều")]
-    [InlineData(22, 1, "Đêm mỏng")]
+    [InlineData(22, 5, "Đêm mỏng")]
     public async Task Bang_chuan_phu_kin_moi_khung_gio(int hour, int expectedScore, string expectedLabel)
     {
         using var harness = await TimeGuardHarness.CreateAsync();
@@ -93,7 +100,7 @@ public class SessionQualityTests
         var quality = await GetAsync(harness, AsianHour);
 
         Assert.False(quality.IsPersonalised);
-        Assert.Equal(2, quality.Score);   // vẫn là điểm chuẩn của phiên Á
+        Assert.Equal(4, quality.Score);   // vẫn là điểm chuẩn của phiên Á
     }
 
     // ── Đủ dữ liệu: chuyển sang thống kê thật ───────────────────────────
@@ -111,9 +118,9 @@ public class SessionQualityTests
     }
 
     [Theory]
-    [InlineData(50, 0, 5)]    // (50×1,0×6 + 10×2) / 60 = 5,33 → 5
-    [InlineData(0, 50, 0)]    // (50×0,0×6 + 10×2) / 60 = 0,33 → 0
-    [InlineData(25, 25, 3)]   // (50×0,5×6 + 10×2) / 60 = 2,83 → 3
+    [InlineData(50, 0, 6)]    // (50×1,0×6 + 10×4) / 60 = 5,67 → 6
+    [InlineData(0, 50, 1)]    // (50×0,0×6 + 10×4) / 60 = 0,67 → 1
+    [InlineData(25, 25, 3)]   // (50×0,5×6 + 10×4) / 60 = 3,17 → 3
     public async Task Diem_ca_nhan_duoc_keo_ve_bang_chuan_theo_co_mau(int wins, int losses, int expected)
     {
         using var harness = await TimeGuardHarness.CreateAsync();
@@ -127,14 +134,14 @@ public class SessionQualityTests
     [Fact]
     public async Task Mot_lenh_thua_don_le_khong_xoa_so_mot_khung_gio()
     {
-        // 49 lệnh thắng ở phiên Á + 1 lệnh thua ở khung chồng lấn = 50 lệnh, đã cá nhân hoá.
-        // Khung chồng lấn chỉ có đúng 1 mẫu và mẫu đó thua: (1×0×6 + 10×6) / 11 = 5,45 → 5.
+        // 49 lệnh thắng ở phiên Á + 1 lệnh thua ở khung đêm = 50 lệnh, đã cá nhân hoá.
+        // Khung đêm chỉ có đúng 1 mẫu và mẫu đó thua: (1×0×6 + 10×5) / 11 = 4,55 → 5.
         // Chia thẳng sẽ ra 0 và cấm cửa khung giờ tốt nhất trong ngày vì một lệnh.
         using var harness = await TimeGuardHarness.CreateAsync();
         await harness.AddClosedTradesAsync(ClosedTrades(harness.AccountId, AsianHour, wins: 49, losses: 0));
-        await harness.AddClosedTradesAsync(ClosedTrades(harness.AccountId, OverlapHour, wins: 0, losses: 1));
+        await harness.AddClosedTradesAsync(ClosedTrades(harness.AccountId, NightHour, wins: 0, losses: 1));
 
-        var quality = await GetAsync(harness, OverlapHour);
+        var quality = await GetAsync(harness, NightHour);
 
         Assert.True(quality.IsPersonalised);
         Assert.Equal(1, quality.SampleSize);
@@ -153,7 +160,7 @@ public class SessionQualityTests
 
         Assert.False(quality.IsPersonalised);
         Assert.Equal(0, quality.SampleSize);
-        Assert.Equal(6, quality.Score);
+        Assert.Equal(2, quality.Score);
     }
 
     // ── Lệnh nào được đếm ───────────────────────────────────────────────
@@ -192,7 +199,7 @@ public class SessionQualityTests
         var quality = await GetAsync(harness, AsianHour);
 
         Assert.Equal(50, quality.SampleSize);
-        Assert.Equal(5, quality.Score);
+        Assert.Equal(6, quality.Score);   // (50×1,0×6 + 10×4) / 60 = 5,67 → 6
     }
 
     [Fact]
